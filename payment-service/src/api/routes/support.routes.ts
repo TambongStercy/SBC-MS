@@ -16,8 +16,8 @@ import logger from '../../utils/logger';
  *   POST /withdrawals/:transactionId/recheck
  *   POST /withdrawals/:transactionId/regularize   { action: 'complete'|'fail', reason, evidence: string[], approvalId }
  *   POST /activation/manual                       { userId, gateway, externalRef, plan, approvalId, countryCode? }
- *   GET  /finance/summary?from&to&country
- *   GET  /finance/withdrawals?status&ageBucket&gateway&country&page&limit
+ *   GET  /finance/summary?from&to&country&gateway
+ *   GET  /finance/withdrawals?status&ageBucket&gateway&country&from&to&page&limit
  */
 const router = Router();
 const log = logger.getLogger('SupportRoutes');
@@ -118,7 +118,8 @@ router.get('/finance/summary', handle(async (req, res) => {
     const from = parseDate(req.query.from) ?? new Date(Date.now() - 30 * 24 * 3600 * 1000);
     const to = parseDate(req.query.to);
     const country = typeof req.query.country === 'string' && /^[A-Za-z]{2}$/.test(req.query.country) ? req.query.country : undefined;
-    res.json({ success: true, data: await supportFinanceService.financeSummary({ from, to, country }) });
+    const gateway = typeof req.query.gateway === 'string' && /^[A-Za-z]{2,20}$/.test(req.query.gateway) ? req.query.gateway : undefined;
+    res.json({ success: true, data: await supportFinanceService.financeSummary({ from, to, country, gateway }) });
 }));
 
 router.get('/finance/withdrawals', handle(async (req, res) => {
@@ -129,7 +130,7 @@ router.get('/finance/withdrawals', handle(async (req, res) => {
         success: true,
         data: await supportFinanceService.financeWithdrawals({
             status: str(req.query.status), ageBucket, gateway: str(req.query.gateway),
-            country: str(req.query.country)?.slice(0, 2),
+            country: str(req.query.country)?.slice(0, 2), from: parseDate(req.query.from), to: parseDate(req.query.to),
             page: Number(req.query.page) || 1, limit: Number(req.query.limit) || 50,
         }),
     });

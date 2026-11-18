@@ -435,11 +435,13 @@ class SupportFinanceService {
     }
 
     /** Counts and sums per business status; ages of what is still open. */
-    async financeSummary(q: { from?: Date; to?: Date; country?: string }) {
+    async financeSummary(q: { from?: Date; to?: Date; country?: string; gateway?: string }) {
         const now = new Date();
         const rows = await TransactionModel.aggregate([
             { $match: this.matchFinance(q) },
-            { $project: { amount: 1, businessStatus: businessStatusExpr(now), ageBucket: ageBucketExpr(now), status: 1 } },
+            { $project: { amount: 1, businessStatus: businessStatusExpr(now), ageBucket: ageBucketExpr(now), status: 1, gateway: gatewayExpr } },
+            // Same provider filter as the withdrawal list.
+            ...(q.gateway ? [{ $match: { gateway: q.gateway.toLowerCase() } }] : []),
             {
                 $facet: {
                     byStatus: [{ $group: { _id: '$businessStatus', count: { $sum: 1 }, amount: { $sum: '$amount' } } }],
@@ -459,7 +461,7 @@ class SupportFinanceService {
     }
 
     /** Paginated withdrawals for the finance board. */
-    async financeWithdrawals(q: { status?: string; ageBucket?: string; gateway?: string; country?: string; page: number; limit: number }) {
+    async financeWithdrawals(q: { status?: string; ageBucket?: string; gateway?: string; country?: string; from?: Date; to?: Date; page: number; limit: number }) {
         const now = new Date();
         const post: Record<string, any> = {};
         if (q.status) post.businessStatus = q.status.toUpperCase();
@@ -468,7 +470,7 @@ class SupportFinanceService {
         const page = Math.max(1, q.page);
         const limit = Math.min(Math.max(1, q.limit), 100);
         const rows = await TransactionModel.aggregate([
-            { $match: this.matchFinance({ country: q.country }) },
+            { $match: this.matchFinance({ country: q.country, from: q.from, to: q.to }) },
             {
                 $project: {
                     _id: 0, transactionId: 1, userId: 1, amount: 1, fee: 1, currency: 1, status: 1, createdAt: 1, updatedAt: 1,
