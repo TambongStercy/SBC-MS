@@ -1288,6 +1288,19 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   sets a password (≥ 12 chars, not a common one) and enrols TOTP at first sign-in.
   Lost phone: Administration → Agents → new activation link (wipes password,
   TOTP and backup codes).
+- **Help articles (assistant):** the assistant answers only from published
+  articles. `node dist/scripts/seed-kb.js` lists the 19 starter articles
+  (`src/data/kb-starter.ts`), `--apply` adds the missing ones as drafts,
+  `--publish` publishes the seeded drafts nobody has edited. It never
+  overwrites an existing slug. Have SBC review them in Contenus first. Article
+  text must hold no price, fee or money deadline (the AI's safety check drops
+  such answers), and members' own words go in the tags: search ranks an article
+  by how many of the question's topic words it covers.
+  - How-to questions about money or the account ("comment faire un retrait",
+    "j'ai oublié mon mot de passe") get the article word for word, never the AI.
+  - Personal problems ("pas arrivé", "bloqué", an amount) keep the secure route.
+  - DeepSeek (`DEEPSEEK_API_KEY`) is called only when the member asks again and an
+    article covers the question.
 - **Audit:** `auditlogs` is append-only and hash-chained;
   `node dist/scripts/verify-audit-chain.js` exits 1 on any altered or missing
   row. Give the service's Mongo user no update/remove right on it when users

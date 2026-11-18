@@ -66,6 +66,73 @@ async function loadConversation(memberId: string, conversationId: unknown) {
 
 const excerpt = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
+/** Words that say nothing about the topic ("comment", "faire", "mon"…), accents removed. */
+const STOPWORDS = new Set(('comment faire fait fais font pour avec dans mais quoi quel quelle quels quelles est sont suis etre mon mes ma ton tes ta votre vos notre nos nous vous elle elles ils une des les que qui quand pourquoi sur aux pas plus tout tous toute tres bien aussi cest jai peux puis faut veux voudrais estce sbc ceci cela ils leur leurs avoir ete etait sera dois doit faites sais savoir ici aujourdhui alors donc encore deja toujours jamais merci bonjour svp stp').split(' '));
+
+const fold = (s: string) => s.toLowerCase().replace(/[’`']/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** The words of a question that carry its topic (3+ letters, no stopwords, no placeholders). */
+export function topicTerms(anonymized: string): string[] {
+    const words = fold(anonymized.replace(/\[[^\]]*\]/g, ' ')).split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+    return [...new Set(words)];
+}
+
+/** Share of the question's topic words an article covers (a word counts on its first letters, so plurals and verb forms match). */
+export function coverage(terms: string[], article: { title: string; summary?: string; body: string; tags?: string[] }): number {
+    if (!terms.length) return 0;
+    const hay = fold(`${article.title} ${article.summary ?? ''} ${(article.tags ?? []).join(' ')} ${article.body}`);
+    const hit = terms.filter((t) => hay.includes(t.length > 5 ? t.slice(0, t.length - 2) : t)).length;
+    return hit / terms.length;
+}
+
+/**
+ * Published articles that really cover the question: MongoDB's text search
+ * matches single words ("fait" ~ "faire"), so its hits are re-ranked by how
+ * many of the question's topic words each covers; an article must cover every
+ * word of a one- or two-word question, or half of a longer one. No relevant article: the member is offered an agent, and
+ * DeepSeek is not called for nothing.
+ */
+export async function relevantArticles(anonymized: string, limit = 3) {
+    const terms = topicTerms(anonymized);
+    const hits = await searchPublished(anonymized, 8);
+    return hits
+        .map((h) => ({ h, c: coverage(terms, h) }))
+        // One or two topic words: all of them; more: at least half.
+        .filter((x) => (terms.length <= 2 ? x.c === 1 : x.c >= 0.5))
+        .sort((a, b) => b.c - a.c || (b.h.score ?? 0) - (a.h.score ?? 0))
+        .slice(0, limit)
+        .map((x) => x.h);
+}
+
+/** Removes the [slug] citation markers, and "D'après [slug]," style lead-ins that would be left dangling. */
+export function stripCitations(content: string): string {
+    const out = content
+        .replace(/\b(d[’']apr[eè]s|selon|voir|cf\.?|source\s*:?)\s*(l[’']article\s*)?\[[a-z0-9-]+\]\s*[,:]?\s*/gi, '')
+        .replace(/\s*\(?\[[a-z0-9-]+\]\)?/g, '')
+        .replace(/\s*\(\s*\)/g, '')
+        .replace(/\s+([.,;:!?])/g, '$1')
+        .trim();
+    return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+/** An article as an answer: its title and its steps (SBC's own text, shown as written). */
+const faqAnswer = (h: { title: string; summary?: string; body: string }) => `${h.title}\n\n${excerpt(h.body, 900)}`;
+
+// Activation and withdrawal questions prefer an article of their own category; others take the best match.
+const ROUTE_CATEGORY: Partial<Record<SensitiveRoute, string>> = { activation: 'activation_paiement', withdrawal: 'retrait' };
+
+/**
+ * "How do I…" rather than "my … has a problem". A question that names an
+ * amount, a reference or a number, or says something went wrong (not arrived,
+ * blocked, hacked…), is a personal problem and keeps the secure route.
+ */
+export function isHowToQuestion(anonymized: string): boolean {
+    const s = anonymized.toLowerCase().replace(/[’`]/g, "'").normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (/\[(montant|reference|référence|numero|numéro|email|nombre)\]/.test(anonymized.toLowerCase())) return false;
+    if (/(pas (encore |toujours )?(arrive|recu|active|passe|credite)|toujours pas|bloque|echou|refus|disparu|manqu|pirat|hack|vole|arnaqu|escroqu|debite sans|ne marche|ne fonctionne)/.test(s)) return false;
+    return /(^|\b)(comment|que faire|qu ?est[- ]ce|ou (est|trouver|se trouve)|quand|puis[- ]je|est[- ]ce que je peux|je veux|je voudrais|j'?ai oublie|oublie|changer|modifier|reinitialis|supprimer mon compte|telecharger|a quoi sert|c'?est quoi)/.test(s);
+}
+
 export async function ask(memberId: string, input: { question?: unknown; conversationId?: unknown; level?: unknown }): Promise<AskResult> {
     const question = typeof input.question === 'string' ? input.question.trim() : '';
     if (question.length < 3) throw badRequest('Posez votre question en quelques mots.', 'BAD_QUESTION');
@@ -80,13 +147,21 @@ export async function ask(memberId: string, input: { question?: unknown; convers
     let result: Omit<AskResult, 'conversationId'>;
     const route = classifySensitive(anonymized);
     if (route) {
-        result = { answer: ROUTE_ANSWERS[route], source: 'route', articles: [], route, canEscalate: true };
+        // Money or account: never the AI. A how-to question ("comment faire un retrait",
+        // "j'ai oublié mon mot de passe") gets SBC's own article, word for word, with the
+        // secure screen's button; a personal problem, or a second ask, gets the route.
+        const hits = await relevantArticles(anonymized);
+        const articles = hits.map((h) => ({ slug: h.slug, title: h.title }));
+        const best = (ROUTE_CATEGORY[route] && hits.find((h) => h.category === ROUTE_CATEGORY[route])) || hits[0];
+        result = level === 'faq' && best && isHowToQuestion(anonymized)
+            ? { answer: faqAnswer(best), source: 'faq', articles: [{ slug: best.slug, title: best.title }, ...articles.filter((a) => a.slug !== best.slug)], route, canEscalate: true }
+            : { answer: ROUTE_ANSWERS[route], source: 'route', articles, route, canEscalate: true };
     } else {
-        const hits = await searchPublished(anonymized, 3);
+        const hits = await relevantArticles(anonymized);
         const articles = hits.map((h) => ({ slug: h.slug, title: h.title }));
         if (level === 'faq') {
             result = hits.length
-                ? { answer: `Voici ce qui peut vous aider : ${hits[0].title}. ${hits[0].summary || excerpt(hits[0].body, 300)}`, source: 'faq', articles, canEscalate: true }
+                ? { answer: faqAnswer(hits[0]), source: 'faq', articles, canEscalate: true }
                 : { answer: NO_ANSWER, source: 'faq', articles: [], canEscalate: true };
         } else {
             result = await askAi(anonymized, hits, articles);
@@ -130,7 +205,7 @@ async function askAi(
     const cited = articles.filter((a) => content.includes(`[${a.slug}]`));
     if (!content || content.includes('AUCUNE_REPONSE') || !cited.length || answerLooksUnsafe(content)) return fallback();
     // The [slug] markers proved the citations; the member gets the articles as links, not as raw tags.
-    const answer = content.replace(/\s*\[[a-z0-9-]+\]/g, '').replace(/\s+([.,;:!?])/g, '$1').trim();
+    const answer = stripCitations(content);
     return { answer: answer.slice(0, 2000), source: 'ai', articles: cited, canEscalate: true };
 }
 
