@@ -3,15 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { CheckListIcon, CheckmarkCircle02Icon, InformationCircleIcon } from '@hugeicons/core-free-icons';
 import { approvalsApi } from '../../api/approvals';
-import { ApiError } from '../../api/http';
+import { membersApi } from '../../api/members';
+import { ApiError, errorMessage } from '../../api/http';
 import type { Approval, ApprovalType } from '../../api/types';
 import { useAgent, usePermissions } from '../../auth/context';
-import { useReauth } from '../../auth/reauth';
+import { isReauthCancelled, useReauth } from '../../auth/reauth';
 import { ErrorState } from '../../components/display/ErrorState';
 import { APPROVAL_STATUS, APPROVAL_TYPE, StatusBadge } from '../../components/display/labels';
 import { ReasonDialog } from '../../components/ReasonDialog';
 import { toast } from '../../components/toast';
-import { Badge, Button, EmptyState, PageHeader, Panel, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui';
+import { Badge, Button, EmptyState, Input, PageHeader, Panel, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import type { Permission } from '../../lib/permissions';
 
@@ -149,6 +150,8 @@ function ApprovalCard({ approval: a, decidable = false }: { approval: Approval; 
         </p>
       )}
 
+      {a.type === 'contact_change' && a.status === 'approved' && <ContactChangeSteps approval={a} />}
+
       {decidable && a.status === 'pending' && (
         <div className="mt-4 flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
           {own ? (
@@ -185,5 +188,63 @@ function ApprovalCard({ approval: a, decidable = false }: { approval: Approval; 
         onConfirm={text => decide('reject', text)}
       />
     </Panel>
+  );
+}
+
+/**
+ * An approved email/phone change is not applied yet: a code goes to the NEW
+ * contact, the member reads it to the agent, and the agent applies it (with
+ * their authenticator code). Until then the member's account is unchanged.
+ */
+function ContactChangeSteps({ approval }: { approval: Approval }) {
+  const qc = useQueryClient();
+  const reauth = useReauth();
+  const [sent, setSent] = useState(Boolean((approval.payload as { codeSentAt?: string } | undefined)?.codeSentAt));
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState<'send' | 'apply' | null>(null);
+  const [error, setError] = useState('');
+
+  const send = async () => {
+    setBusy('send'); setError('');
+    try {
+      await membersApi.sendContactCode(approval.id);
+      setSent(true);
+      toast.success('Code envoyé au nouveau contact. Demandez-le au membre.');
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(null); }
+  };
+  const apply = async () => {
+    const c = code.trim();
+    if (!/^[A-Za-z0-9]{4,10}$/.test(c)) { setError('Entrez le code reçu par le membre.'); return; }
+    setBusy('apply'); setError('');
+    try {
+      const token = await reauth({ title: 'Appliquer le changement', description: 'Changement de contact d’un membre : entrez le code de votre application d’authentification.' });
+      await membersApi.applyContactChange(approval.id, c, token);
+      toast.success('Changement appliqué. Les retraits du membre sont bloqués 48 h par sécurité.');
+      void qc.invalidateQueries({ queryKey: ['approvals'] });
+    } catch (e) {
+      if (!isReauthCancelled(e)) setError(errorMessage(e));
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t border-line pt-3" aria-label="Appliquer le changement de contact">
+      <p className="text-sm text-fg">Demande validée : le changement n’est pas encore appliqué.</p>
+      <ol className="list-decimal space-y-3 pl-5 text-sm text-fg">
+        <li>
+          <span className="block">Envoyez un code de confirmation au nouveau contact.</span>
+          <Button className="mt-2" variant={sent ? 'outline' : 'primary'} onClick={send} loading={busy === 'send'} disabled={busy !== null}>
+            {sent ? 'Renvoyer le code' : 'Envoyer le code au nouveau contact'}
+          </Button>
+        </li>
+        <li>
+          <label htmlFor={`code-${approval.id}`} className="block">Saisissez le code que le membre a reçu, puis appliquez.</label>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <Input id={`code-${approval.id}`} value={code} onChange={e => setCode(e.target.value)} autoComplete="off" className="sm:w-48" disabled={!sent} />
+            <Button variant="primary" onClick={apply} loading={busy === 'apply'} disabled={!sent || busy !== null}>Appliquer le changement</Button>
+          </div>
+        </li>
+      </ol>
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+    </div>
   );
 }

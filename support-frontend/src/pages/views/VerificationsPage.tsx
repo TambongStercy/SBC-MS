@@ -10,7 +10,7 @@ import { ErrorState } from '../../components/display/ErrorState';
 import { StatusBadge, VIEW_STATE } from '../../components/display/labels';
 import { toast } from '../../components/toast';
 import {
-  Button, EmptyState, Metric, PageHeader, Panel, PanelBody, PanelHeader, ResponsiveList, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger,
+  Button, EmptyState, Metric, PageHeader, Panel, PanelBody, PanelHeader, ResponsiveList, Skeleton, Switch, Tabs, TabsContent, TabsList, TabsTrigger,
 } from '../../components/ui';
 import { formatNumber, formatRelative } from '../../lib/format';
 import { DECISION_LABEL, DecisionForm, ProofPanel, useHeartbeat } from './TaskReview';
@@ -112,6 +112,7 @@ function CurrentTask() {
   const today = mine.data?.today;
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-4">
+      <AvailabilityToggle available={mine.data?.available === true} loading={mine.isLoading} onChanged={() => void qc.invalidateQueries({ queryKey: MINE_KEY })} />
       {lastDecision && (
         <p role="status" className="flex items-center gap-2 rounded-control border border-success/30 bg-success-soft px-3 py-2 text-sm text-fg">
           <HugeiconsIcon icon={CheckmarkCircle02Icon} size={18} className="shrink-0 text-success" aria-hidden="true" />
@@ -170,5 +171,27 @@ function MyQueue() {
         ]}
       />
     </Panel>
+  );
+}
+
+/**
+ * "Disponible": in round-robin and load modes the server only hands tasks to
+ * available verifiers, and the supervisor's board shows them online.
+ * "Tâche suivante" works either way.
+ */
+function AvailabilityToggle({ available, loading, onChanged }: { available: boolean; loading: boolean; onChanged: () => void }) {
+  const set = useMutation({
+    mutationFn: (v: boolean) => viewsApi.setAvailability(v),
+    onSuccess: r => { toast.success(r.available ? 'Vous êtes disponible : des preuves peuvent vous être attribuées.' : 'Vous n’êtes plus disponible pour l’attribution automatique.'); onChanged(); },
+    onError: err => toast.error(errorMessage(err)),
+  });
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-control border border-line bg-surface px-3 py-2 text-sm text-fg">
+      <span>
+        <span className="font-medium">Disponible pour l’attribution automatique</span>
+        <span className="block text-xs text-fg-muted">Le superviseur vous voit en ligne et des preuves vous sont envoyées.</span>
+      </span>
+      <Switch checked={available} disabled={loading || set.isPending} onCheckedChange={v => set.mutate(v)} aria-label="Disponible pour l’attribution automatique" />
+    </label>
   );
 }

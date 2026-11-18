@@ -11,7 +11,9 @@ export const viewsApi = {
   heartbeat: (id: string) => api.post<void>(`/views/tasks/${encodeURIComponent(id)}/heartbeat`),
   decide: (id: string, body: { decision: ViewDecision; observedViews?: number; reason?: string; ban?: boolean; version: number }) =>
     api.post<ViewTask>(`/views/tasks/${encodeURIComponent(id)}/decision`, body),
-  myQueue: () => api.get<{ items: ViewTask[]; today: { decided: number; approved: number; rejected: number } }>('/views/mine'),
+  myQueue: () => api.get<{ items: ViewTask[]; today: { decided: number; approved: number; rejected: number }; available?: boolean }>('/views/mine'),
+  /** Round-robin and load modes only give tasks to verifiers who said they are available. */
+  setAvailability: (available: boolean) => api.post<{ available: boolean }>('/views/availability', { available }),
   // Supervisor
   board: () => api.get<ViewBoard>('/views/board'),
   tasks: (state: ViewTaskState) => api.get<ViewTask[]>('/views/tasks', { state }),

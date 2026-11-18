@@ -69,4 +69,35 @@ describe('Approbations', () => {
     expect(screen.queryByRole('tab', { name: 'À valider' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Valider' })).toBeNull();
   });
+
+  it('an approved contact change is completed from the card: code to the new contact, then apply with reauth', async () => {
+    document.cookie = 'sbc_sup_csrf=tok; path=/';
+    const approved: Approval = {
+      ...approval('cc1', { id: 'agent-9', name: 'Awa Diallo' }, 'Changement d’email pour le membre u1'),
+      type: 'contact_change', status: 'approved', payload: { userId: 'u1', field: 'email', newValue: 'nouveau@gmail.com' },
+    };
+    const m = mockApi({
+      'GET /auth/me': { data: { agent: makeAgent(['support_agent'], { id: 'agent-9' }) } },
+      'GET /approvals': c => (c.query.get('mine') === '1' ? { data: [approved] } : { data: [] }),
+      'POST /members/contact-change/cc1/send-code': { data: { ok: true } },
+      'POST /auth/reauth': { data: { reauthToken: 'rt-cc' } },
+      'POST /members/contact-change/cc1/apply': { data: { ok: true } },
+    });
+    renderWithProviders(<App />, { path: '/approbations' });
+    const card = await screen.findByRole('article', { name: /Changement d’email/ });
+    const apply = within(card).getByRole('button', { name: 'Appliquer le changement' });
+    expect(apply).toBeDisabled();
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Envoyer le code au nouveau contact' }));
+    await waitFor(() => expect(m.find('POST', '/members/contact-change/cc1/send-code')).toHaveLength(1));
+    fireEvent.change(within(card).getByLabelText(/Saisissez le code/), { target: { value: 'Ab3dE9' } });
+    fireEvent.click(within(card).getByRole('button', { name: 'Appliquer le changement' }));
+    fireEvent.change(await screen.findByLabelText('Code de l’application'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
+
+    await waitFor(() => expect(m.find('POST', '/members/contact-change/cc1/apply')).toHaveLength(1));
+    const call = m.find('POST', '/members/contact-change/cc1/apply')[0];
+    expect(call.body).toEqual({ code: 'Ab3dE9' });
+    expect(call.headers.get('x-reauth-token')).toBe('rt-cc');
+  });
 });

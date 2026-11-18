@@ -20,6 +20,7 @@ const KIND_OPTIONS = [
 const ROUTE_OPTIONS = [
   { value: 'activation', label: 'Vérifier mon activation' },
   { value: 'withdrawal', label: 'Statut de mon retrait' },
+  { value: 'contact', label: 'Changer mon email ou mon téléphone (le membre le fait lui-même)' },
   { value: 'ticket', label: 'Écrire au support' },
 ];
 const routeLabel = (r?: string) => ROUTE_OPTIONS.find(o => o.value === r)?.label ?? r ?? '—';

@@ -6,6 +6,7 @@ import { Alert02Icon, CheckListIcon, InboxIcon, UserSwitchIcon } from '@hugeicon
 import { errorMessage } from '../../api/http';
 import type { AssignmentMode, QaItem, ViewAgentStatus, ViewDecision, ViewSettings, ViewTask } from '../../api/types';
 import { viewsApi } from '../../api/views';
+import { useAgent } from '../../auth/context';
 import { ErrorState } from '../../components/display/ErrorState';
 import { StatusBadge, VIEW_STATE } from '../../components/display/labels';
 import { ReasonDialog } from '../../components/ReasonDialog';
@@ -178,6 +179,7 @@ function TeamTab() {
 // ── À revoir ────────────────────────────────────────────────────────────
 
 function ReviewTab() {
+  const agent = useAgent();
   const qc = useQueryClient();
   const tasks = useQuery({ queryKey: ['views', 'tasks', 'to_review'], queryFn: () => viewsApi.tasks('to_review') });
   const [selected, setSelected] = useState<ViewTask | null>(null);
@@ -211,6 +213,7 @@ function ReviewTab() {
                 key={`${selected.id}-${selected.version}`}
                 task={selected}
                 canBan
+                takeOverAs={agent.id}
                 onDecided={(_t, d) => {
                   toast.success(`Décision enregistrée : ${DECISION_LABEL[d].toLowerCase()}.`);
                   setSelected(null);

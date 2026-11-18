@@ -232,7 +232,7 @@ export interface GuideNode {
   label: string;
   kind: 'question' | 'article' | 'route';
   articleSlug?: string;
-  route?: 'activation' | 'withdrawal' | 'ticket';
+  route?: 'activation' | 'withdrawal' | 'ticket' | 'contact';
   children: GuideNode[];
 }
 

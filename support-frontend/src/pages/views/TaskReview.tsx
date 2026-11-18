@@ -113,9 +113,14 @@ export const isConflict = (e: unknown) =>
  * Validate / reject / to review / technical error. Sends the task's version;
  * a 409 means someone else changed it: `onConflict` reloads.
  */
-export function DecisionForm({ task, canBan, onTouched, onDecided, onConflict }: {
+export function DecisionForm({ task, canBan, takeOverAs, onTouched, onDecided, onConflict }: {
   task: ViewTask;
   canBan: boolean;
+  /**
+   * Supervisor deciding a task set aside by a verifier: only the assignee may
+   * decide, so the task is first assigned to this agent (audited, with a reason).
+   */
+  takeOverAs?: string;
   /** First interaction with the form (starts an 'assigned' task). */
   onTouched?: () => void;
   onDecided: (task: ViewTask, decision: ViewDecision) => void;
@@ -155,6 +160,10 @@ export function DecisionForm({ task, canBan, onTouched, onDecided, onConflict }:
     }
     setBusy(true);
     try {
+      if (takeOverAs && task.assignee?.id !== takeOverAs) {
+        const mine = await viewsApi.reassign(task.id, takeOverAs, 'Reprise par le superviseur pour décision');
+        body.version = mine.version;
+      }
       const updated = await viewsApi.decide(task.id, body);
       onDecided(updated, decision);
     } catch (err) {
