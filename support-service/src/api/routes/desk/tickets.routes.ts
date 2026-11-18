@@ -25,11 +25,28 @@ async function ticketOut(id: string) {
     return presentTicket(t, await agentNames([t.assigneeId]));
 }
 
-router.get('/tickets', requirePermission('tickets.read'), ah(async (req, res) => {
-    const q = { ...(req.query as Record<string, unknown>) };
+// Every filter of listDeskTickets except the free text `q`.
+const TICKET_FILTERS = ['queue', 'status', 'priority', 'assignee', 'memberId', 'number', 'slaBreached', 'page', 'limit'] as const;
+
+async function listTickets(filters: Record<string, unknown>, text: unknown, agentId: string) {
+    const q: Record<string, unknown> = {};
+    for (const k of TICKET_FILTERS) if (filters[k] !== undefined && filters[k] !== null && filters[k] !== '') q[k] = String(filters[k]);
+    if (typeof text === 'string' && text.trim()) q.q = text;
     if (typeof q.status === 'string' && q.status !== 'active') q.status = storedStatus(q.status) ?? '__none__';
-    const r = await tickets.listDeskTickets(q, agentOf(req).id);
-    res.json({ success: true, data: { ...r, items: await presentTickets(r.items) } });
+    const r = await tickets.listDeskTickets(q, agentId);
+    return { ...r, items: await presentTickets(r.items) };
+}
+
+// Filters only: the free text is never read from a URL (see POST /tickets/search).
+router.get('/tickets', requirePermission('tickets.read'), ah(async (req, res) => {
+    res.json({ success: true, data: await listTickets(req.query as Record<string, unknown>, undefined, agentOf(req).id) });
+}));
+
+// POST, not GET: agents search tickets by a member's email, phone or name, and a
+// query string ends up in the gateway and nginx access logs and the browser history.
+router.post('/tickets/search', requirePermission('tickets.read'), ah(async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    res.json({ success: true, data: await listTickets(body, body.q, agentOf(req).id) });
 }));
 
 router.get('/tickets/queues', requirePermission('tickets.read'), ah(async (_req, res) => {

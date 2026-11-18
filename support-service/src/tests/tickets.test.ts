@@ -68,6 +68,25 @@ describe('tickets', () => {
         }
     });
 
+    it('searches tickets by text only through POST (never from a URL), keeping the filters', async () => {
+        const fetchMock = mockFetch({ '127.0.0.1:9/api/notifications': () => ({ json: { success: true } }), '127.0.0.1:9/api/users': () => ({ json: { success: true, data: [] } }) });
+        try {
+            expect((await member('post', '/tickets').send({ category: 'retrait', subject: 'Retrait bloqué depuis lundi', message: 'Bonjour' })).status).toBe(201);
+            expect((await member('post', '/tickets').send({ category: 'autre', subject: 'Question sur le parrainage', message: 'Bonjour' })).status).toBe(201);
+            const jar = await login(await makeAgent(['support_agent']));
+
+            const hit = await desk('post', '/tickets/search', jar).send({ q: 'bloqué', status: 'active' });
+            expect(hit.status).toBe(200);
+            expect(hit.body.data.items.map((t: any) => t.subject)).toEqual(['Retrait bloqué depuis lundi']);
+            // Filters still apply alongside the text.
+            expect((await desk('post', '/tickets/search', jar).send({ q: 'bloqué', queue: 'autre' })).body.data.total).toBe(0);
+            // A text put in the address is ignored: the list is not filtered by it.
+            expect((await desk('get', '/tickets?q=bloqu%C3%A9', jar)).body.data.total).toBe(2);
+        } finally {
+            fetchMock.restore();
+        }
+    });
+
     it('never shows a refused, expired or unknown withdrawal as "in progress"', async () => {
         const w = (transactionId: string, businessStatus: string) => ({ transactionId, amount: 2500, currency: 'XAF', status: 'x', businessStatus, createdAt: new Date().toISOString() });
         const fetchMock = mockFetch({
