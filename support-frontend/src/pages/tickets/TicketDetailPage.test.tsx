@@ -64,4 +64,18 @@ describe('ticket detail', () => {
     await waitFor(() => expect(m.find('POST', '/tickets/t1/messages')).toHaveLength(1));
     expect(m.find('POST', '/tickets/t1/messages')[0].body).toEqual({ body: 'C’est réglé.', internal: false });
   });
+
+  it('shows the member’s new message without reloading the page', async () => {
+    document.cookie = 'sbc_sup_csrf=tok; path=/';
+    let calls = 0;
+    const later = { ...detail, messages: [...detail.messages, { id: 'msg9', author: { type: 'member', id: 'm1', name: 'Jean Dupont' }, body: 'Toujours rien reçu ce soir.', internal: false, attachments: [], createdAt: '2026-11-17T18:00:00Z' }] };
+    mockApi({
+      'GET /auth/me': { data: { agent: makeAgent(['support_agent']) } },
+      'GET /tickets/t1': () => ({ data: ++calls === 1 ? detail : later }),
+    });
+    renderWithProviders(<App />, { path: '/tickets/t1' });
+    expect(await screen.findByText('Bonjour, mon retrait est bloqué.')).toBeInTheDocument();
+    expect(screen.queryByText('Toujours rien reçu ce soir.')).toBeNull();
+    expect(await screen.findByText('Toujours rien reçu ce soir.', {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 12000);
 });

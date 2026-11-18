@@ -24,7 +24,13 @@ const UNASSIGNED = 'none';
 export default function TicketDetailPage() {
   const { id = '' } = useParams();
   const perms = usePermissions();
-  const q = useQuery({ queryKey: ['tickets', 'detail', id], queryFn: () => ticketsApi.get(id), refetchInterval: 30_000 });
+  // The member's replies show up within seconds while the ticket is open on screen
+  // (polling pauses in a hidden tab, and stops once the ticket is closed).
+  const q = useQuery({
+    queryKey: ['tickets', 'detail', id],
+    queryFn: () => ticketsApi.get(id),
+    refetchInterval: query => (query.state.data?.ticket.status === 'closed' ? false : 5_000),
+  });
 
   if (q.isLoading) {
     return (

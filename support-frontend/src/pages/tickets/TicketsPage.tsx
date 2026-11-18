@@ -65,8 +65,8 @@ export default function TicketsPage() {
     limit: PAGE_SIZE,
   };
 
-  const queues = useQuery({ queryKey: ['tickets', 'queues'], queryFn: ticketsApi.queues, refetchInterval: 60_000 });
-  const list = useQuery({ queryKey: ['tickets', 'list', filters], queryFn: () => ticketsApi.list(filters), placeholderData: keepPreviousData, refetchInterval: 60_000 });
+  const queues = useQuery({ queryKey: ['tickets', 'queues'], queryFn: ticketsApi.queues, refetchInterval: 15_000 });
+  const list = useQuery({ queryKey: ['tickets', 'list', filters], queryFn: () => ticketsApi.list(filters), placeholderData: keepPreviousData, refetchInterval: 15_000 });
 
   const submitSearch = (e: FormEvent) => {
     e.preventDefault();
