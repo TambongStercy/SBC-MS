@@ -69,7 +69,7 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
     }
 
     // Validate paymentCurrency format/value
-    const validFiatCurrencies = ['XOF', 'XAF', 'KES', 'CDF', 'GNF']; // Fiat currencies
+    const validFiatCurrencies = ['XOF', 'XAF', 'KES', 'CDF', 'GNF', 'GHS']; // Fiat currencies
     const validCryptoCurrencies = [
         'BTC', 'LTC', 'XRP', 'TRX',
         'USDTSOL', 'USDTBSC', 'BNBBSC'
@@ -104,7 +104,9 @@ export const validatePaymentDetails = (req: Request, res: Response, next: NextFu
 
     // Validate country code format/value for fiat payments
     // Removed "CRYPTO" from valid countries as it's not a real country
-    const validCountries = ['BJ', 'BF', 'CI', 'SN', 'CG', 'TG', 'CM', 'GA', 'CD', 'KE', 'GN', 'ML', 'NE', 'TD'];
+    // GH and CF were routed to MoneyFusion but refused here, so their payins
+    // never reached a provider.
+    const validCountries = ['BJ', 'BF', 'CI', 'SN', 'CG', 'TG', 'CM', 'GA', 'CD', 'KE', 'GN', 'ML', 'NE', 'TD', 'GH', 'CF'];
     if (typeof countryCode !== 'string' || !validCountries.includes(countryCode)) {
         return res.status(400).json({
             success: false,
