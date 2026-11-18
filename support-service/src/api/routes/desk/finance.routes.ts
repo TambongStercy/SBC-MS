@@ -4,7 +4,7 @@ import { actorOf, agentOf, reqCtx, requirePermission, requireReauth } from '../.
 import { memberPayins, financeSummary, financeWithdrawals, recheckWithdrawal } from '../../../services/clients/payment.client';
 import { deskRecheckPayin } from '../../../services/activation.service';
 import { lookupPayin, recheckPayin } from '../../../services/clients/payment.client';
-import { asPage, presentCase, presentCases, agentNames } from '../../presenters';
+import { asPage, presentCase, presentCases, agentNames, memberNames } from '../../presenters';
 import { notFound } from '../../../utils/errors';
 import { createApproval } from '../../../services/approval.service';
 import '../../../services/finance.service'; // registers the regularization executor
@@ -66,15 +66,36 @@ router.post('/activation/manual-requests', requirePermission('activation.manual.
 router.post('/activation/manual', requirePermission('activation.manual.request'), requireReauth, manualRequest);
 
 // ---------- finance board ----------
+const AGE_BUCKET_ORDER = ['<24h', '24-48h', '48-72h', '>72h'] as const;
+
+type Totals = Record<string, { count?: number; amount?: number }>;
+
+/**
+ * payment-service answers with objects keyed by status and by age bucket
+ * (CONTRACT §2.2); the desk gets lists, every bucket present and in order, so
+ * the agent app can render them as they come.
+ */
+export function presentFinanceSummary(raw: { currency?: string; byBusinessStatus?: Totals; openByAge?: Totals } | null | undefined) {
+    const byStatus = Object.entries(raw?.byBusinessStatus ?? {})
+        .map(([status, t]) => ({ status, count: t?.count ?? 0, amount: t?.amount ?? 0 }))
+        .sort((a, b) => b.count - a.count);
+    const ageBuckets = AGE_BUCKET_ORDER.map((bucket) => ({ bucket, count: raw?.openByAge?.[bucket]?.count ?? 0, amount: raw?.openByAge?.[bucket]?.amount ?? 0 }));
+    return { currency: raw?.currency ?? 'XAF', byStatus, ageBuckets };
+}
+
 router.get('/finance/summary', requirePermission('finance.read'), ah(async (req, res) => {
     const q = req.query as Record<string, string>;
-    res.json({ success: true, data: await financeSummary({ from: q.from, to: q.to, country: q.country }) });
+    res.json({ success: true, data: presentFinanceSummary(await financeSummary({ from: q.from, to: q.to, country: q.country }) as any) });
 }));
 
 router.get('/finance/withdrawals', requirePermission('finance.read'), ah(async (req, res) => {
     const q = req.query as Record<string, string>;
     const data = await financeWithdrawals({ status: q.status, ageBucket: q.ageBucket, gateway: q.gateway, country: q.country, from: q.from, to: q.to, page: q.page, limit: q.limit });
-    res.json({ success: true, data: asPage(data, Number(q.page) || 1, Number(q.limit) || 50) });
+    const page = asPage(data, Number(q.page) || 1, Number(q.limit) || 50) as any;
+    // payment-service knows the member only by id: add the name the agents look for.
+    const names = await memberNames((page.items ?? []).map((w: any) => w.userId));
+    page.items = (page.items ?? []).map((w: any) => ({ ...w, memberName: w.memberName ?? names[String(w.userId)] ?? null }));
+    res.json({ success: true, data: page });
 }));
 
 router.post('/finance/withdrawals/:transactionId/recheck', requirePermission('finance.recheck'), ah(async (req, res) => {
@@ -111,7 +132,7 @@ router.post('/finance/withdrawals/:transactionId/regularize', requirePermission(
 // ---------- cases ----------
 async function caseOut(id: string) {
     const c = await cases.getCase(id);
-    return presentCase(c, await agentNames([c.assigneeId]));
+    return presentCase(c, await agentNames([c.assigneeId]), await memberNames([c.subject?.userId]));
 }
 
 /** type may be 'finance' (every non-activation type). */
@@ -128,7 +149,7 @@ router.get('/cases/:id', ah(async (req, res, next) => {
     if (!hasPermission(agent.roles, 'cases.work') && !(c.type === 'activation' && hasPermission(agent.roles, 'activation.check'))) {
         return requirePermission('cases.work')(req, res, next);
     }
-    res.json({ success: true, data: presentCase(c, await agentNames([c.assigneeId])) });
+    res.json({ success: true, data: presentCase(c, await agentNames([c.assigneeId]), await memberNames([c.subject?.userId])) });
 }));
 
 router.post('/cases/:id/assign', requirePermission('cases.work'), ah(async (req, res) => {

@@ -3,6 +3,7 @@ import { Agent } from '../database/models/agent.model';
 import { TICKET_STATUS_KEYS, TicketStatus } from '../config/constants';
 import { APPROVAL_PERMISSIONS } from '../services/approval.service';
 import { attachmentLinks } from '../services/attachment.service';
+import { getSupportDetails } from '../services/clients/user.client';
 
 /**
  * Desk response shapes, as support-frontend expects them (its src/api/types.ts).
@@ -31,11 +32,29 @@ export async function agentNames(ids: (string | Types.ObjectId | null | undefine
     return Object.fromEntries(docs.map((d) => [String(d._id), { id: String(d._id), name: d.name }]));
 }
 
-export function presentTicket(t: any, names: Record<string, { id: string; name: string }>) {
+/**
+ * userId → member name, in one batch (user-service support projection). Best effort:
+ * if user-service is slow or down, the screens show the id instead of failing.
+ */
+export async function memberNames(ids: (string | null | undefined)[]): Promise<Record<string, string>> {
+    const valid = [...new Set(ids.filter(Boolean).map(String))].filter((i) => /^[a-f0-9]{24}$/i.test(i));
+    if (!valid.length) return {};
+    try {
+        const out: Record<string, string> = {};
+        for (let i = 0; i < valid.length; i += 100) {
+            for (const m of await getSupportDetails(valid.slice(i, i + 100))) if (m?.name) out[String(m._id)] = m.name;
+        }
+        return out;
+    } catch {
+        return {};
+    }
+}
+
+export function presentTicket(t: any, names: Record<string, { id: string; name: string }>, members: Record<string, string> = {}) {
     return {
         id: String(t._id), number: t.number, subject: t.subject, category: t.category, queue: t.queue, priority: t.priority,
         status: deskStatus(t.status), storedStatus: t.status, source: t.source,
-        member: { id: t.memberId, name: t.memberName ?? t.memberId },
+        member: { id: t.memberId, name: t.memberName ?? members[String(t.memberId)] ?? t.memberId },
         assignee: t.assigneeId ? names[String(t.assigneeId)] ?? { id: String(t.assigneeId), name: '—' } : null,
         slaDueAt: iso(t.sla?.firstRespondedAt ? t.sla?.resolutionDueAt : t.sla?.firstResponseDueAt),
         slaBreachedAt: iso(t.sla?.breachedAt),
@@ -46,8 +65,8 @@ export function presentTicket(t: any, names: Record<string, { id: string; name: 
 }
 
 export async function presentTickets(list: any[]) {
-    const names = await agentNames(list.map((t) => t.assigneeId));
-    return list.map((t) => presentTicket(t, names));
+    const [names, members] = await Promise.all([agentNames(list.map((t) => t.assigneeId)), memberNames(list.filter((t) => !t.memberName).map((t) => t.memberId))]);
+    return list.map((t) => presentTicket(t, names, members));
 }
 
 export async function presentMessage(m: any) {
@@ -68,10 +87,10 @@ export function presentEvent(e: any) {
     };
 }
 
-export function presentCase(c: any, names: Record<string, { id: string; name: string }>) {
+export function presentCase(c: any, names: Record<string, { id: string; name: string }>, members: Record<string, string> = {}) {
     return {
         id: String(c._id), type: c.type, status: c.status, severity: c.severity, dedupKey: c.dedupKey,
-        subject: { userId: c.subject?.userId ?? undefined, transactionId: c.subject?.transactionId ?? undefined, sessionId: c.subject?.sessionId ?? undefined, gateway: c.subject?.gateway ?? undefined },
+        subject: { userId: c.subject?.userId ?? undefined, memberName: c.subject?.userId ? members[String(c.subject.userId)] : undefined, transactionId: c.subject?.transactionId ?? undefined, sessionId: c.subject?.sessionId ?? undefined, gateway: c.subject?.gateway ?? undefined },
         summary: c.summary, details: c.details ?? undefined, source: c.source, occurrences: c.occurrences,
         assignee: c.assigneeId ? names[String(c.assigneeId)] ?? { id: String(c.assigneeId), name: '—' } : null,
         createdAt: iso(c.createdAt), updatedAt: iso(c.updatedAt), ticketId: c.ticketId ? String(c.ticketId) : null,
@@ -82,8 +101,8 @@ export function presentCase(c: any, names: Record<string, { id: string; name: st
 }
 
 export async function presentCases(list: any[]) {
-    const names = await agentNames(list.map((c) => c.assigneeId));
-    return list.map((c) => presentCase(c, names));
+    const [names, members] = await Promise.all([agentNames(list.map((c) => c.assigneeId)), memberNames(list.map((c) => c.subject?.userId))]);
+    return list.map((c) => presentCase(c, names, members));
 }
 
 function approvalSummary(a: any): string {
