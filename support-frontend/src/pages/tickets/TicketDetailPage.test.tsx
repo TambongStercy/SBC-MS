@@ -107,4 +107,17 @@ describe('ticket detail', () => {
     expect(await screen.findByText('Bonjour, mon retrait est bloqué.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Revoir la session/ })).toBeNull();
   });
+
+  it('shows the contact details of a request sent without an account, with the warning', async () => {
+    document.cookie = 'sbc_sup_csrf=tok; path=/';
+    const guest = { ...detail, ticket: { ...detail.ticket, source: 'public' as const, member: { id: null, name: 'Awa Diallo' }, contact: { name: 'Awa Diallo', phone: '+237 6 75 09 07 55', email: 'awa@example.com', verified: false as const } } };
+    mockApi({ 'GET /auth/me': { data: { agent: makeAgent(['support_agent', 'support_admin']) } }, 'GET /tickets/t1': { data: guest } });
+    renderWithProviders(<App />, { path: '/tickets/t1' });
+    expect(await screen.findByRole('heading', { name: 'Coordonnées' })).toBeInTheDocument();
+    expect(screen.getByText(/Sans compte, non vérifié\./)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'awa@example.com' })).toHaveAttribute('href', 'mailto:awa@example.com');
+    expect(screen.getByRole('link', { name: '+237 6 75 09 07 55' })).toHaveAttribute('href', 'tel:+237675090755');
+    expect(screen.queryByRole('link', { name: 'Awa Diallo' })).toBeNull();
+    expect(screen.getByText('Formulaire sans compte')).toBeInTheDocument();
+  });
 });

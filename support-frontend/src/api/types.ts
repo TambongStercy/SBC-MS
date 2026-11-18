@@ -138,8 +138,12 @@ export interface Ticket {
   queue: string;
   priority: TicketPriority;
   status: TicketStatus;
-  source: 'member' | 'assistant' | 'system' | 'agent';
-  member: PersonRef;
+  /** `public`: sent from the form without an account (contact details only, unverified). */
+  source: 'member' | 'assistant' | 'system' | 'agent' | 'public';
+  /** `id` is null for a request sent without an account. */
+  member: { id: string | null; name: string };
+  /** Name, phone and email typed in the form: how to reach the person, never proof of identity. */
+  contact?: { name: string | null; phone: string | null; email: string | null; verified: false } | null;
   assignee?: PersonRef | null;
   slaDueAt?: string | null;
   createdAt: string;

@@ -29,7 +29,8 @@ describe('finance case sheet', () => {
       'POST /cases/case-1/recheck': { data: { result: 'pending', provider: 'MoneyFusion', providerStatus: 'pending', providerRef: 'MF-abc', checkedAt: new Date().toISOString(), requestId: 'r-1' } },
     });
     renderWithProviders(<App />, { path: '/finance?tab=dossiers' });
-    fireEvent.click((await screen.findAllByText('Retrait sans réponse finale après 72 h'))[0]);
+    // The finance page loads several lists first: under a full parallel run that takes over 1 s.
+    fireEvent.click((await screen.findAllByText('Retrait sans réponse finale après 72 h', {}, { timeout: 5000 }))[0]);
     const sheet = await screen.findByRole('dialog');
     expect(await within(sheet).findByRole('link', { name: 'Jean K.' })).toHaveAttribute('href', '/membres/u-7');
     expect(m.find('GET', '/cases')[0].query.get('type')).toBe('finance');
@@ -38,5 +39,5 @@ describe('finance case sheet', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: /Revérifier/ }));
     await waitFor(() => expect(m.find('POST', '/cases/case-1/recheck')).toHaveLength(1));
     expect(await within(sheet).findByText('En attente')).toBeInTheDocument();
-  });
+  }, 12000);
 });

@@ -18,7 +18,7 @@ import { Conversation } from './Conversation';
 import { categoryLabel, SlaText } from './shared';
 import { livePoll, useRealtimeConnected } from '../../realtime/realtime';
 
-const SOURCE_LABEL: Record<Ticket['source'], string> = { member: 'Membre', assistant: 'Assistant', system: 'Système', agent: 'Agent' };
+const SOURCE_LABEL: Record<Ticket['source'], string> = { member: 'Membre', assistant: 'Assistant', system: 'Système', agent: 'Agent', public: 'Formulaire sans compte' };
 const UNASSIGNED = 'none';
 
 /** One ticket: conversation and composer; status, assignment and history beside (below on phones). */
@@ -59,7 +59,7 @@ export default function TicketDetailPage() {
           <StatusBadge map={TICKET_PRIORITY} value={ticket.priority} />
           <Badge tone="outline">{categoryLabel(ticket.category)}</Badge>
           <span className="text-fg-muted">
-            {perms.has('members.read') ? (
+            {perms.has('members.read') && ticket.member.id ? (
               <Link to={`/membres/${encodeURIComponent(ticket.member.id)}`} className="font-medium text-primary underline-offset-4 hover:underline">{ticket.member.name}</Link>
             ) : <span className="font-medium text-fg">{ticket.member.name}</span>}
             {' · '}ouvert {formatRelative(ticket.createdAt)}
@@ -78,6 +78,7 @@ export default function TicketDetailPage() {
         <aside className="flex min-w-0 flex-col gap-4" aria-label="Gestion du ticket">
           <StatusPanel key={ticket.status} ticket={ticket} canChange={perms.has('tickets.reply')} />
           <AssignPanel ticket={ticket} canAssign={perms.has('tickets.assign')} canChangePriority={perms.has('tickets.assign')} />
+          {ticket.contact && <ContactPanel ticket={ticket} />}
           <DetailsPanel ticket={ticket} />
           <EventsPanel events={events} />
         </aside>
@@ -182,6 +183,42 @@ function AssignPanel({ ticket, canAssign, canChangePriority }: { ticket: Ticket;
         )}
       </PanelBody>
     </Panel>
+  );
+}
+
+/**
+ * What the person typed to be reached. Without an account nothing proves who wrote:
+ * the agent must not disclose any account detail and replies go to the email typed.
+ */
+function ContactPanel({ ticket }: { ticket: Ticket }) {
+  const c = ticket.contact!;
+  const guest = !ticket.member.id;
+  return (
+    <Panel>
+      <PanelHeader title="Coordonnées" />
+      <PanelBody>
+        {guest && (
+          <p role="note" className="mb-3 rounded-control border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-fg">
+            <strong>Sans compte, non vérifié.</strong> N’importe qui peut écrire l’email ou le numéro d’un autre membre : ne donnez aucune information sur un compte. Vos réponses partent par email à l’adresse ci-dessous.
+          </p>
+        )}
+        <dl className="space-y-2 text-sm">
+          <ContactRow label="Nom" value={c.name} />
+          <ContactRow label="Téléphone" value={c.phone} href={c.phone ? `tel:${c.phone.replace(/[^\d+]/g, '')}` : undefined} />
+          <ContactRow label="Email" value={c.email} href={c.email ? `mailto:${c.email}` : undefined} />
+        </dl>
+        {!guest && <p className="mt-2 text-xs text-fg-muted">Indiquées par le membre dans sa demande (elles peuvent différer de son compte).</p>}
+      </PanelBody>
+    </Panel>
+  );
+}
+
+function ContactRow({ label, value, href }: { label: string; value: string | null; href?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="shrink-0 text-fg-muted">{label}</dt>
+      <dd className="min-w-0 break-all text-right text-fg">{value ? (href ? <a href={href} className="text-primary underline-offset-4 hover:underline">{value}</a> : value) : '—'}</dd>
+    </div>
   );
 }
 
