@@ -26,6 +26,8 @@ export const ticketsApi = {
     api.post<Ticket>(`/tickets/${encodeURIComponent(id)}/status`, { status, reason }),
   setPriority: (id: string, priority: TicketPriority) => api.post<Ticket>(`/tickets/${encodeURIComponent(id)}/priority`, { priority }),
   /** Short-lived presigned URL of a private attachment. */
+  /** Link to the member's session replay; the server audits every call. */
+  replayUrl: (ticketId: string) => api.post<{ url: string }>(`/tickets/${encodeURIComponent(ticketId)}/replay`),
   attachmentUrl: (ticketId: string, attachmentId: string) =>
     api.get<{ url: string; expiresAt?: string }>(`/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(attachmentId)}/url`),
   /** Agents who can take tickets (for the assign menu). */

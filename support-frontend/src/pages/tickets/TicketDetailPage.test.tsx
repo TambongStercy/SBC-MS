@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import App from '../../App';
 import { mockApi } from '../../test/mockApi';
@@ -78,4 +78,33 @@ describe('ticket detail', () => {
     expect(screen.queryByText('Toujours rien reçu ce soir.')).toBeNull();
     expect(await screen.findByText('Toujours rien reçu ce soir.', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 12000);
+
+  it('opens the member’s session replay in a new tab through the audited route', async () => {
+    document.cookie = 'sbc_sup_csrf=tok; path=/';
+    const withReplay = { ...detail, ticket: { ...detail.ticket, replay: { at: '2026-11-17T08:00:00Z' } } };
+    const api = mockApi({
+      'GET /auth/me': { data: { agent: makeAgent(['support_agent']) } },
+      'GET /tickets/t1': { data: withReplay },
+      'POST /tickets/t1/replay': { data: { url: 'https://replay.sbc.test/3/session/77' } },
+    });
+    const tab = { opener: {}, location: { href: '' }, close: vi.fn() };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    renderWithProviders(<App />, { path: '/tickets/t1' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Revoir la session du membre/ }));
+    await waitFor(() => expect(tab.location.href).toBe('https://replay.sbc.test/3/session/77'));
+    expect(open).toHaveBeenCalledWith('', '_blank');
+    expect(tab.opener).toBeNull();
+    expect(api.find('POST', '/tickets/t1/replay')).toHaveLength(1);
+    expect(api.find('POST', '/tickets/t1/replay')[0].headers.get('x-csrf-token')).toBe('tok');
+    open.mockRestore();
+  });
+
+  it('shows no replay button when the ticket has no recording', async () => {
+    document.cookie = 'sbc_sup_csrf=tok; path=/';
+    mockApi({ 'GET /auth/me': { data: { agent: makeAgent(['support_agent']) } }, 'GET /tickets/t1': { data: detail } });
+    renderWithProviders(<App />, { path: '/tickets/t1' });
+    expect(await screen.findByText('Bonjour, mon retrait est bloqué.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Revoir la session/ })).toBeNull();
+  });
 });

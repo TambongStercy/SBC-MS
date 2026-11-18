@@ -145,6 +145,8 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
+  /** The member's OpenReplay session at the time of the ticket; the link comes from `ticketsApi.replayUrl` (audited). */
+  replay?: { at: string | null } | null;
 }
 
 export interface Attachment {

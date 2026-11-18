@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { ArrowLeft01Icon, UserAdd01Icon } from '@hugeicons/core-free-icons';
+import { ArrowLeft01Icon, PlayCircleIcon, UserAdd01Icon } from '@hugeicons/core-free-icons';
 import { errorMessage } from '../../api/http';
 import { ticketsApi } from '../../api/tickets';
 import type { Ticket, TicketEvent, TicketPriority, TicketStatus } from '../../api/types';
@@ -204,8 +204,42 @@ function DetailsPanel({ ticket }: { ticket: Ticket }) {
             </div>
           ))}
         </dl>
+        {ticket.replay && <ReplayLink ticketId={ticket.id} at={ticket.replay.at} />}
       </PanelBody>
     </Panel>
+  );
+}
+
+/**
+ * Opens the member's OpenReplay session in a new tab. The tab is opened on the click
+ * (browsers block a window opened after an await), then sent to the audited link.
+ */
+function ReplayLink({ ticketId, at }: { ticketId: string; at: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
+    setBusy(true);
+    try {
+      const { url } = await ticketsApi.replayUrl(ticketId);
+      if (tab) tab.location.href = url; else window.location.assign(url);
+    } catch (e) {
+      tab?.close();
+      toast.error(errorMessage(e, 'Impossible d’ouvrir l’enregistrement.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      <Button variant="outline" className="w-full" loading={busy} onClick={open}>
+        <HugeiconsIcon icon={PlayCircleIcon} size={16} aria-hidden="true" />
+        Revoir la session du membre
+      </Button>
+      <p className="mt-2 text-xs text-fg-muted">
+        Ce que le membre a vu dans l’app avant et pendant sa demande{at ? ` (envoyée le ${formatDateTime(at)})` : ''}. Les saisies, les montants et les numéros sont masqués. Chaque ouverture est enregistrée dans le journal.
+      </p>
+    </div>
   );
 }
 
