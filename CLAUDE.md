@@ -1311,7 +1311,7 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   Without it both apps poll (5 s ticket, 15 s lists). Local: a `livekit/livekit-server`
   container (`--dev`-style key) on `ws://localhost:7890`.
 - **Session replay (OpenReplay, self-hosted):** the member app records every session
-  (inputs and numbers masked) and sends the session id + link when the member opens a
+  (names, emails, phones visible; passwords and codes never recorded) and sends the session id + link when the member opens a
   ticket. The desk shows « Revoir la session » only for tickets that have one; the link
   comes from `POST /desk/tickets/:id/replay`, audited (`ticket.replay.opened`). Links
   not on `OPENREPLAY_DASHBOARD_URL` are dropped. Needs its own server (not the prod box):

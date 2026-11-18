@@ -4,9 +4,12 @@ When a member opens a support ticket, the agent can replay what the member saw
 and did in the app before and while declaring the problem.
 
 - **Member app** (SBC-WEB-UI, `src/services/sessionReplay.ts`): records every
-  signed-in session with the OpenReplay tracker. Everything typed is masked,
-  and so are emails and numbers shown on screen (balances, phone numbers,
-  codes). Network bodies are not recorded. The tracker is off unless
+  signed-in session with the OpenReplay tracker. Names, emails and phone
+  numbers stay visible (on screen and in fields), as asked on 2026-11-18.
+  **Passwords and one-time codes are never recorded**: every such field carries
+  `data-openreplay-hidden` (the tracker alone only hides `type="password"`, which
+  the eye icon turns into text), and a test fails if a new one lacks it.
+  Request/response bodies and headers are not recorded. The tracker is off unless
   `VITE_OPENREPLAY_PROJECT_KEY` and `VITE_OPENREPLAY_INGEST` are set at build
   time. It stops at sign-out.
 - **Tickets:** the member app sends the current session id and link with the new
@@ -61,9 +64,11 @@ test sessions never mix with members' sessions.
 
 ## Privacy (to be validated by SBC)
 
-Recording every member without asking was decided on 2026-11-18. It is a new
-processing purpose. The privacy page (`/confidentialite`) and the cookie notice
-now say so. **Rufus must validate that text** before the tracker is switched on
+Recording every member without asking, with names, emails and phone numbers
+visible, was decided on 2026-11-18. It is a new processing purpose. The privacy
+page (`/confidentialite#enregistrement`), the cookie notice and the legal notice
+now say so, and promise automatic deletion "after a limited time": set the
+retention in OpenReplay and put the exact duration in that text. **Rufus must validate that text** before the tracker is switched on
 in production, and check whether the APDP authorisation (délibération
 2026-523) needs a declaration update.
 
