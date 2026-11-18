@@ -199,7 +199,7 @@ function ContactPanel({ ticket }: { ticket: Ticket }) {
       <PanelBody>
         {guest && (
           <p role="note" className="mb-3 rounded-control border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-fg">
-            <strong>Sans compte, non vérifié.</strong> N’importe qui peut écrire l’email ou le numéro d’un autre membre : ne donnez aucune information sur un compte. Vos réponses partent par email à l’adresse ci-dessous.
+            <strong>Sans compte, non vérifié.</strong> N’importe qui peut écrire l’email ou le numéro d’un autre membre : ne donnez aucune information sur un compte. La personne lit vos réponses dans sa conversation ; une copie part aussi par email à l’adresse ci-dessous.
           </p>
         )}
         <dl className="space-y-2 text-sm">

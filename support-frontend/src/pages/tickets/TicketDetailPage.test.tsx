@@ -120,6 +120,6 @@ describe('ticket detail', () => {
     expect(screen.queryByRole('link', { name: 'Awa Diallo' })).toBeNull();
     expect(screen.getByText('Formulaire sans compte')).toBeInTheDocument();
     expect(screen.getAllByText('Sans compte').length).toBeGreaterThan(0);
-    expect(screen.getByRole('textbox', { name: /Réponse/ })).toHaveAttribute('placeholder', 'Votre réponse, envoyée par email…');
+    expect(screen.getByRole('textbox', { name: /Réponse/ })).toHaveAttribute('placeholder', 'Votre réponse (copie aussi envoyée par email)…');
   });
 });
