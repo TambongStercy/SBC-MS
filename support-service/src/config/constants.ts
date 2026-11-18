@@ -66,12 +66,15 @@ export const WITHDRAWAL_STATUS_TEXT: Record<string, { label: string; explanation
     FAILED: { label: 'Échoué', explanation: 'L’opérateur a refusé le retrait ; votre solde n’a pas été débité.' },
     CANCEL_REQUESTED: { label: 'Annulation demandée', explanation: 'L’annulation est demandée ; le montant reste réservé jusqu’à la confirmation.' },
     CANCELLED: { label: 'Annulé', explanation: 'Le retrait est annulé et le montant est de nouveau disponible.' },
+    REJECTED: { label: 'Refusé', explanation: 'L’équipe SBC n’a pas validé ce retrait : rien n’a été envoyé et le montant est de nouveau disponible sur votre solde.' },
+    EXPIRED: { label: 'Expiré', explanation: 'Ce retrait n’a pas été validé à temps : rien n’a été envoyé et le montant est de nouveau disponible sur votre solde. Vous pouvez refaire une demande.' },
     UNKNOWN: { label: 'En vérification', explanation: 'L’opérateur n’a pas encore donné de réponse définitive ; votre argent reste réservé pendant notre vérification.' },
 };
 
 export const withdrawalStatusText = (businessStatus: string | undefined) =>
     WITHDRAWAL_STATUS_TEXT[String(businessStatus || '').toUpperCase()]
-    ?? { label: 'En cours', explanation: 'Votre retrait est en cours de traitement.' };
+    // A status this table does not know must never read as "on its way": say it is being checked.
+    ?? { label: 'Statut à vérifier', explanation: 'Nous n’avons pas pu lire le statut de ce retrait. Écrivez à un agent si vous avez un doute.' };
 
 export const PAYIN_STATUS_LABELS: Record<string, string> = {
     confirmed: 'Paiement confirmé par l’opérateur',

@@ -68,6 +68,24 @@ describe('tickets', () => {
         }
     });
 
+    it('never shows a refused, expired or unknown withdrawal as "in progress"', async () => {
+        const w = (transactionId: string, businessStatus: string) => ({ transactionId, amount: 2500, currency: 'XAF', status: 'x', businessStatus, createdAt: new Date().toISOString() });
+        const fetchMock = mockFetch({
+            '127.0.0.1:9/api/internal/support': () => ({ json: { success: true, data: [w('t1', 'REJECTED'), w('t2', 'EXPIRED'), w('t3', 'SOMETHING_NEW')] } }),
+        });
+        try {
+            const r = await member('get', '/withdrawals');
+            expect(r.status).toBe(200);
+            const byId = Object.fromEntries(r.body.data.map((x: any) => [x.id, x]));
+            expect(byId.t1.statusLabel).toBe('Refusé');
+            expect(byId.t2.statusLabel).toBe('Expiré');
+            expect(byId.t3.statusLabel).toBe('Statut à vérifier');
+            for (const x of r.body.data) expect(`${x.statusLabel} ${x.explanation}`).not.toMatch(/en cours/i);
+        } finally {
+            fetchMock.restore();
+        }
+    });
+
     it('says the payment service is unavailable instead of failing when it is not deployed', async () => {
         const fetchMock = mockFetch({ '127.0.0.1:9/api/internal/support': () => ({ status: 404, json: undefined }) });
         try {
