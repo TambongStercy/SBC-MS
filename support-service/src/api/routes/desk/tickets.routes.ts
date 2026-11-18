@@ -68,6 +68,7 @@ router.get('/tickets/assignees', requirePermission('tickets.read'), ah(async (_r
 
 router.get('/tickets/:id', requirePermission('tickets.read'), ah(async (req, res) => {
     const d = await tickets.getDeskTicket(req.params.id);
+    await tickets.markReadByAgent(d.ticket as any);
     const names = await agentNames([d.ticket.assigneeId]);
     const raw = await TicketMessage.find({ ticketId: d.ticket._id }).sort({ createdAt: 1 }).limit(500).lean();
     res.json({

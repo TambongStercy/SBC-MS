@@ -64,7 +64,19 @@ export function memberView(t: ITicket & { _id: unknown }) {
     return {
         id: String(t._id), number: t.number, subject: t.subject, category: t.category, status: t.status,
         createdAt: t.createdAt, updatedAt: t.updatedAt, resolvedAt: t.resolvedAt ?? null, closedAt: t.closedAt ?? null,
+        agentReadAt: t.agentReadAt ?? null,
     };
+}
+
+/**
+ * An agent opened the ticket: the member's messages so far are read. Only when there is
+ * something new to mark, so the desk's reloads do not signal the member over and over.
+ */
+export async function markReadByAgent(t: { _id: unknown; memberId: string; lastMemberMessageAt?: Date | null; agentReadAt?: Date | null }) {
+    const last = t.lastMemberMessageAt;
+    if (!last || (t.agentReadAt && t.agentReadAt >= last)) return;
+    const r = await Ticket.updateOne({ _id: t._id, $or: [{ agentReadAt: null }, { agentReadAt: { $lt: last } }] }, { $set: { agentReadAt: new Date() } });
+    if (r.modifiedCount === 1) publishTicketEvent({ ticketId: String(t._id), memberId: t.memberId, kind: 'read', forMember: true });
 }
 
 export async function listMemberTickets(memberId: string) {

@@ -15,6 +15,8 @@ export interface ITicket {
     sla: { firstResponseDueAt: Date; resolutionDueAt: Date; firstRespondedAt?: Date | null; breachedAt?: Date | null };
     lastMemberMessageAt?: Date | null;
     lastAgentMessageAt?: Date | null;
+    /** Last time an agent opened the ticket: the member's messages before it show as read (blue ticks). */
+    agentReadAt?: Date | null;
     resolvedAt?: Date | null;
     closedAt?: Date | null;
     botConversationId?: Types.ObjectId | null;
@@ -44,6 +46,7 @@ const TicketSchema = new Schema<ITicket>({
     },
     lastMemberMessageAt: { type: Date, default: null },
     lastAgentMessageAt: { type: Date, default: null },
+    agentReadAt: { type: Date, default: null },
     resolvedAt: { type: Date, default: null },
     closedAt: { type: Date, default: null },
     botConversationId: { type: Schema.Types.ObjectId, default: null },

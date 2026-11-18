@@ -20,7 +20,7 @@ export const DESK_ROOM = 'support-desk';
 export const memberRoom = (memberId: string) => `support-member-${memberId}`;
 export const REALTIME_TOPIC = 'support';
 
-export type TicketEventKind = 'created' | 'message' | 'status' | 'assigned' | 'priority';
+export type TicketEventKind = 'created' | 'message' | 'status' | 'assigned' | 'priority' | 'read';
 
 export function realtimeEnabled(): boolean {
     const l = config.livekit;

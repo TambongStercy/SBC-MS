@@ -70,4 +70,35 @@ describe('live ticket updates (LiveKit)', () => {
             f.restore();
         }
     });
+
+    it('marks the member’s messages read when an agent opens the ticket, once, and tells the member', async () => {
+        const f = mockFetch({ '127.0.0.1:9/api/notifications': () => ({ json: { success: true } }), '127.0.0.1:9/api/users': () => ({ json: { success: true, data: [] } }) });
+        try {
+            const id = (await member('post', '/tickets').send({ category: 'retrait', subject: 'Retrait bloqué', message: 'Mon retrait est bloqué depuis hier.' })).body.data.id;
+            expect((await member('get', `/tickets/${id}`)).body.data.agentReadAt).toBeNull();
+            const jar = await login(await makeAgent(['support_agent']));
+
+            sent = [];
+            await desk('get', `/tickets/${id}`, jar);
+            await settle();
+            const read = (await member('get', `/tickets/${id}`)).body.data.agentReadAt;
+            expect(read).toEqual(expect.any(String));
+            expect(sent.filter((x) => x.payload.kind === 'read').map((x) => x.room).sort()).toEqual(['support-desk', `support-member-${MEMBER}`]);
+
+            sent = [];
+            await desk('get', `/tickets/${id}`, jar); // the desk reloads: nothing new to mark
+            await settle();
+            expect(sent.filter((x) => x.payload.kind === 'read')).toEqual([]);
+
+            await new Promise((r) => setTimeout(r, 5));
+            await member('post', `/tickets/${id}/messages`).send({ message: 'Toujours rien ce matin.' });
+            sent = [];
+            await desk('get', `/tickets/${id}`, jar);
+            await settle();
+            expect(sent.some((x) => x.payload.kind === 'read')).toBe(true);
+            expect(new Date((await member('get', `/tickets/${id}`)).body.data.agentReadAt) > new Date(read)).toBe(true);
+        } finally {
+            f.restore();
+        }
+    });
 });
