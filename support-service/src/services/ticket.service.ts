@@ -9,6 +9,7 @@ import { Agent } from '../database/models/agent.model';
 import { badRequest, conflict, notFound } from '../utils/errors';
 import { attachmentLinks, claimAttachments } from './attachment.service';
 import { notifyAgents, notifyMember } from './notifier.service';
+import { cleanReplay } from './replay.service';
 import { publishTicketEvent } from './realtime.service';
 
 export const formatTicketNumber = (n: number) => `SUP-${String(n).padStart(6, '0')}`;
@@ -31,7 +32,7 @@ async function event(ticketId: Types.ObjectId | string, kind: string, by: Actor 
 export async function createTicket(args: {
     memberId: string; memberName?: string | null; category: unknown; subject: unknown; body: unknown;
     source: 'member' | 'assistant' | 'system' | 'agent'; attachmentIds?: unknown; botConversationId?: Types.ObjectId | null;
-    caseId?: Types.ObjectId | null; priority?: TicketPriority; author: Actor;
+    caseId?: Types.ObjectId | null; priority?: TicketPriority; author: Actor; replay?: unknown;
 }) {
     const category = String(args.category);
     if (!TICKET_CATEGORY_KEYS.includes(category as any)) throw badRequest('Catégorie inconnue.', 'BAD_CATEGORY');
@@ -47,6 +48,7 @@ export async function createTicket(args: {
         number, memberId: args.memberId, memberName: args.memberName ?? null, subject, category, queue: category, priority,
         status: 'nouveau', source: args.source, sla: slaFor(priority, now), lastMemberMessageAt: args.author.type === 'member' ? now : null,
         botConversationId: args.botConversationId ?? null, caseId: args.caseId ?? null,
+        replay: args.author.type === 'member' ? cleanReplay(args.replay, now) : null,
     });
     const ownerId = args.author.type === 'member' ? args.memberId : String(args.author.id ?? '');
     const attachmentIds = ownerId ? await claimAttachments(args.attachmentIds, ownerId, ticket._id) : [];

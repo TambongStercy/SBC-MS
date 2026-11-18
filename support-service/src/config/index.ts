@@ -134,6 +134,10 @@ function load() {
             apiKey: process.env.LIVEKIT_API_KEY || '',
             apiSecret: process.env.LIVEKIT_API_SECRET || '',
         },
+        /** Self-hosted OpenReplay dashboard (e.g. https://replay.sniperbuisnesscenter.com); replays on tickets are off without it. */
+        openreplay: {
+            dashboardUrl: ensureNoTrailingSlash(process.env.OPENREPLAY_DASHBOARD_URL || ''),
+        },
         deepseek: {
             apiKey: process.env.DEEPSEEK_API_KEY || '',
             model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',

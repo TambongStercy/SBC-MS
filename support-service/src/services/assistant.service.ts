@@ -210,7 +210,7 @@ async function askAi(
 }
 
 /** Level 3: a ticket with the whole conversation, so the member repeats nothing. */
-export async function escalate(memberId: string, conversationId: string, category: unknown): Promise<{ ticketId: string; number: string }> {
+export async function escalate(memberId: string, conversationId: string, category: unknown, replay?: unknown): Promise<{ ticketId: string; number: string }> {
     if (!Types.ObjectId.isValid(conversationId)) throw notFound('Conversation introuvable.');
     const cat = typeof category === 'string' && TICKET_CATEGORY_KEYS.includes(category as any) ? category : 'autre';
     const conv = await BotConversation.findOne({ _id: conversationId, memberId });
@@ -224,7 +224,7 @@ export async function escalate(memberId: string, conversationId: string, categor
     const ticket = await createTicket({
         memberId, category: cat, source: 'assistant', subject: excerpt(firstQuestion.replace(/\s+/g, ' '), 120),
         body: `Conversation avec l’assistant :\n\n${transcript}`.slice(0, 10000),
-        botConversationId: conv._id as Types.ObjectId, author: { type: 'member', id: memberId },
+        botConversationId: conv._id as Types.ObjectId, author: { type: 'member', id: memberId }, replay,
     });
     const r = await BotConversation.updateOne({ _id: conv._id, escalatedTicketId: null }, { $set: { escalatedTicketId: ticket._id } });
     if (r.modifiedCount !== 1) {

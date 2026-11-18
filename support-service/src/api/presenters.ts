@@ -61,6 +61,8 @@ export function presentTicket(t: any, names: Record<string, { id: string; name: 
         createdAt: iso(t.createdAt), updatedAt: iso(t.updatedAt),
         lastMessageAt: iso([t.lastMemberMessageAt, t.lastAgentMessageAt].filter(Boolean).sort().pop()),
         caseId: t.caseId ? String(t.caseId) : null,
+        // The link itself is handed out by POST /tickets/:id/replay, which audits who watched.
+        replay: t.replay?.sessionId ? { at: iso(t.replay.at) } : null,
     };
 }
 

@@ -19,6 +19,8 @@ export interface ITicket {
     closedAt?: Date | null;
     botConversationId?: Types.ObjectId | null;
     caseId?: Types.ObjectId | null;
+    /** OpenReplay session the member was in when opening the ticket (services/replay.service). */
+    replay?: { sessionId: string; url: string; at: Date } | null;
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -46,6 +48,7 @@ const TicketSchema = new Schema<ITicket>({
     closedAt: { type: Date, default: null },
     botConversationId: { type: Schema.Types.ObjectId, default: null },
     caseId: { type: Schema.Types.ObjectId, default: null },
+    replay: { type: new Schema({ sessionId: String, url: String, at: Date }, { _id: false }), default: null },
 }, { timestamps: true });
 
 TicketSchema.index({ status: 1, queue: 1, priority: 1, createdAt: 1 });

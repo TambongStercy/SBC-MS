@@ -52,7 +52,7 @@ router.post('/assistant/ask', assistantLimit, ah(async (req, res) => {
 router.post('/assistant/:conversationId/escalate',
     memberLimit('ticket-create', 5, 24 * 3600, 'Vous avez ouvert beaucoup de demandes aujourd’hui. Réessayez demain ou complétez une demande existante.'),
     ah(async (req, res) => {
-        res.status(201).json({ success: true, data: await escalate(memberOf(req).userId, req.params.conversationId, req.body?.category) });
+        res.status(201).json({ success: true, data: await escalate(memberOf(req).userId, req.params.conversationId, req.body?.category, req.body?.replay) });
     }));
 
 // ---- tickets ----
@@ -76,7 +76,7 @@ router.post('/tickets',
         const b = req.body ?? {};
         const t = await tickets.createTicket({
             memberId: m.userId, category: b.category, subject: b.subject, body: b.message ?? b.body, attachmentIds: b.attachmentIds,
-            source: 'member', author: { type: 'member', id: m.userId },
+            source: 'member', author: { type: 'member', id: m.userId }, replay: b.replay,
         });
         res.status(201).json({ success: true, data: tickets.memberView(t as any) });
     }));

@@ -76,6 +76,15 @@ router.get('/tickets/:id', requirePermission('tickets.read'), ah(async (req, res
     });
 }));
 
+/** The member's session replay (OpenReplay); every opening is audited, as a replay shows the member's screen. */
+router.post('/tickets/:id/replay', requirePermission('tickets.read'), ah(async (req, res) => {
+    if (!Types.ObjectId.isValid(req.params.id)) throw notFound();
+    const t = await Ticket.findById(req.params.id, { replay: 1, memberId: 1 }).lean();
+    if (!t?.replay?.url) throw notFound('Pas d’enregistrement de session pour ce ticket.');
+    await audit({ actor: actorOf(req), action: 'ticket.replay.opened', target: { type: 'ticket', id: req.params.id }, after: { memberId: t.memberId, sessionId: t.replay.sessionId }, ...reqCtx(req) });
+    res.json({ success: true, data: { url: t.replay.url } });
+}));
+
 router.get('/tickets/:id/attachments/:attachmentId/url', requirePermission('tickets.read'), ah(async (req, res) => {
     if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.attachmentId)) throw notFound();
     const a = await Attachment.findOne({ _id: req.params.attachmentId, ticketId: req.params.id }).lean();

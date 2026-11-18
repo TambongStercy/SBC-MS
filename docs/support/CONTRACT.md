@@ -166,6 +166,7 @@ Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend
 | templates / kb / guides | `GET\|POST /templates`, `PUT\|DELETE /templates/:id`; `GET /kb/categories`, `GET\|POST /kb/articles`, `GET\|PUT /kb/articles/:id`, `POST /kb/articles/:id/publish { version }\|unpublish`; `GET\|PUT /guides { nodes }` |
 | activation / finance / cases | `POST /activation/check { userId?, sessionId?, reference? }` → RecheckResult, `POST /activation/manual-requests { userId, gateway, externalRef, plan, reason, caseId? }` → `{ approvalId }`; `GET /finance/summary`, `GET /finance/withdrawals`, `POST /finance/withdrawals/:tx/recheck`, `POST /finance/withdrawals/:tx/regularization-requests { action, reason, evidence[], caseId? }`; `GET /cases?type(…\|finance)&status&severity&assignee`, `GET /cases/:id`, `POST /cases/:id/assign\|comments\|status\|recheck` |
 | views | `GET /views/current`, `POST /views/next`, `POST /views/availability`, `GET /views/mine`, `GET /views/tasks/:id`, `POST /views/tasks/:id/start\|heartbeat\|decision { decision: approve\|reject\|review\|technical_error, observedViews?, reason?, ban?, version }`; supervisor: `GET /views/board`, `GET /views/tasks?state`, `GET /views/verifiers`, `POST /views/tasks/:id/reassign { agentId\|null, reason }`, `GET\|PUT /views/settings`, `GET /views/qa`, `POST /views/qa/:taskId { verdict: confirmed\|corrected, decision?, observedViews?, reason }`, `GET /views/stats` |
+| session replay | `POST /tickets/:id/replay` (`tickets.read`) → `{ url }` of the member's OpenReplay session; audited `ticket.replay.opened`. `GET /tickets/:id` only says `ticket.replay: { at } \| null` |
 | live updates | `GET /desk/realtime/token` (`tickets.read`) → `{ enabled:false }` or `{ enabled:true, url, room:'support-desk', token }` (LiveKit, listen-only, 4 h) — see §3.3 |
 | reports / bell / meta | `GET /reports/agents?from&to&agentId` → `{ from, to, rows }`, `GET /reports/agents/export` (CSV, `export`, audited), `GET /reports/summary`, `GET /reports/export?type=tickets\|cases\|views`; `GET /notifications`, `POST /notifications/:id/read\|read-all`; `GET /meta` |
 
@@ -180,9 +181,9 @@ English keys `new`, `open`, `waiting_member`, `waiting_internal`, `resolved`, `c
 | `GET /me/kb/categories`, `GET /me/kb/search?q=`, `GET /me/kb/articles/:slug` | published articles only |
 | `GET /me/guides` | guided-paths tree (FAQ flows) |
 | `POST /me/assistant/ask` `{ question, conversationId?, level?: 'faq'\|'ai' }` | `{ conversationId, answer, source: 'faq'\|'ai'\|'route', articles: [{slug,title}], route?: 'activation'\|'withdrawal'\|'ticket', canEscalate }`. Default level `faq`; the app re-sends the same question with `level:'ai'` when the member clicks « Ça ne répond pas ». Only `ai` may call DeepSeek (money routing, caps and kill switch still apply) |
-| `POST /me/assistant/:conversationId/escalate` `{ category }` | creates a ticket with the conversation attached → `{ ticketId, number }` (same ticket on a repeat) |
+| `POST /me/assistant/:conversationId/escalate` `{ category, replay? }` | creates a ticket with the conversation attached → `{ ticketId, number }` (same ticket on a repeat) |
 | `GET /me/tickets/categories` | `[{ key, label }]` |
-| `GET /me/tickets`, `POST /me/tickets` `{ category, subject, message, attachmentIds? }`, `GET /me/tickets/:id`, `POST /me/tickets/:id/messages` `{ message, attachmentIds? }`, `POST /me/tickets/:id/close` | own tickets only; internal notes never returned; message author `{ type, name }` |
+| `GET /me/tickets`, `POST /me/tickets` `{ category, subject, message, attachmentIds?, replay? }`, `GET /me/tickets/:id`, `POST /me/tickets/:id/messages` `{ message, attachmentIds? }`, `POST /me/tickets/:id/close` | own tickets only; internal notes never returned; message author `{ type, name }` |
 | `POST /me/attachments` (multipart, `file`) | images/PDF ≤ 10 MB → `{ id }` |
 | `GET /me/activation/status` | `{ activated, subscription: { type, status, startDate, endDate } \| null, payins: [...] }` |
 | `POST /me/activation/check` `{ sessionId?, reference?, moneyDebited? }` | `{ result, message, statusLabel, ticketId, ticketNumber?, canReportDebit? }`; `not_found`/`provider_unavailable` ⇒ activation case + ticket (`ticketId` set). A payment never sent to an operator (no `gatewayRef`, and `PENDING_USER_INPUT` or gateway `none`) answers `not_finished` without asking the operator and without a case (`canReportDebit: true`); sent again with `moneyDebited: true`, it opens the case + ticket |
@@ -190,6 +191,8 @@ English keys `new`, `open`, `waiting_member`, `waiting_internal`, `resolved`, `c
 | `GET /me/guides` | guided-paths tree: nodes `{ id, label, text?, action?, category?, articles?, children? }` (editable from the desk) |
 
 | `GET /me/realtime/token` | `{ enabled:false }` or `{ enabled:true, url, room:'support-member-<userId>', token }` (LiveKit, listen-only, 4 h) — see §3.3 |
+
+`replay` = `{ sessionId, url }` from the member app's OpenReplay tracker (`getSessionID()`, `getSessionURL({ withCurrentTime: true })`). Kept only when `url` is on `OPENREPLAY_DASHBOARD_URL` and contains the session id; ignored otherwise or when that setting is empty.
 
 Rate limits (Redis, per member): assistant 20/day (setting), ticket creation 5/day (incl.
 escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIMITED'`.
@@ -263,6 +266,7 @@ base64, required), `SERVICE_SECRET` (required), `JWT_SECRET` (member tokens, req
 `NOTIFICATION_SERVICE_URL`, `SUPPORT_PUBLIC_URL`, `SUPPORT_ALLOWED_ORIGINS`,
 `TURNSTILE_SECRET` (optional; login skips Turnstile when unset, logs a warning in prod),
 `DEEPSEEK_API_KEY` (optional), `DEEPSEEK_MODEL` (default `deepseek-chat`),
+`OPENREPLAY_DASHBOARD_URL` (optional; self-hosted OpenReplay dashboard, replays on tickets are off without it),
 `LIVEKIT_URL` (wss URL the browsers connect to), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`,
 `LIVEKIT_HTTP_URL` (optional; server API URL, defaults to `LIVEKIT_URL` with ws→http) —
 all optional, live updates are off without them (§3.3),
