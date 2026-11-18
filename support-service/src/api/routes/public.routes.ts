@@ -55,7 +55,11 @@ router.post('/tickets', ah(async (req, res) => {
 async function requireGuestKey(req: Request, _res: Response, next: NextFunction) {
     try {
         const ip = clientIp(req);
-        if (!(await tickets.guestKeyOpens(req.params.id, req.header('x-support-guest-key')))) {
+        // `Authorization: SupportKey <key>` from browsers (a header every CORS setup already allows),
+        // or `x-support-guest-key` from other callers.
+        const auth = req.header('authorization') ?? '';
+        const key = auth.startsWith('SupportKey ') ? auth.slice(11).trim() : req.header('x-support-guest-key');
+        if (!(await tickets.guestKeyOpens(req.params.id, key))) {
             const r = await hit(`public:key-fail:${ip}`, 30, 3600);
             if (!r.allowed) throw tooMany('Trop d’essais. Réessayez plus tard.', r.retryAfterSec);
             throw notFound('Demande introuvable. Ouvrez le lien reçu par email.');

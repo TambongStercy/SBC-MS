@@ -203,7 +203,7 @@ escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIM
 |---|---|
 | `POST /public/tickets` `{ contact: { name, phone, email }, category, subject, message, turnstileToken?, website? }` | For people who cannot sign in. All three contact fields required (email: the reply is sent there). Text only, no files. Turnstile required when `TURNSTILE_SECRET` is set (`TURNSTILE_FAILED`); `website` is a hidden field: filled ⇒ fake 201, nothing stored; 3/hour and 10/day per IP (counted after the contact check). → `{ number }` only. The ticket has `memberId: null`, `source: 'public'`; agent replies (not internal notes) are emailed to `contact.email`. |
 
-Creating answers `{ id, number, key }`: the person then **chats with the agent like a member**, sending the key in `x-support-guest-key` (wrong or missing key ⇒ 404; 30 failures/hour per IP ⇒ 429):
+Creating answers `{ id, number, key }`: the person then **chats with the agent like a member**, sending the key as `Authorization: SupportKey <key>` (browsers: no extra CORS header) or `x-support-guest-key` (wrong or missing key ⇒ 404; 30 failures/hour per IP ⇒ 429):
 
 | Route | Notes |
 |---|---|

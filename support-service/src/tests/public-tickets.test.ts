@@ -104,6 +104,9 @@ describe('the chat of a request sent without an account', () => {
         expect((await chat('get', id)).status).toBe(404);
         expect((await chat('get', id, '', 'x'.repeat(43))).status).toBe(404);
         expect((await chat('get', id, '', other.key)).status).toBe(404);
+        // what browsers send (no extra CORS header needed)
+        expect((await request(getApp()).get(`/api/support/public/tickets/${id}`).set('Authorization', `SupportKey ${key}`)).status).toBe(200);
+        expect((await request(getApp()).get(`/api/support/public/tickets/${id}`).set('Authorization', `SupportKey ${other.key}`)).status).toBe(404);
         // and never through a member's account
         expect((await request(getApp()).get(`/api/support/me/tickets/${id}`).set('Authorization', `Bearer ${memberToken('64b000000000000000000a09')}`)).status).toBe(404);
 
