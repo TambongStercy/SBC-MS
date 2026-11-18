@@ -11,6 +11,7 @@ import { Button, EmptyState, Input, PageHeader, Pagination, Panel, ResponsiveLis
 import { cn } from '../../lib/cn';
 import { categoryLabel, SlaText } from './shared';
 import { formatDateTime, formatNumber, formatRelative } from '../../lib/format';
+import { livePoll, useRealtimeConnected } from '../../realtime/realtime';
 
 const PAGE_SIZE = 20;
 const ALL = 'all';
@@ -65,8 +66,9 @@ export default function TicketsPage() {
     limit: PAGE_SIZE,
   };
 
-  const queues = useQuery({ queryKey: ['tickets', 'queues'], queryFn: ticketsApi.queues, refetchInterval: 15_000 });
-  const list = useQuery({ queryKey: ['tickets', 'list', filters], queryFn: () => ticketsApi.list(filters), placeholderData: keepPreviousData, refetchInterval: 15_000 });
+  const live = useRealtimeConnected();
+  const queues = useQuery({ queryKey: ['tickets', 'queues'], queryFn: ticketsApi.queues, refetchInterval: livePoll(live, 15_000) });
+  const list = useQuery({ queryKey: ['tickets', 'list', filters], queryFn: () => ticketsApi.list(filters), placeholderData: keepPreviousData, refetchInterval: livePoll(live, 15_000) });
 
   const submitSearch = (e: FormEvent) => {
     e.preventDefault();

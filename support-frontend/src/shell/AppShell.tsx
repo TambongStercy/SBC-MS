@@ -4,6 +4,8 @@ import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
 import { BottomBar, MobileMenu } from './MobileNav';
 import { Sidebar } from './Sidebar';
+import { usePermissions } from '../auth/context';
+import { useDeskRealtime } from '../realtime/realtime';
 
 const SIDEBAR_KEY = 'sbc-support-sidebar-open';
 
@@ -19,6 +21,8 @@ function readSidebarOpen(): boolean {
  */
 export function AppShell() {
   const { pathname } = useLocation();
+  // Live ticket updates (LiveKit) for agents who read tickets; pages fall back to polling.
+  useDeskRealtime(usePermissions().has('tickets.read'));
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLElement>(null);

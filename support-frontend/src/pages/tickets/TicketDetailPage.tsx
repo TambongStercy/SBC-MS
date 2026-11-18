@@ -16,6 +16,7 @@ import { formatDateTime, formatRelative } from '../../lib/format';
 import { Composer } from './Composer';
 import { Conversation } from './Conversation';
 import { categoryLabel, SlaText } from './shared';
+import { livePoll, useRealtimeConnected } from '../../realtime/realtime';
 
 const SOURCE_LABEL: Record<Ticket['source'], string> = { member: 'Membre', assistant: 'Assistant', system: 'Système', agent: 'Agent' };
 const UNASSIGNED = 'none';
@@ -26,10 +27,12 @@ export default function TicketDetailPage() {
   const perms = usePermissions();
   // The member's replies show up within seconds while the ticket is open on screen
   // (polling pauses in a hidden tab, and stops once the ticket is closed).
+  const live = useRealtimeConnected();
   const q = useQuery({
     queryKey: ['tickets', 'detail', id],
     queryFn: () => ticketsApi.get(id),
-    refetchInterval: query => (query.state.data?.ticket.status === 'closed' ? false : 5_000),
+    // LiveKit signals reload it at once; polling is the fallback (every 5 s without the connection).
+    refetchInterval: query => (query.state.data?.ticket.status === 'closed' ? false : livePoll(live, 5_000)),
   });
 
   if (q.isLoading) {
