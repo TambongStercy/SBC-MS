@@ -37,7 +37,7 @@ export default function HomePage() {
   const board = useQuery({ queryKey: ['views', 'board'], queryFn: viewsApi.board, enabled: canSupervise, refetchInterval: 30_000 });
 
   const toDecide = approvals.data?.filter(a => a.requestedBy.id !== agent.id).length;
-  const bucket = (b: string) => summary.data?.ageBuckets.find(x => x.bucket === b)?.count;
+  const bucket = (b: string) => summary.data?.ageBuckets?.find(x => x.bucket === b)?.count;
   const groups = menuFor(perms).filter(g => g.id !== 'home');
 
   return (

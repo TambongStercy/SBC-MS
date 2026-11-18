@@ -130,7 +130,7 @@ function Dashboard({ filters, onBucket, onStatus }: { filters: FinanceFilters; o
         <p className="mb-3 text-sm text-fg-muted">Fonds réservés, en attente d’une réponse finale du prestataire. Ils ne sont jamais libérés sur un simple délai.</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {AGE_BUCKETS.map(b => {
-            const row = s?.ageBuckets.find(x => x.bucket === b.bucket);
+            const row = s?.ageBuckets?.find(x => x.bucket === b.bucket);
             const count = row?.count ?? 0;
             return (
               <Metric
