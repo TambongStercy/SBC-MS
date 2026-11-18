@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { HugeiconsIcon } from '@hugeicons/react';
@@ -38,10 +38,11 @@ export default function TicketsPage() {
   const status = params.get('status') ?? 'active';
   const priority = params.get('priority') ?? ALL;
   const assignee = params.get('assignee') ?? ALL;
-  const q = params.get('q') ?? '';
   const page = Math.max(1, Number(params.get('page')) || 1);
-  const [search, setSearch] = useState(q);
-  useEffect(() => setSearch(q), [q]);
+  // The search text stays in memory only (never in the address bar or the history):
+  // agents search by a member's email or phone. The other filters stay in the address.
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
 
   const update = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
@@ -69,7 +70,8 @@ export default function TicketsPage() {
 
   const submitSearch = (e: FormEvent) => {
     e.preventDefault();
-    update({ q: search.trim() || null });
+    setQ(search.trim());
+    update({ page: null });
   };
 
   const columns: ListColumn<Ticket>[] = [

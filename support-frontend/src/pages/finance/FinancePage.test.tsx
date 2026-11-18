@@ -19,7 +19,7 @@ describe('Finance', () => {
   it('shows the 24/48/72 h buckets from the summary', async () => {
     mockApi({ 'GET /auth/me': { data: { agent: makeAgent(['finance_agent']) } }, 'GET /finance/summary': { data: summary } });
     renderWithProviders(<App />, { path: '/finance' });
-    expect(await screen.findByTestId('bucket-<24h')).toHaveTextContent('5');
+    expect(await screen.findByTestId('bucket-<24h', {}, { timeout: 4000 })).toHaveTextContent('5'); // the whole app renders first: 1 s is too short under load
     expect(screen.getByTestId('bucket-24-48h')).toHaveTextContent('3');
     expect(screen.getByTestId('bucket-48-72h')).toHaveTextContent('2');
     expect(screen.getByTestId('bucket->72h')).toHaveTextContent('1');

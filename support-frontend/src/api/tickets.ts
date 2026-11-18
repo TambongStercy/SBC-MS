@@ -13,7 +13,10 @@ export interface TicketFilters {
 }
 
 export const ticketsApi = {
-  list: (f: TicketFilters) => api.get<Page<Ticket>>('/tickets', { ...f }),
+  /** With a search text the request is a POST: the text (often an email or a phone) never goes in a URL. */
+  list: ({ q, ...filters }: TicketFilters) => q
+    ? api.post<Page<Ticket>>('/tickets/search', { ...filters, q })
+    : api.get<Page<Ticket>>('/tickets', { ...filters }),
   queues: () => api.get<QueueCount[]>('/tickets/queues'),
   get: (id: string) => api.get<TicketDetail>(`/tickets/${encodeURIComponent(id)}`),
   reply: (id: string, body: { body: string; internal: boolean; attachmentIds?: string[] }) =>
