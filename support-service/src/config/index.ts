@@ -121,6 +121,19 @@ function load() {
             notification: ensureNoTrailingSlash(process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3002'),
             timeoutMs: intEnv('SERVICE_TIMEOUT_MS', 8000),
         },
+        /**
+         * LiveKit, for live delivery of ticket events (new message, status…) to the
+         * member app and the agent app. Optional: without it both apps poll.
+         * LIVEKIT_URL is what browsers connect to (wss://…); LIVEKIT_HTTP_URL, if
+         * set, is how this service reaches the server API (default: LIVEKIT_URL
+         * with ws→http).
+         */
+        livekit: {
+            url: ensureNoTrailingSlash(process.env.LIVEKIT_URL || ''),
+            httpUrl: ensureNoTrailingSlash(process.env.LIVEKIT_HTTP_URL || (process.env.LIVEKIT_URL || '').replace(/^ws(s?):\/\//, 'http$1://')),
+            apiKey: process.env.LIVEKIT_API_KEY || '',
+            apiSecret: process.env.LIVEKIT_API_SECRET || '',
+        },
         deepseek: {
             apiKey: process.env.DEEPSEEK_API_KEY || '',
             model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',

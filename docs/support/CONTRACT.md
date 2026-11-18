@@ -166,6 +166,7 @@ Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend
 | templates / kb / guides | `GET\|POST /templates`, `PUT\|DELETE /templates/:id`; `GET /kb/categories`, `GET\|POST /kb/articles`, `GET\|PUT /kb/articles/:id`, `POST /kb/articles/:id/publish { version }\|unpublish`; `GET\|PUT /guides { nodes }` |
 | activation / finance / cases | `POST /activation/check { userId?, sessionId?, reference? }` → RecheckResult, `POST /activation/manual-requests { userId, gateway, externalRef, plan, reason, caseId? }` → `{ approvalId }`; `GET /finance/summary`, `GET /finance/withdrawals`, `POST /finance/withdrawals/:tx/recheck`, `POST /finance/withdrawals/:tx/regularization-requests { action, reason, evidence[], caseId? }`; `GET /cases?type(…\|finance)&status&severity&assignee`, `GET /cases/:id`, `POST /cases/:id/assign\|comments\|status\|recheck` |
 | views | `GET /views/current`, `POST /views/next`, `POST /views/availability`, `GET /views/mine`, `GET /views/tasks/:id`, `POST /views/tasks/:id/start\|heartbeat\|decision { decision: approve\|reject\|review\|technical_error, observedViews?, reason?, ban?, version }`; supervisor: `GET /views/board`, `GET /views/tasks?state`, `GET /views/verifiers`, `POST /views/tasks/:id/reassign { agentId\|null, reason }`, `GET\|PUT /views/settings`, `GET /views/qa`, `POST /views/qa/:taskId { verdict: confirmed\|corrected, decision?, observedViews?, reason }`, `GET /views/stats` |
+| live updates | `GET /desk/realtime/token` (`tickets.read`) → `{ enabled:false }` or `{ enabled:true, url, room:'support-desk', token }` (LiveKit, listen-only, 4 h) — see §3.3 |
 | reports / bell / meta | `GET /reports/agents?from&to&agentId` → `{ from, to, rows }`, `GET /reports/agents/export` (CSV, `export`, audited), `GET /reports/summary`, `GET /reports/export?type=tickets\|cases\|views`; `GET /notifications`, `POST /notifications/:id/read\|read-all`; `GET /meta` |
 
 Ticket statuses are stored with the CdC keys (`nouveau`, `ouvert`, `en_attente_membre`,
@@ -188,8 +189,25 @@ English keys `new`, `open`, `waiting_member`, `waiting_internal`, `resolved`, `c
 | `GET /me/withdrawals` / `GET /me/withdrawals/:id` | `{ id, amount, currency, method, businessStatus, statusLabel, explanation, createdAt, updatedAt }` (short French label + one French sentence) |
 | `GET /me/guides` | guided-paths tree: nodes `{ id, label, text?, action?, category?, articles?, children? }` (editable from the desk) |
 
+| `GET /me/realtime/token` | `{ enabled:false }` or `{ enabled:true, url, room:'support-member-<userId>', token }` (LiveKit, listen-only, 4 h) — see §3.3 |
+
 Rate limits (Redis, per member): assistant 20/day (setting), ticket creation 5/day (incl.
 escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIMITED'`.
+
+### 3.3 Live updates (LiveKit data messages)
+
+New messages and status changes reach both apps without a refresh. support-service publishes
+a reliable data message on topic `support` after every ticket change
+(`services/realtime.service.ts`): `{ type:'ticket', ticketId, kind: created|message|status|assigned|priority, at }`.
+- Rooms: `support-desk` (every agent with `tickets.read`) and `support-member-<userId>` (the
+  member). Internal notes, assignments and priority changes go to the desk room only.
+- No ticket text ever goes through LiveKit: on a message the apps reload the ticket through the
+  normal authenticated API, which still checks every read.
+- Tokens only allow subscribing (`canPublish:false`, `canPublishData:false`): only the service
+  can send into a room.
+- Fire and forget: a LiveKit outage never fails or slows the request.
+- Without `LIVEKIT_*` the token routes answer `{ enabled:false }` and both apps keep polling
+  (5 s on a ticket, 15 s on a list). Connected, they poll every 60 s as a safety net.
 
 ## 4. Roles and permissions
 
@@ -245,6 +263,9 @@ base64, required), `SERVICE_SECRET` (required), `JWT_SECRET` (member tokens, req
 `NOTIFICATION_SERVICE_URL`, `SUPPORT_PUBLIC_URL`, `SUPPORT_ALLOWED_ORIGINS`,
 `TURNSTILE_SECRET` (optional; login skips Turnstile when unset, logs a warning in prod),
 `DEEPSEEK_API_KEY` (optional), `DEEPSEEK_MODEL` (default `deepseek-chat`),
+`LIVEKIT_URL` (wss URL the browsers connect to), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`,
+`LIVEKIT_HTTP_URL` (optional; server API URL, defaults to `LIVEKIT_URL` with ws→http) —
+all optional, live updates are off without them (§3.3),
 `R2_*` (reuse the names used by other services; private bucket for attachments:
 `R2_PRIVATE_BUCKET`, default `sbc-support-private`, objects under `support/attachments/`).
 Optional: `REDIS_KEY_PREFIX` (default `sbc-support:<NODE_ENV>:`), `MEMBER_APP_URL`,

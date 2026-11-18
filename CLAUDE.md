@@ -1301,6 +1301,15 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   - Personal problems ("pas arrivé", "bloqué", an amount) keep the secure route.
   - DeepSeek (`DEEPSEEK_API_KEY`) is called only when the member asks again and an
     article covers the question.
+- **Live updates (LiveKit):** new messages/status changes reach the agent app and the
+  member « Aide » without a refresh. The service sends a data message (ticket id + kind,
+  never text) to `support-desk` and `support-member-<userId>`; the apps reload through
+  the API. Listen-only tokens from `GET /desk/realtime/token` and `/me/realtime/token`.
+  Needs a LiveKit server + `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`; the
+  host must also be in the `connect-src` of `nginx/support-sniper` (and preprod) — the
+  vhosts list `livekit.sniperbuisnesscenter.com`, change it if LiveKit lives elsewhere.
+  Without it both apps poll (5 s ticket, 15 s lists). Local: a `livekit/livekit-server`
+  container (`--dev`-style key) on `ws://localhost:7890`.
 - **Audit:** `auditlogs` is append-only and hash-chained;
   `node dist/scripts/verify-audit-chain.js` exits 1 on any altered or missing
   row. Give the service's Mongo user no update/remove right on it when users

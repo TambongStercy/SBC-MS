@@ -9,6 +9,7 @@ import { Agent } from '../database/models/agent.model';
 import { badRequest, conflict, notFound } from '../utils/errors';
 import { attachmentLinks, claimAttachments } from './attachment.service';
 import { notifyAgents, notifyMember } from './notifier.service';
+import { publishTicketEvent } from './realtime.service';
 
 export const formatTicketNumber = (n: number) => `SUP-${String(n).padStart(6, '0')}`;
 
@@ -52,6 +53,7 @@ export async function createTicket(args: {
     await TicketMessage.create({ ticketId: ticket._id, author: args.author, body, internal: false, attachmentIds });
     await event(ticket._id, 'created', args.author, null, { status: 'nouveau', category, priority });
     await notifyAgents({ role: 'support_agent', kind: 'ticket.new', title: `Nouveau ticket ${number}`, body: `${cat.label} : ${subject.slice(0, 80)}`, link: `/tickets/${ticket._id}`, dedupKey: `ticket-new:${ticket._id}` });
+    publishTicketEvent({ ticketId: String(ticket._id), memberId: args.memberId, kind: 'created', forMember: true });
     return ticket.toObject();
 }
 
@@ -101,6 +103,7 @@ export async function memberReply(id: string, memberId: string, body: unknown, a
     if (t.assigneeId) {
         await notifyAgents({ agentId: String(t.assigneeId), kind: 'ticket.reply', title: `Réponse du membre sur ${t.number}`, body: t.subject, link: `/tickets/${t._id}` });
     }
+    publishTicketEvent({ ticketId: String(t._id), memberId, kind: 'message', forMember: true });
     return getMemberTicket(id, memberId);
 }
 
@@ -109,6 +112,7 @@ export async function memberClose(id: string, memberId: string) {
     const t = await Ticket.findOneAndUpdate({ _id: id, memberId, status: { $ne: 'ferme' } }, { $set: { status: 'ferme', closedAt: new Date() } }).lean();
     if (!t) throw notFound('Demande introuvable ou déjà fermée.');
     await event(t._id, 'status', { type: 'member', id: memberId }, t.status, 'ferme', 'closed by member');
+    publishTicketEvent({ ticketId: String(t._id), memberId, kind: 'status', forMember: true });
     return { ok: true };
 }
 
@@ -184,6 +188,8 @@ export async function deskReply(id: string, agent: { id: string; name: string },
             body: 'Un agent SBC a répondu à votre demande. Ouvrez l’espace Aide pour la lire.', path: `/aide/demandes/${t._id}`,
         });
     }
+    // An internal note reaches the desk only: the member never learns it exists.
+    publishTicketEvent({ ticketId: String(t._id), memberId: t.memberId, kind: 'message', forMember: !internal });
     return message.toObject();
 }
 
@@ -197,6 +203,7 @@ export async function setTicketStatus(id: string, agent: { id: string; name: str
     const before = await Ticket.findOneAndUpdate({ _id: id, status: { $ne: status } }, { $set: set }).lean();
     if (!before) throw conflict('Le ticket a déjà ce statut, ou n’existe pas.', 'NO_CHANGE');
     await event(before._id, 'status', { type: 'agent', id: agent.id, name: agent.name }, before.status, status, note);
+    publishTicketEvent({ ticketId: String(before._id), memberId: before.memberId, kind: 'status', forMember: true });
     if (status === 'resolu') {
         await notifyMember({
             userId: before.memberId, tag: `support-ticket-${before._id}-resolved`, title: `Demande ${before.number} résolue`,
@@ -218,6 +225,7 @@ export async function assignTicket(id: string, by: { id: string; name: string },
     const before = await Ticket.findByIdAndUpdate(id, { $set: { assigneeId: to } }).lean();
     if (!before) throw notFound('Ticket introuvable.');
     await event(before._id, 'assigned', { type: 'agent', id: by.id, name: by.name }, before.assigneeId ? String(before.assigneeId) : null, to ? String(to) : null);
+    publishTicketEvent({ ticketId: String(before._id), kind: 'assigned', forMember: false });
     if (to && String(to) !== by.id) {
         await notifyAgents({ agentId: String(to), kind: 'ticket.assigned', title: `Ticket ${before.number} attribué`, body: before.subject, link: `/tickets/${before._id}` });
     }
@@ -230,6 +238,7 @@ export async function takeTicket(id: string, agent: { id: string; name: string }
     const t = await Ticket.findOneAndUpdate({ _id: id, assigneeId: null }, { $set: { assigneeId: new Types.ObjectId(agent.id) } }).lean();
     if (!t) throw conflict('Ce ticket est déjà attribué.', 'ALREADY_ASSIGNED');
     await event(t._id, 'assigned', { type: 'agent', id: agent.id, name: agent.name }, null, agent.id, 'taken');
+    publishTicketEvent({ ticketId: String(t._id), kind: 'assigned', forMember: false });
     return { ok: true };
 }
 
@@ -241,6 +250,7 @@ export async function setTicketPriority(id: string, by: { id: string; name: stri
     const sla = slaFor(priority as TicketPriority, t.createdAt ?? new Date());
     await Ticket.updateOne({ _id: id }, { $set: { priority, 'sla.firstResponseDueAt': sla.firstResponseDueAt, 'sla.resolutionDueAt': sla.resolutionDueAt } });
     await event(t._id, 'priority', { type: 'agent', id: by.id, name: by.name }, t.priority, priority);
+    publishTicketEvent({ ticketId: String(t._id), kind: 'priority', forMember: false });
     return { before: t.priority, after: priority };
 }
 
@@ -249,13 +259,14 @@ export async function setTicketPriority(id: string, by: { id: string; name: stri
 /** Resolved tickets with no answer for N days are closed. */
 export async function autoCloseResolved(days: number): Promise<number> {
     const cutoff = new Date(Date.now() - days * 24 * HOUR);
-    const due = await Ticket.find({ status: 'resolu', resolvedAt: { $lte: cutoff } }, { _id: 1 }).limit(1000).lean();
+    const due = await Ticket.find({ status: 'resolu', resolvedAt: { $lte: cutoff } }, { _id: 1, memberId: 1 }).limit(1000).lean();
     let closed = 0;
     for (const t of due) {
         const r = await Ticket.updateOne({ _id: t._id, status: 'resolu' }, { $set: { status: 'ferme', closedAt: new Date() } });
         if (r.modifiedCount === 1) {
             closed++;
             await event(t._id, 'status', { type: 'system' }, 'resolu', 'ferme', `auto-close after ${days} days`);
+            publishTicketEvent({ ticketId: String(t._id), memberId: (t as any).memberId, kind: 'status', forMember: true });
         }
     }
     return closed;

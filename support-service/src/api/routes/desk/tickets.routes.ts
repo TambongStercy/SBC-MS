@@ -14,6 +14,7 @@ import { Attachment, ResponseTemplate, Ticket, TicketMessage } from '../../../da
 import { Agent } from '../../../database/models/agent.model';
 import { agentNames, memberNames, presentEvents, presentMessage, presentTicket, presentTickets, storedStatus } from '../../presenters';
 import { badRequest, notFound } from '../../../utils/errors';
+import { deskRealtimeToken } from '../../../services/realtime.service';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 } });
@@ -47,6 +48,11 @@ router.get('/tickets', requirePermission('tickets.read'), ah(async (req, res) =>
 router.post('/tickets/search', requirePermission('tickets.read'), ah(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     res.json({ success: true, data: await listTickets(body, body.q, agentOf(req).id) });
+}));
+
+// Live updates: a listen-only LiveKit token for the desk room ({ enabled:false } without LiveKit).
+router.get('/realtime/token', requirePermission('tickets.read'), ah(async (req, res) => {
+    res.json({ success: true, data: await deskRealtimeToken(agentOf(req)) });
 }));
 
 router.get('/tickets/queues', requirePermission('tickets.read'), ah(async (_req, res) => {

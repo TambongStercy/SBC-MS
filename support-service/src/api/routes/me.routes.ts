@@ -13,6 +13,7 @@ import { memberWithdrawals } from '../../services/clients/payment.client';
 import { scheduleActivationRecheck } from '../../jobs';
 import { getSetting } from '../../services/settings.service';
 import { notFound } from '../../utils/errors';
+import { memberRealtimeToken } from '../../services/realtime.service';
 
 /** Member help space (/api/support/me/*), member JWT, any role. */
 const router = Router();
@@ -58,6 +59,11 @@ router.post('/assistant/:conversationId/escalate',
 router.get('/tickets/categories', (_req, res) => {
     res.json({ success: true, data: TICKET_CATEGORIES.map((c) => ({ key: c.key, label: c.label })) });
 });
+
+// ---- live updates: a listen-only LiveKit token for the member's own room ({ enabled:false } without LiveKit) ----
+router.get('/realtime/token', ah(async (req, res) => {
+    res.json({ success: true, data: await memberRealtimeToken(memberOf(req).userId) });
+}));
 
 router.get('/tickets', ah(async (req, res) => {
     res.json({ success: true, data: await tickets.listMemberTickets(memberOf(req).userId) });
