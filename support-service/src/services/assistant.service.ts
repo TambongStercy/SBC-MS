@@ -129,7 +129,9 @@ async function askAi(
     }
     const cited = articles.filter((a) => content.includes(`[${a.slug}]`));
     if (!content || content.includes('AUCUNE_REPONSE') || !cited.length || answerLooksUnsafe(content)) return fallback();
-    return { answer: content.slice(0, 2000), source: 'ai', articles: cited, canEscalate: true };
+    // The [slug] markers proved the citations; the member gets the articles as links, not as raw tags.
+    const answer = content.replace(/\s*\[[a-z0-9-]+\]/g, '').replace(/\s+([.,;:!?])/g, '$1').trim();
+    return { answer: answer.slice(0, 2000), source: 'ai', articles: cited, canEscalate: true };
 }
 
 /** Level 3: a ticket with the whole conversation, so the member repeats nothing. */

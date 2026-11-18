@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { anonymizeQuestion, classifySensitive } from '../utils/anonymize';
+import { anonymizeQuestion, answerLooksUnsafe, classifySensitive } from '../utils/anonymize';
 import { KbArticle } from '../database/models/kb.model';
 import { BotConversation } from '../database/models/bot.model';
 import { getApp, memberToken, mockFetch, setupDb, teardown } from './helpers';
@@ -27,6 +27,18 @@ describe('anonymiser', () => {
         expect(classifySensitive('Quel est mon solde ?')).toBe('ticket');
         expect(classifySensitive('Mon compte a été piraté')).toBe('ticket');
         expect(classifySensitive('Comment publier un statut WhatsApp ?')).toBeNull();
+    });
+});
+
+describe('answer safety check', () => {
+    it('keeps a help-article duration, refuses amounts, money deadlines and transaction statuses', () => {
+        // A real DeepSeek answer (live test, 2026-11-18) that was wrongly discarded for its "24 heures".
+        expect(answerLooksUnsafe('Collez la légende avec votre lien de suivi puis publiez [publier-statut]. Laissez le statut en ligne 24 heures et ne le masquez pas à vos contacts [publier-statut].')).toBe(false);
+        expect(answerLooksUnsafe('Le retrait arrive en 24 heures [retraits].')).toBe(true);
+        expect(answerLooksUnsafe('Votre paiement est confirmé sous 2 jours.')).toBe(true);
+        expect(answerLooksUnsafe('Votre retrait a été envoyé.')).toBe(true);
+        expect(answerLooksUnsafe('Le pack coûte 15 900 FCFA.')).toBe(true);
+        expect(answerLooksUnsafe('Ouvrez WhatsApp et publiez le visuel [publier-statut].')).toBe(false);
     });
 });
 
@@ -73,6 +85,9 @@ describe('/me/assistant/ask', () => {
             const ai = await ask({ question: q, level: 'ai', conversationId: faq.body.data.conversationId });
             expect(ai.status).toBe(200);
             expect(ai.body.data.source).toBe('ai');
+            // The citation marker is checked, then removed from what the member reads; the article comes as a link.
+            expect(ai.body.data.answer).toBe('Ouvrez l’onglet Actualités et publiez le visuel.');
+            expect(ai.body.data.articles.map((a: any) => a.slug)).toEqual(['publier-statut']);
             expect(ai.body.data.conversationId).toBe(faq.body.data.conversationId);
             const calls = fetchMock.calls.filter((c) => c.url.includes('deepseek'));
             expect(calls).toHaveLength(1);

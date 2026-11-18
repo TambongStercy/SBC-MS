@@ -61,10 +61,17 @@ export function classifySensitive(text: string): SensitiveRoute | null {
     return null;
 }
 
-/** Last line of defence on the AI answer: no amounts, no deadlines, no transaction status. */
+/**
+ * Last line of defence on the AI answer: no amounts, no transaction status, and
+ * no deadline about money. A duration alone is fine ("laissez le statut en ligne
+ * 24 heures" is a help-article fact): it is refused only next to money words
+ * (payment, withdrawal, activation…), where it would read as a promise.
+ */
 export function answerLooksUnsafe(answer: string): boolean {
     const s = norm(answer);
     if (AMOUNT_AFTER.test(answer) || AMOUNT_BEFORE.test(answer)) { AMOUNT_AFTER.lastIndex = 0; AMOUNT_BEFORE.lastIndex = 0; return true; }
     AMOUNT_AFTER.lastIndex = 0; AMOUNT_BEFORE.lastIndex = 0;
-    return /\b(\d+\s*(heures?|h|jours?|minutes?)\b|votre (paiement|retrait|transaction) (est|a ete))/.test(s);
+    if (/\bvotre (paiement|retrait|transaction|commission|activation) (est|a ete|sera|arrive)/.test(s)) return true;
+    const duration = /\b\d+\s*(heures?|h|jours?|minutes?|semaines?)\b/.test(s);
+    return duration && (MONEY.test(s) || WITHDRAWAL.test(s) || ACTIVATION.test(s));
 }
