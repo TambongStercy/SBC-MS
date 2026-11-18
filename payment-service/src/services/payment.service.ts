@@ -3055,7 +3055,19 @@ class PaymentService {
 
         // --- Currency Conversion --- 
         let finalAmount = paymentIntent.amount;
-        const finalCurrency = details.paymentCurrency;
+        let finalCurrency = details.paymentCurrency;
+
+        // MoneyFusion takes the amount in francs and converts it on its own
+        // checkout (see MF_PAYIN_CURRENCY). Converting here as well made it
+        // convert twice: RDC refused, Guinée asked ~14x the price.
+        const paymentMethodForGateway = paymentIntent.metadata?.paymentMethod;
+        const isMoneyFusionFiat = !this.isCryptoCurrency(finalCurrency)
+            && !!details.countryCode
+            && this.selectGateway(details.countryCode, finalCurrency, false, paymentMethodForGateway, details.operator) === PaymentGateway.MONEYFUSION;
+        if (isMoneyFusionFiat && ['XAF', 'XOF'].includes(String(paymentIntent.currency).toUpperCase())) {
+            log.info(`Payin ${sessionId}: MoneyFusion (${details.countryCode}) gets ${paymentIntent.amount} ${paymentIntent.currency}; its checkout converts to ${details.paymentCurrency}`);
+            finalCurrency = paymentIntent.currency;
+        }
 
         if (paymentIntent.currency !== finalCurrency) {
             if (this.isCryptoCurrency(finalCurrency)) {
@@ -3710,25 +3722,16 @@ class PaymentService {
                 throw new Error('Aucun numéro de téléphone n\'est associé à ce compte. Veuillez ajouter un numéro à votre profil avant de payer.');
             }
 
-            // MoneyFusion declares one currency per country (see MF_PAYIN_CURRENCY in
-            // moneyfusion.service.ts). For CFA countries (XAF/XOF) this matches what
-            // we already send. For RDC (USD) and Guinée-Conakry (GNF) we must convert
-            // — otherwise MF takes our XAF figure literally and the customer is asked
-            // to pay an inflated amount in their local currency. Strict conversion so
-            // we never silently fall back to an unconverted amount on a money path.
-            let mfAmount = amount;
-            let mfCurrency = currency;
+            // MoneyFusion's totalPrice is in XOF francs (XAF 1:1) for every
+            // country; its checkout converts to the payer's currency itself (see
+            // MF_PAYIN_CURRENCY). Never send a converted amount.
             const countryCode = paymentIntent.countryCode;
-            const expectedMfCurrency = getMoneyFusionPayinCurrency(countryCode || '');
-
-            if (expectedMfCurrency && expectedMfCurrency.toUpperCase() !== currency.toUpperCase()) {
-                log.info(`MoneyFusion expects ${expectedMfCurrency} for country ${countryCode} — converting ${amount} ${currency}`);
-                mfAmount = await currencyService.convertStrict(amount, currency, expectedMfCurrency);
-                mfCurrency = expectedMfCurrency;
-                log.info(`Converted: ${amount} ${currency} -> ${mfAmount} ${mfCurrency} for MoneyFusion (country ${countryCode})`);
-            } else if (!expectedMfCurrency && countryCode) {
-                log.warn(`No MoneyFusion currency mapping for country ${countryCode}; sending ${amount} ${currency} as-is`);
+            if (!['XAF', 'XOF'].includes(String(currency).toUpperCase())) {
+                throw new Error(`MoneyFusion payin must be in XAF/XOF, got ${amount} ${currency}`);
             }
+            const mfAmount = amount;
+            const mfCurrency = String(currency).toUpperCase();
+            const mfLocalCurrency = getMoneyFusionPayinCurrency(countryCode || '');
 
             const webhookUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion`;
             const returnUrl = `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`;
@@ -3759,6 +3762,8 @@ class PaymentService {
                     mfPayinCurrency: mfCurrency,
                     mfPayinAmount: mfAmount,
                     mfPayinCountry: countryCode,
+                    // What MoneyFusion's checkout shows the payer (it converts itself).
+                    mfLocalCurrency,
                     originalAmount: amount,
                     originalCurrency: currency,
                 },
@@ -3820,11 +3825,9 @@ class PaymentService {
             return;
         }
 
-        // MoneyFusion reports Montant in the currency MF expected for the payin
-        // country (see MF_PAYIN_CURRENCY) — USD for RDC, GNF for Guinée-Conakry,
-        // XAF/XOF elsewhere. We recorded the expected currency on the intent's
-        // metadata when initiating; use it here so paidCurrency reflects reality
-        // and downstream code can distinguish raw paidAmount from our XAF books.
+        // Montant is in the unit we sent totalPrice in, recorded on the intent at
+        // initiation: XAF/XOF since 2026-11-19 (older RDC/Guinée intents recorded
+        // USD/GNF).
         const paidCurrency = paymentIntent.metadata?.mfPayinCurrency || paymentIntent.currency;
 
         const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {

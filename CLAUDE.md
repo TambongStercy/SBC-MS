@@ -1375,6 +1375,30 @@ provider, so don't "fix" those entries). CG is routed to FeexPay, not MF.
 **Before adding or changing any MF slug, curl that endpoint and match it
 literally.** A wrong slug fails every payout for that operator silently.
 
+### MoneyFusion payins are sent in francs, for every country (2026-11-19)
+
+MoneyFusion's payin `totalPrice` is always in **XOF francs** (XAF 1:1). Its
+hosted checkout converts it for the payer's country with its own rate
+(`GET https://pay.moneyfusion.net/api/v2/payment-methods` → `currency`,
+`exchangeRateFromXOF`; on 2026-11-19 RDC 500 F/USD (it divides), Guinée 21 GNF
+per F, Ghana 0.03 GHS per F, Cameroun 1.08). Read from their checkout bundle
+(`convertCurrency`). We used to convert to the local currency first
+(`MF_PAYIN_CURRENCY`), so MoneyFusion converted twice:
+- **RDC:** ~$3.84 sent, refused with "Montant doit etre supérieur a 200 F":
+  ~5,900 failures June → November, **no RDC MoneyFusion payin ever succeeded**.
+- **Guinée:** ~32,000 (meant as GNF) sent, read as francs: payers were asked
+  ~700,000 GNF for a 2,150 F pack. Only 3 ever paid (28 Aug, 13–14 Oct;
+  sessions ZTNUr6xkT3Cv, FqtodPFJcDf5, Kbw-mjUby3KZ), each ~31,000 F instead
+  of 2,150: refund is Rufus's call.
+- **Ghana / Centrafrique:** routed to MoneyFusion but refused by
+  `validatePaymentDetails` (GHS, GH, CF missing) before reaching it.
+Now `submitPaymentDetails` sends the intent's XAF amount to MoneyFusion with no
+rate lookup, `initiateMoneyFusionPayment` refuses anything not XAF/XOF, and the
+webhook books `paidAmount` (MoneyFusion's `Montant`, net of its fee) in XAF.
+`MF_PAYIN_CURRENCY` is informational only. **Payouts are a separate question**:
+branch `fix/non-cfa-payout-conversion` is still on hold.
+`src/scripts/check-moneyfusion-payin-amount.ts`.
+
 ### MoneyFusion IP allow-list (since their 2026-11-03/04 update)
 
 From 2026-11-04 04:42 to 2026-11-05 ~12:00, MF refused every payout with
