@@ -654,8 +654,10 @@ export class UserService {
         log.info(`Generated OTP fp=${otpFingerprint(otpCode)} for user ${user.email}, type: ${otpType}`);
 
         // Local/dev convenience: print the OTP prominently so it can be copied from
-        // the server console when no email/SMS provider is configured.
-        if (process.env.NODE_ENV !== 'production') {
+        // the server console when no email/SMS provider is configured. Only on a
+        // developer's machine: preprod runs with NODE_ENV=preprod, and its logs must
+        // not hold members' sign-in codes either.
+        if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
             console.log(`\n========================= OTP =========================\n  ${user.email}  ->  ${otpCode}\n=======================================================\n`);
         }
 
