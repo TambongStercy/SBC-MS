@@ -184,7 +184,7 @@ English keys `new`, `open`, `waiting_member`, `waiting_internal`, `resolved`, `c
 | `GET /me/tickets`, `POST /me/tickets` `{ category, subject, message, attachmentIds? }`, `GET /me/tickets/:id`, `POST /me/tickets/:id/messages` `{ message, attachmentIds? }`, `POST /me/tickets/:id/close` | own tickets only; internal notes never returned; message author `{ type, name }` |
 | `POST /me/attachments` (multipart, `file`) | images/PDF ≤ 10 MB → `{ id }` |
 | `GET /me/activation/status` | `{ activated, subscription: { type, status, startDate, endDate } \| null, payins: [...] }` |
-| `POST /me/activation/check` `{ sessionId?, reference? }` | `{ result, message, statusLabel, ticketId, ticketNumber? }`; `not_found`/`provider_unavailable` ⇒ activation case + ticket (`ticketId` set) |
+| `POST /me/activation/check` `{ sessionId?, reference?, moneyDebited? }` | `{ result, message, statusLabel, ticketId, ticketNumber?, canReportDebit? }`; `not_found`/`provider_unavailable` ⇒ activation case + ticket (`ticketId` set). A payment never sent to an operator (no `gatewayRef`, and `PENDING_USER_INPUT` or gateway `none`) answers `not_finished` without asking the operator and without a case (`canReportDebit: true`); sent again with `moneyDebited: true`, it opens the case + ticket |
 | `GET /me/withdrawals` / `GET /me/withdrawals/:id` | `{ id, amount, currency, method, businessStatus, statusLabel, explanation, createdAt, updatedAt }` (short French label + one French sentence) |
 | `GET /me/guides` | guided-paths tree: nodes `{ id, label, text?, action?, category?, articles?, children? }` (editable from the desk) |
 

@@ -82,4 +82,5 @@ export const PAYIN_STATUS_LABELS: Record<string, string> = {
     not_found: 'Paiement introuvable chez l’opérateur',
     failed: 'Paiement échoué ou annulé chez l’opérateur',
     provider_unavailable: 'L’opérateur ne répond pas pour le moment',
+    not_finished: 'Paiement non terminé : il n’a jamais été envoyé à un opérateur',
 };

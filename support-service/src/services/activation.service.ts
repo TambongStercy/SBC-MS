@@ -2,7 +2,7 @@ import { PAYIN_STATUS_LABELS } from '../config/constants';
 import { Case } from '../database/models/case.model';
 import { Ticket } from '../database/models/ticket.model';
 import { badRequest, notFound } from '../utils/errors';
-import { lookupPayin, manualActivation, memberPayins, recheckPayin, RecheckResult } from './clients/payment.client';
+import { lookupPayin, manualActivation, memberPayins, Payin, recheckPayin, RecheckResult } from './clients/payment.client';
 import { getSupportMember } from './clients/user.client';
 import { registerExecutor } from './approval.service';
 import { recordCheck, upsertCase } from './case.service';
@@ -32,7 +32,10 @@ export async function memberActivationStatus(userId: string) {
     };
 }
 
-const memberMessage = (r: RecheckResult['result']) => ({
+type MemberCheckResult = RecheckResult['result'] | 'not_finished';
+
+const memberMessage = (r: MemberCheckResult) => ({
+    not_finished: 'Ce paiement n’a pas été terminé : il n’a jamais été validé chez un opérateur, donc aucun argent n’a pu être prélevé. Pour activer votre compte, payez à nouveau votre pack. Si de l’argent a quand même été débité, dites-le-nous ci-dessous.',
     confirmed: 'Votre paiement est confirmé. Votre compte est en cours d’activation : rechargez l’application dans une minute.',
     pending: 'L’opérateur n’a pas encore confirmé votre paiement. Nous revérifierons automatiquement ; réessayez plus tard.',
     failed: 'L’opérateur indique que ce paiement a échoué ou a été annulé. Aucune activation n’est possible avec ce paiement.',
@@ -45,7 +48,19 @@ const memberMessage = (r: RecheckResult['result']) => ({
  * not_found / unavailable answer opens an activation case and a ticket
  * (never an activation). `pending` schedules a re-check with backoff.
  */
-export async function memberActivationCheck(userId: string, input: { sessionId?: unknown; reference?: unknown }, schedule: (sessionId: string, userId: string) => Promise<void>) {
+/**
+ * A payment the member never finished: no operator reference, and it is still
+ * waiting for the member's details or no operator was ever chosen. Asking the
+ * operator about it would only answer "not found", and most of these are
+ * abandoned checkouts, so no case is opened unless the member says money left
+ * the account.
+ */
+export function neverSubmitted(p: Pick<Payin, 'status' | 'gateway' | 'gatewayRef'>) {
+    if (p.gatewayRef) return false;
+    return p.status === 'PENDING_USER_INPUT' || !p.gateway || p.gateway === 'none';
+}
+
+export async function memberActivationCheck(userId: string, input: { sessionId?: unknown; reference?: unknown; moneyDebited?: unknown }, schedule: (sessionId: string, userId: string) => Promise<void>) {
     const ref = typeof input.sessionId === 'string' && input.sessionId.trim() ? input.sessionId.trim()
         : typeof input.reference === 'string' && input.reference.trim() ? input.reference.trim() : '';
     if (!ref || ref.length > 120 || !/^[\w.:-]+$/.test(ref)) throw badRequest('Indiquez votre paiement ou la référence reçue.', 'BAD_REFERENCE');
@@ -54,6 +69,14 @@ export async function memberActivationCheck(userId: string, input: { sessionId?:
     if (!payin) {
         const { ticketId, number } = await openActivationCaseAndTicket(userId, ref, { result: 'not_found', provider: 'unknown', checkedAt: new Date().toISOString() }, 'reference');
         return { result: 'not_found', message: memberMessage('not_found'), statusLabel: PAYIN_STATUS_LABELS.not_found, ticketId, ticketNumber: number };
+    }
+    if (neverSubmitted(payin)) {
+        if (input.moneyDebited !== true) {
+            return { result: 'not_finished', message: memberMessage('not_finished'), statusLabel: PAYIN_STATUS_LABELS.not_finished, ticketId: null, canReportDebit: true };
+        }
+        // The member says money left the account anyway: an agent checks with the operator.
+        const { ticketId, number } = await openActivationCaseAndTicket(userId, payin.sessionId, { result: 'not_finished' as any, provider: payin.gateway || 'none', checkedAt: new Date().toISOString() }, 'session', payin.gateway);
+        return { result: 'not_finished', message: 'Merci. Un agent va vérifier auprès de l’opérateur : nous avons ouvert une demande pour vous.', statusLabel: PAYIN_STATUS_LABELS.not_finished, ticketId, ticketNumber: number };
     }
     const result = await recheckPayin(payin.sessionId);
     if (result.result === 'not_found' || result.result === 'provider_unavailable') {
@@ -68,7 +91,8 @@ export async function memberActivationCheck(userId: string, input: { sessionId?:
 export async function openActivationCaseAndTicket(userId: string, ref: string, result: Partial<RecheckResult>, kind: 'session' | 'reference', gateway?: string) {
     const { caseId } = await upsertCase({
         type: 'activation', dedupKey: `activation:${userId}:${ref}`, severity: 'warning',
-        summary: `Activation : paiement ${result.result === 'provider_unavailable' ? 'non vérifiable (opérateur indisponible)' : 'introuvable chez l’opérateur'}`,
+        summary: `Activation : ${(result.result as string) === 'not_finished' ? 'le membre dit avoir été débité pour un paiement jamais envoyé à un opérateur'
+            : result.result === 'provider_unavailable' ? 'paiement non vérifiable (opérateur indisponible)' : 'paiement introuvable chez l’opérateur'}`,
         subject: { userId, sessionId: kind === 'session' ? ref : undefined, gateway }, details: { reference: kind === 'reference' ? ref : undefined },
     }, 'member-check');
     await recordCheck(caseId, `member:${userId}`, result);
