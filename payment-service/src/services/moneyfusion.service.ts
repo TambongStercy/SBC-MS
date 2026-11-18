@@ -39,13 +39,16 @@ export interface MoneyFusionPayoutResult {
     message: string;
 }
 
-// --- MoneyFusion payin currency per country ---
-// Source: GET https://pay.moneyfusion.net/api/v1/withdraw/methods (returns one currency
-// field per country). MF treats RDC payins as USD and Guinée-Conakry as GNF, while
-// every other country we route to MF uses XAF or XOF (which our platform handles
-// as 1:1 with XAF — our internal currency). For non-CFA destinations we must
-// convert XAF -> destination currency BEFORE calling initiatePayment, otherwise
-// MF takes our XAF figure literally and the customer is asked to pay e.g. $2150 USD.
+// --- Currency MoneyFusion's checkout shows the payer, per country ---
+// MoneyFusion's payin `totalPrice` is ALWAYS in XOF francs (XAF counts 1:1).
+// Its hosted checkout converts it for the payer's country with its own rate
+// (GET https://pay.moneyfusion.net/api/v2/payment-methods → currency,
+// exchangeRateFromXOF: RDC divides by 500 F/USD, Guinée multiplies by 21 GNF/F,
+// Ghana by 0.03 GHS/F, as of 2026-11-19). Read from MoneyFusion's checkout code.
+// Until 2026-11-19 we converted to this currency before calling MoneyFusion, so
+// it converted a second time: every RDC payin was refused ("Montant doit etre
+// supérieur a 200 F" for ~$3.84) and Guinée payers were asked ~14x the price.
+// This map is informational only: never convert a MoneyFusion payin amount.
 const MF_PAYIN_CURRENCY: Record<string, string> = {
     BF: 'XOF',
     BJ: 'XOF',
@@ -60,9 +63,9 @@ const MF_PAYIN_CURRENCY: Record<string, string> = {
     GA: 'XAF',
     TD: 'XAF',
     CF: 'XAF',  // Centrafrique — added 2026-07-08 after Rufus flagged MF supports it
-    CD: 'USD',  // ⚠ requires real-rate conversion
-    GN: 'GNF',  // ⚠ requires real-rate conversion
-    GH: 'GHS',  // ⚠ requires real-rate conversion — added 2026-09-23, MF now pays out to Ghana
+    CD: 'USD',
+    GN: 'GNF',
+    GH: 'GHS',  // added 2026-09-23, MF now pays out to Ghana
 };
 
 /**
