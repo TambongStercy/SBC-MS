@@ -39,7 +39,8 @@ export const SLA_HOURS: Record<TicketPriority, { firstResponse: number; resoluti
     low: { firstResponse: 48, resolution: 120 },
 };
 
-export const TICKET_SOURCES = ['member', 'assistant', 'system', 'agent'] as const;
+/** `public`: sent from the form without an account (contact details only, unverified). */
+export const TICKET_SOURCES = ['member', 'assistant', 'system', 'agent', 'public'] as const;
 
 export const CASE_TYPES = [
     'activation', 'withdrawal_divergence', 'debit_missing', 'paid_not_debited',

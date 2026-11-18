@@ -7,6 +7,7 @@ import deskRoutes from './api/routes/desk';
 import meRoutes from './api/routes/me.routes';
 import internalRoutes from './api/routes/internal.routes';
 import { health } from './api/routes/health';
+import publicRoutes from './api/routes/public.routes';
 
 /** Everything lives under /api/support (the gateway keeps the path). Same origin: no CORS. */
 export function createApp(): Application {
@@ -25,6 +26,7 @@ export function createApp(): Application {
     app.use('/api/support/desk', deskRoutes);
     app.use('/api/support/me', meRoutes);
     app.use('/api/support/internal', internalRoutes);
+    app.use('/api/support/public', publicRoutes);
 
     app.use((_req, res) => res.status(404).json({ success: false, message: 'Ressource introuvable.', code: 'NOT_FOUND' }));
     app.use(errorHandler);

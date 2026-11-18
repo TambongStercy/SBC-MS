@@ -1316,6 +1316,13 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   comes from `POST /desk/tickets/:id/replay`, audited (`ticket.replay.opened`). Links
   not on `OPENREPLAY_DASHBOARD_URL` are dropped. Needs its own server (not the prod box):
   see `docs/support/OPENREPLAY.md`.
+- **Requests without an account:** `POST /api/support/public/tickets` (member app
+  `/signaler-un-probleme`, linked from the sign-in page) for people who cannot sign in.
+  Turnstile + hidden field + 3/h and 10/day per IP; replies are emailed to the address
+  typed, which is unverified: agents must not disclose account details on such a ticket.
+  Emails with no member (agents, public requests) carry `userId` `000000000000000000000000`:
+  notification-service refuses an email without a userId, which silently dropped every
+  agent email (activation, lockout, alerts) until 2026-11-18.
 - **Audit:** `auditlogs` is append-only and hash-chained;
   `node dist/scripts/verify-audit-chain.js` exits 1 on any altered or missing
   row. Give the service's Mongo user no update/remove right on it when users

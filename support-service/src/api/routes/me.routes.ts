@@ -14,6 +14,7 @@ import { scheduleActivationRecheck } from '../../jobs';
 import { getSetting } from '../../services/settings.service';
 import { notFound } from '../../utils/errors';
 import { memberRealtimeToken } from '../../services/realtime.service';
+import { cleanContact } from '../../services/contact.service';
 
 /** Member help space (/api/support/me/*), member JWT, any role. */
 const router = Router();
@@ -76,7 +77,7 @@ router.post('/tickets',
         const b = req.body ?? {};
         const t = await tickets.createTicket({
             memberId: m.userId, category: b.category, subject: b.subject, body: b.message ?? b.body, attachmentIds: b.attachmentIds,
-            source: 'member', author: { type: 'member', id: m.userId }, replay: b.replay,
+            source: 'member', author: { type: 'member', id: m.userId }, replay: b.replay, contact: cleanContact(b.contact, false),
         });
         res.status(201).json({ success: true, data: tickets.memberView(t as any) });
     }));

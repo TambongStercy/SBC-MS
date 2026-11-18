@@ -10,6 +10,8 @@ import { badRequest, conflict, notFound } from '../utils/errors';
 import { attachmentLinks, claimAttachments } from './attachment.service';
 import { notifyAgents, notifyMember } from './notifier.service';
 import { cleanReplay } from './replay.service';
+import type { TicketContact } from './contact.service';
+import { sendEmail } from './clients/notification.client';
 import { publishTicketEvent } from './realtime.service';
 
 export const formatTicketNumber = (n: number) => `SUP-${String(n).padStart(6, '0')}`;
@@ -30,8 +32,8 @@ async function event(ticketId: Types.ObjectId | string, kind: string, by: Actor 
 }
 
 export async function createTicket(args: {
-    memberId: string; memberName?: string | null; category: unknown; subject: unknown; body: unknown;
-    source: 'member' | 'assistant' | 'system' | 'agent'; attachmentIds?: unknown; botConversationId?: Types.ObjectId | null;
+    memberId: string | null; memberName?: string | null; category: unknown; subject: unknown; body: unknown;
+    source: 'member' | 'assistant' | 'system' | 'agent' | 'public'; contact?: TicketContact | null; attachmentIds?: unknown; botConversationId?: Types.ObjectId | null;
     caseId?: Types.ObjectId | null; priority?: TicketPriority; author: Actor; replay?: unknown;
 }) {
     const category = String(args.category);
@@ -45,12 +47,13 @@ export async function createTicket(args: {
     const number = formatTicketNumber(await nextSeq('ticket'));
     const now = new Date();
     const ticket = await Ticket.create({
-        number, memberId: args.memberId, memberName: args.memberName ?? null, subject, category, queue: category, priority,
+        number, memberId: args.memberId, memberName: args.memberName ?? args.contact?.name ?? null, contact: args.contact ?? null, subject, category, queue: category, priority,
         status: 'nouveau', source: args.source, sla: slaFor(priority, now), lastMemberMessageAt: args.author.type === 'member' ? now : null,
         botConversationId: args.botConversationId ?? null, caseId: args.caseId ?? null,
         replay: args.author.type === 'member' ? cleanReplay(args.replay, now) : null,
     });
     const ownerId = args.author.type === 'member' ? args.memberId : String(args.author.id ?? '');
+    // (no attachments without an account: nothing to own them)
     const attachmentIds = ownerId ? await claimAttachments(args.attachmentIds, ownerId, ticket._id) : [];
     await TicketMessage.create({ ticketId: ticket._id, author: args.author, body, internal: false, attachmentIds });
     await event(ticket._id, 'created', args.author, null, { status: 'nouveau', category, priority });
@@ -72,7 +75,7 @@ export function memberView(t: ITicket & { _id: unknown }) {
  * An agent opened the ticket: the member's messages so far are read. Only when there is
  * something new to mark, so the desk's reloads do not signal the member over and over.
  */
-export async function markReadByAgent(t: { _id: unknown; memberId: string; lastMemberMessageAt?: Date | null; agentReadAt?: Date | null }) {
+export async function markReadByAgent(t: { _id: unknown; memberId: string | null; lastMemberMessageAt?: Date | null; agentReadAt?: Date | null }) {
     const last = t.lastMemberMessageAt;
     if (!last || (t.agentReadAt && t.agentReadAt >= last)) return;
     const r = await Ticket.updateOne({ _id: t._id, $or: [{ agentReadAt: null }, { agentReadAt: { $lt: last } }] }, { $set: { agentReadAt: new Date() } });
@@ -196,7 +199,16 @@ export async function deskReply(id: string, agent: { id: string; name: string },
     if (Object.keys(set).length) await Ticket.updateOne({ _id: t._id }, { $set: set });
     if (set.status) await event(t._id, 'status', author, t.status, set.status);
     if (set.assigneeId) await event(t._id, 'assigned', author, null, agent.id, 'took the ticket by replying');
-    if (!internal) {
+    if (!internal && !t.memberId && t.contact?.email) {
+        // No account, no app to read it in: the reply itself goes by email.
+        await sendEmail({
+            recipient: t.contact.email, tag: `support-ticket-${t._id}-${message._id}`,
+            subject: `Réponse à votre demande ${t.number}`,
+            body: `Bonjour${t.contact.name ? ` ${t.contact.name}` : ''},\n\nVoici la réponse de l’équipe SBC à votre demande ${t.number} :\n\n${body}\n\n`
+                + `Pour compléter votre demande, envoyez une nouvelle demande en rappelant le numéro ${t.number}, ou répondez à l’agent s’il vous appelle.\n`
+                + 'SBC ne vous demandera jamais votre mot de passe ni vos codes.',
+        });
+    } else if (!internal && t.memberId) {
         await notifyMember({
             userId: t.memberId, tag: `support-ticket-${t._id}`, title: `Réponse à votre demande ${t.number}`,
             body: 'Un agent SBC a répondu à votre demande. Ouvrez l’espace Aide pour la lire.', path: `/aide/demandes/${t._id}`,
@@ -218,7 +230,7 @@ export async function setTicketStatus(id: string, agent: { id: string; name: str
     if (!before) throw conflict('Le ticket a déjà ce statut, ou n’existe pas.', 'NO_CHANGE');
     await event(before._id, 'status', { type: 'agent', id: agent.id, name: agent.name }, before.status, status, note);
     publishTicketEvent({ ticketId: String(before._id), memberId: before.memberId, kind: 'status', forMember: true });
-    if (status === 'resolu') {
+    if (status === 'resolu' && before.memberId) {
         await notifyMember({
             userId: before.memberId, tag: `support-ticket-${before._id}-resolved`, title: `Demande ${before.number} résolue`,
             body: 'Votre demande est marquée comme résolue. Si ce n’est pas le cas, répondez simplement dans l’espace Aide.', path: `/aide/demandes/${before._id}`,

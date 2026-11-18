@@ -18,7 +18,8 @@ async function firstTime(tag: string, ttlSec: number): Promise<boolean> {
 }
 
 /** Member notification: push (category support) and email. Never any amount in the text. */
-export async function notifyMember(args: { userId: string; tag: string; title: string; body: string; path?: string; email?: boolean; dedupSec?: number }): Promise<void> {
+export async function notifyMember(args: { userId: string | null; tag: string; title: string; body: string; path?: string; email?: boolean; dedupSec?: number }): Promise<void> {
+    if (!args.userId) return; // a request without an account: nothing to push to
     if (!(await firstTime(`member:${args.tag}`, args.dedupSec ?? 600))) return;
     const url = `${config.memberAppUrl}${args.path ?? '/aide'}`;
     await sendPush({ userId: args.userId, title: args.title, body: args.body, url: args.path ?? '/aide', tag: args.tag });

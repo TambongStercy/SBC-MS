@@ -54,7 +54,9 @@ export function presentTicket(t: any, names: Record<string, { id: string; name: 
     return {
         id: String(t._id), number: t.number, subject: t.subject, category: t.category, queue: t.queue, priority: t.priority,
         status: deskStatus(t.status), storedStatus: t.status, source: t.source,
-        member: { id: t.memberId, name: t.memberName ?? members[String(t.memberId)] ?? t.memberId },
+        // A request sent without an account has no member: only the name that was typed.
+        member: t.memberId ? { id: t.memberId, name: t.memberName ?? members[String(t.memberId)] ?? t.memberId } : { id: null, name: t.contact?.name ?? 'Sans compte' },
+        contact: t.contact ? { name: t.contact.name ?? null, phone: t.contact.phone ?? null, email: t.contact.email ?? null, verified: false } : null,
         assignee: t.assigneeId ? names[String(t.assigneeId)] ?? { id: String(t.assigneeId), name: '—' } : null,
         slaDueAt: iso(t.sla?.firstRespondedAt ? t.sla?.resolutionDueAt : t.sla?.firstResponseDueAt),
         slaBreachedAt: iso(t.sla?.breachedAt),
@@ -67,7 +69,7 @@ export function presentTicket(t: any, names: Record<string, { id: string; name: 
 }
 
 export async function presentTickets(list: any[]) {
-    const [names, members] = await Promise.all([agentNames(list.map((t) => t.assigneeId)), memberNames(list.filter((t) => !t.memberName).map((t) => t.memberId))]);
+    const [names, members] = await Promise.all([agentNames(list.map((t) => t.assigneeId)), memberNames(list.filter((t) => !t.memberName && t.memberId).map((t) => t.memberId))]);
     return list.map((t) => presentTicket(t, names, members));
 }
 

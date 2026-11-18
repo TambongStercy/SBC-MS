@@ -8,11 +8,17 @@ const log = logger.getLogger('NotificationClient');
  * `recipient` (the service does not resolve userId → email). No amounts or
  * financial data in any text.
  */
+/**
+ * notification-service refuses an email without a userId (400). Emails to an agent or to a
+ * person without an account (public request) have none: they carry this placeholder.
+ */
+export const NO_ACCOUNT_USER_ID = '000000000000000000000000';
+
 export async function sendEmail(args: { recipient: string; subject: string; body: string; userId?: string; tag?: string }): Promise<boolean> {
     try {
         const r = await serviceRequest('notification', 'POST', '/api/notifications/internal/create', {
             body: {
-                userId: args.userId,
+                userId: args.userId || NO_ACCOUNT_USER_ID,
                 type: 'system',
                 channel: 'email',
                 recipient: args.recipient,

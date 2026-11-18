@@ -197,6 +197,14 @@ English keys `new`, `open`, `waiting_member`, `waiting_internal`, `resolved`, `c
 Rate limits (Redis, per member): assistant 20/day (setting), ticket creation 5/day (incl.
 escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIMITED'`.
 
+### 3.4 Public — `/public/*` (no account)
+
+| Route | Notes |
+|---|---|
+| `POST /public/tickets` `{ contact: { name, phone, email }, category, subject, message, turnstileToken?, website? }` | For people who cannot sign in. All three contact fields required (email: the reply is sent there). Text only, no files. Turnstile required when `TURNSTILE_SECRET` is set (`TURNSTILE_FAILED`); `website` is a hidden field: filled ⇒ fake 201, nothing stored; 3/hour and 10/day per IP (counted after the contact check). → `{ number }` only. The ticket has `memberId: null`, `source: 'public'`; agent replies (not internal notes) are emailed to `contact.email`. |
+
+The member form (`POST /me/tickets`) also takes an optional `contact` (same checks): how the member wants to be reached, prefilled from the account. The desk returns `ticket.contact` (`verified: false`) and, without an account, `member: { id: null, name }`. **Never treat contact details as identity**: anyone can type someone else's email or number.
+
 ### 3.3 Live updates (LiveKit data messages)
 
 New messages and status changes reach both apps without a refresh. support-service publishes

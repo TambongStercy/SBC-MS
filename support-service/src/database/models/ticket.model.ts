@@ -3,8 +3,11 @@ import { TICKET_CATEGORY_KEYS, TICKET_STATUS_KEYS, TICKET_PRIORITIES, TICKET_SOU
 
 export interface ITicket {
     number: string;
-    memberId: string;
+    /** null for a request sent without an account (`source: 'public'`). */
+    memberId: string | null;
     memberName?: string | null;
+    /** Name, phone and email typed in the form (never proof of identity). */
+    contact?: { name: string | null; phone: string | null; email: string | null } | null;
     subject: string;
     category: string;
     queue: string;
@@ -29,7 +32,8 @@ export interface ITicket {
 
 const TicketSchema = new Schema<ITicket>({
     number: { type: String, required: true, unique: true },
-    memberId: { type: String, required: true },
+    memberId: { type: String, default: null },
+    contact: { type: new Schema({ name: String, phone: String, email: String }, { _id: false }), default: null },
     memberName: { type: String, default: null },
     subject: { type: String, required: true, maxlength: 200 },
     category: { type: String, enum: TICKET_CATEGORY_KEYS, required: true },
