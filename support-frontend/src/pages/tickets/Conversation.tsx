@@ -27,20 +27,20 @@ const isImage = (a: Attachment) => a.mimeType?.startsWith('image/');
 const isPdf = (a: Attachment) => a.mimeType === 'application/pdf';
 
 /** The conversation, oldest first. Internal notes are drawn apart (tint, dashed border, lock, label). */
-export function Conversation({ ticketId, messages }: { ticketId: string; messages: TicketMessage[] }) {
+export function Conversation({ ticketId, messages, guest }: { ticketId: string; messages: TicketMessage[]; /** Sent without an account. */ guest?: boolean }) {
   const [viewing, setViewing] = useState<Attachment | null>(null);
   if (!messages.length) return <p className="py-8 text-center text-sm text-fg-muted">Aucun message.</p>;
   return (
     <>
       <ol className="flex flex-col gap-3" aria-label="Conversation">
-        {messages.map(m => <MessageItem key={m.id} message={m} onOpenAttachment={setViewing} />)}
+        {messages.map(m => <MessageItem key={m.id} message={m} guest={guest} onOpenAttachment={setViewing} />)}
       </ol>
       <AttachmentViewer ticketId={ticketId} attachment={viewing} onClose={() => setViewing(null)} />
     </>
   );
 }
 
-function MessageItem({ message: m, onOpenAttachment }: { message: TicketMessage; onOpenAttachment: (a: Attachment) => void }) {
+function MessageItem({ message: m, guest, onOpenAttachment }: { message: TicketMessage; guest?: boolean; onOpenAttachment: (a: Attachment) => void }) {
   const fromMember = m.author.type === 'member';
   const system = m.author.type === 'system';
   if (system && !m.internal) {
@@ -74,7 +74,7 @@ function MessageItem({ message: m, onOpenAttachment }: { message: TicketMessage;
         <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="text-sm font-medium text-fg">
             {m.author.name}
-            <span className="ml-2 text-xs font-normal text-fg-muted">{AUTHOR_LABEL[m.author.type] ?? m.author.type}</span>
+            <span className="ml-2 text-xs font-normal text-fg-muted">{guest && m.author.type === 'member' ? 'Sans compte' : AUTHOR_LABEL[m.author.type] ?? m.author.type}</span>
           </p>
           <time dateTime={m.createdAt} title={formatDateTime(m.createdAt)} className="text-xs text-fg-muted">{formatRelative(m.createdAt)}</time>
         </header>

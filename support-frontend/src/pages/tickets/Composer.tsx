@@ -96,7 +96,7 @@ export function Composer({ ticket }: { ticket: Ticket }) {
         rows={5}
         value={body}
         onChange={e => setBody(e.target.value)}
-        placeholder={internal ? 'Ce que les autres agents doivent savoir…' : 'Votre réponse au membre…'}
+        placeholder={internal ? 'Ce que les autres agents doivent savoir…' : ticket.member.id ? 'Votre réponse au membre…' : 'Votre réponse, envoyée par email…'}
         className="mt-3 bg-surface"
         aria-invalid={error ? true : undefined}
       />

@@ -119,5 +119,7 @@ describe('ticket detail', () => {
     expect(screen.getByRole('link', { name: '+237 6 75 09 07 55' })).toHaveAttribute('href', 'tel:+237675090755');
     expect(screen.queryByRole('link', { name: 'Awa Diallo' })).toBeNull();
     expect(screen.getByText('Formulaire sans compte')).toBeInTheDocument();
+    expect(screen.getAllByText('Sans compte').length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: /Réponse/ })).toHaveAttribute('placeholder', 'Votre réponse, envoyée par email…');
   });
 });

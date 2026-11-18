@@ -70,7 +70,7 @@ export default function TicketDetailPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-4">
-          <Conversation ticketId={ticket.id} messages={messages} />
+          <Conversation ticketId={ticket.id} messages={messages} guest={!ticket.member.id} />
           {perms.has('tickets.reply') ? <Composer ticket={ticket} /> : (
             <p className="rounded-panel border border-line bg-surface-2 px-4 py-3 text-sm text-fg-muted">Votre rôle permet de lire ce ticket, pas d’y répondre.</p>
           )}
