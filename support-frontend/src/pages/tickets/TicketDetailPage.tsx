@@ -237,7 +237,7 @@ function ReplayLink({ ticketId, at }: { ticketId: string; at: string | null }) {
         Revoir la session du membre
       </Button>
       <p className="mt-2 text-xs text-fg-muted">
-        Ce que le membre a vu dans l’app avant et pendant sa demande{at ? ` (envoyée le ${formatDateTime(at)})` : ''}. Les saisies, les montants et les numéros sont masqués. Chaque ouverture est enregistrée dans le journal.
+        Ce que le membre a vu dans l’app avant et pendant sa demande{at ? ` (envoyée le ${formatDateTime(at)})` : ''}. Les mots de passe et les codes ne sont jamais enregistrés. Chaque ouverture est notée dans le journal.
       </p>
     </div>
   );
