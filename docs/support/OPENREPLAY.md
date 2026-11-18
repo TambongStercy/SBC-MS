@@ -62,6 +62,32 @@ Steps:
 Preprod: use a second project on the same OpenReplay server with its own key, so
 test sessions never mix with members' sessions.
 
+## Local install (developer machine, 2026-11-18)
+
+Their one-line installer reconfigures the machine (sudo, docker group, TLS), so the
+local copy runs the same files by hand, from `scripts/docker-compose` of the
+**v1.28.0** tag, in `~/Projects/SBC/openreplay-local/compose`:
+
+- `common.env`: `COMMON_DOMAIN_NAME=openreplay.localhost`, `COMMON_PROTOCOL=http`,
+  every `change_me_*` replaced by a random secret; `envsubst` over `docker-envs/*.env`
+  and `docker-compose.yaml`, as their installer does; `SKIP_H_SSL=True` in `chalice.env`.
+- `Caddyfile`: `http://{$CADDY_DOMAIN} { reverse_proxy nginx-openreplay:80 }`;
+  Caddy published on `127.0.0.1:80` only (no 443); the storage console port removed.
+- **Caddy has the network alias `openreplay.localhost`**: the services reach the
+  file storage through `http://openreplay.localhost` (`AWS_ENDPOINT`), which only
+  browsers resolve to this machine.
+- Start: `COMPOSE_PROFILES=migration docker compose up -d` (the 3 migration jobs exit 0).
+- Owner account and first project created through `POST /api/signup`; credentials and
+  the project key in `owner-account.txt` / `project-key.txt` (0600, never in git).
+- Apps: `ui/.env.local` `VITE_OPENREPLAY_PROJECT_KEY` +
+  `VITE_OPENREPLAY_INGEST=http://openreplay.localhost/ingest` (http is allowed only in
+  dev builds: `__DISABLE_SECURE_MODE`); `support-service/.env`
+  `OPENREPLAY_DASHBOARD_URL=http://openreplay.localhost`.
+- Traps met: Node's `fetch` drops a hand-set `Host` header (use curl to call it through
+  `127.0.0.1`); the member profile carries `_id`, not `id`; a session becomes
+  replayable only after OpenReplay closes it (inactivity), live sessions are separate.
+- Stop / start: `docker compose stop` / `start` in that folder.
+
 ## Privacy (to be validated by SBC)
 
 Recording every member without asking, with names, emails and phone numbers
