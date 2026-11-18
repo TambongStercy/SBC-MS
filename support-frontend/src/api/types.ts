@@ -112,7 +112,7 @@ export interface Payin {
 
 export type BusinessStatus =
   | 'REQUESTED' | 'PENDING_APPROVAL' | 'RESERVED' | 'SUBMITTED' | 'PENDING'
-  | 'SUCCEEDED' | 'FAILED' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'UNKNOWN';
+  | 'SUCCEEDED' | 'FAILED' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'REJECTED' | 'EXPIRED' | 'UNKNOWN';
 
 export interface MemberWithdrawal {
   transactionId: string;

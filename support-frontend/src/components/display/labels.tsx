@@ -69,6 +69,8 @@ export const BUSINESS_STATUS: Record<BusinessStatus, { label: string; tone: Tone
   FAILED: { label: 'Échoué', tone: 'danger' },
   CANCEL_REQUESTED: { label: 'Annulation demandée', tone: 'warning' },
   CANCELLED: { label: 'Annulé', tone: 'neutral' },
+  REJECTED: { label: 'Refusé par l’admin', tone: 'neutral' },
+  EXPIRED: { label: 'Expiré (non validé)', tone: 'neutral' },
   UNKNOWN: { label: 'Statut inconnu', tone: 'danger' },
 };
 
