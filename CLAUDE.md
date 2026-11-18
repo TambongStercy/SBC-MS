@@ -1318,8 +1318,10 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   see `docs/support/OPENREPLAY.md`.
 - **Requests without an account:** `POST /api/support/public/tickets` (member app
   `/signaler-un-probleme`, linked from the sign-in page) for people who cannot sign in.
-  Turnstile + hidden field + 3/h and 10/day per IP; replies are emailed to the address
-  typed, which is unverified: agents must not disclose account details on such a ticket.
+  Turnstile + hidden field + 3/h and 10/day per IP. The person then chats like a member
+  (same WhatsApp-style page) with the request's key (`x-support-guest-key`, kept on the
+  device; reply emails carry the link `…/signaler-un-probleme/suivi/<id>#k=<key>`). The
+  contact details are unverified: agents must not disclose account details on such a ticket.
   Emails with no member (agents, public requests) carry `userId` `000000000000000000000000`:
   notification-service refuses an email without a userId, which silently dropped every
   agent email (activation, lockout, alerts) until 2026-11-18.

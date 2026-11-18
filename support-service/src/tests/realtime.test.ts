@@ -101,4 +101,26 @@ describe('live ticket updates (LiveKit)', () => {
             f.restore();
         }
     });
+
+    it('a request sent without an account has its own room, opened with its key', async () => {
+        const f = mockFetch({ '127.0.0.1:9/api/notifications': () => ({ json: { success: true } }), '127.0.0.1:9/api/users': () => ({ json: { success: true, data: [] } }) });
+        try {
+            const created = await request(getApp()).post('/api/support/public/tickets').set('CF-Connecting-IP', '203.0.113.77').send({
+                category: 'compte_acces', subject: 'Connexion impossible', message: 'Le code de connexion n’arrive jamais.',
+                contact: { name: 'Awa', phone: '+237675090755', email: 'awa@example.com' },
+            });
+            const { id, key } = created.body.data;
+            const tok = await request(getApp()).get(`/api/support/public/tickets/${id}/realtime/token`).set('x-support-guest-key', key);
+            expect(tok.body.data).toMatchObject({ enabled: true, room: `support-guest-${id}` });
+            expect((await request(getApp()).get(`/api/support/public/tickets/${id}/realtime/token`)).status).toBe(404);
+
+            const jar = await login(await makeAgent(['support_agent']));
+            sent = [];
+            await desk('post', `/tickets/${id}/messages`, jar).send({ body: 'Nous regardons.', internal: false });
+            await settle();
+            expect(sent.map((x) => x.room).sort()).toEqual(['support-desk', `support-guest-${id}`]);
+        } finally {
+            f.restore();
+        }
+    });
 });

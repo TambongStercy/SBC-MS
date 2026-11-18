@@ -1,3 +1,4 @@
+import config from '../config';
 import { Types, FilterQuery } from 'mongoose';
 import {
     OPEN_TICKET_STATUSES, SLA_HOURS, TICKET_CATEGORIES, TICKET_CATEGORY_KEYS, TICKET_PRIORITIES, TICKET_STATUS_KEYS,
@@ -13,6 +14,8 @@ import { cleanReplay } from './replay.service';
 import type { TicketContact } from './contact.service';
 import { sendEmail } from './clients/notification.client';
 import { publishTicketEvent } from './realtime.service';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { decryptSecret, encryptSecret } from './auth/totp.service';
 
 export const formatTicketNumber = (n: number) => `SUP-${String(n).padStart(6, '0')}`;
 
@@ -98,38 +101,60 @@ async function messagesFor(ticketId: Types.ObjectId, includeInternal: boolean) {
     })));
 }
 
+/**
+ * Who reads and answers a request: a signed-in member, or — for a request sent without
+ * an account — whoever holds its key (checked by the public route before calling here).
+ */
+export type Requester = { memberId: string } | { guestTicketId: string };
+const scope = (id: string, r: Requester) => ('memberId' in r ? { _id: id, memberId: r.memberId } : { _id: r.guestTicketId, memberId: null, source: 'public' });
+const ownerOf = (r: Requester) => ('memberId' in r ? r.memberId : `guest:${r.guestTicketId}`);
+const actorOf = (r: Requester): Actor => ('memberId' in r ? { type: 'member', id: r.memberId } : { type: 'member', id: null });
+
 export async function getMemberTicket(id: string, memberId: string) {
+    return getRequesterTicket(id, { memberId });
+}
+
+export async function getRequesterTicket(id: string, r: Requester) {
     if (!Types.ObjectId.isValid(id)) throw notFound();
-    const t = await Ticket.findOne({ _id: id, memberId }).lean();
+    const t = await Ticket.findOne(scope(id, r)).lean();
     if (!t) throw notFound('Demande introuvable.');
     return { ...memberView(t), messages: await messagesFor(t._id, false) };
 }
 
 export async function memberReply(id: string, memberId: string, body: unknown, attachmentIds: unknown) {
+    return requesterReply(id, { memberId }, body, attachmentIds);
+}
+
+export async function requesterReply(id: string, r: Requester, body: unknown, attachmentIds: unknown) {
     if (!Types.ObjectId.isValid(id)) throw notFound();
     const text = cleanText(body, 10000);
     if (!text) throw badRequest('Message vide.', 'BAD_BODY');
-    const t = await Ticket.findOne({ _id: id, memberId }).lean();
+    const t = await Ticket.findOne(scope(id, r)).lean();
     if (!t) throw notFound('Demande introuvable.');
     if (t.status === 'ferme') throw conflict('Cette demande est fermée. Ouvrez une nouvelle demande.', 'TICKET_CLOSED');
-    const ids = await claimAttachments(attachmentIds, memberId, t._id);
-    await TicketMessage.create({ ticketId: t._id, author: { type: 'member', id: memberId }, body: text, internal: false, attachmentIds: ids });
+    const ids = await claimAttachments(attachmentIds, ownerOf(r), t._id);
+    const author = { ...actorOf(r), name: 'memberId' in r ? undefined : t.contact?.name ?? null };
+    await TicketMessage.create({ ticketId: t._id, author, body: text, internal: false, attachmentIds: ids });
     const reopen = t.status === 'en_attente_membre' || t.status === 'resolu';
     await Ticket.updateOne({ _id: t._id }, { $set: { lastMemberMessageAt: new Date(), ...(reopen ? { status: 'ouvert', resolvedAt: null } : {}) } });
-    if (reopen) await event(t._id, 'status', { type: 'member', id: memberId }, t.status, 'ouvert', 'member reply');
+    if (reopen) await event(t._id, 'status', actorOf(r), t.status, 'ouvert', 'member reply');
     if (t.assigneeId) {
         await notifyAgents({ agentId: String(t.assigneeId), kind: 'ticket.reply', title: `Réponse du membre sur ${t.number}`, body: t.subject, link: `/tickets/${t._id}` });
     }
-    publishTicketEvent({ ticketId: String(t._id), memberId, kind: 'message', forMember: true });
-    return getMemberTicket(id, memberId);
+    publishTicketEvent({ ticketId: String(t._id), memberId: t.memberId, kind: 'message', forMember: true });
+    return getRequesterTicket(id, r);
 }
 
 export async function memberClose(id: string, memberId: string) {
+    return requesterClose(id, { memberId });
+}
+
+export async function requesterClose(id: string, r: Requester) {
     if (!Types.ObjectId.isValid(id)) throw notFound();
-    const t = await Ticket.findOneAndUpdate({ _id: id, memberId, status: { $ne: 'ferme' } }, { $set: { status: 'ferme', closedAt: new Date() } }).lean();
+    const t = await Ticket.findOneAndUpdate({ ...scope(id, r), status: { $ne: 'ferme' } }, { $set: { status: 'ferme', closedAt: new Date() } }).lean();
     if (!t) throw notFound('Demande introuvable ou déjà fermée.');
-    await event(t._id, 'status', { type: 'member', id: memberId }, t.status, 'ferme', 'closed by member');
-    publishTicketEvent({ ticketId: String(t._id), memberId, kind: 'status', forMember: true });
+    await event(t._id, 'status', actorOf(r), t.status, 'ferme', 'closed by member');
+    publishTicketEvent({ ticketId: String(t._id), memberId: t.memberId, kind: 'status', forMember: true });
     return { ok: true };
 }
 
@@ -200,12 +225,13 @@ export async function deskReply(id: string, agent: { id: string; name: string },
     if (set.status) await event(t._id, 'status', author, t.status, set.status);
     if (set.assigneeId) await event(t._id, 'assigned', author, null, agent.id, 'took the ticket by replying');
     if (!internal && !t.memberId && t.contact?.email) {
-        // No account, no app to read it in: the reply itself goes by email.
+        // No account: the reply goes by email too, with the link that reopens the chat.
+        const link = await guestChatLink(String(t._id));
         await sendEmail({
             recipient: t.contact.email, tag: `support-ticket-${t._id}-${message._id}`,
             subject: `Réponse à votre demande ${t.number}`,
             body: `Bonjour${t.contact.name ? ` ${t.contact.name}` : ''},\n\nVoici la réponse de l’équipe SBC à votre demande ${t.number} :\n\n${body}\n\n`
-                + `Pour compléter votre demande, envoyez une nouvelle demande en rappelant le numéro ${t.number}, ou répondez à l’agent s’il vous appelle.\n`
+                + (link ? `Pour lui répondre, ouvrez la conversation : ${link}\n\n` : `Pour compléter votre demande, envoyez une nouvelle demande en rappelant le numéro ${t.number}.\n`)
                 + 'SBC ne vous demandera jamais votre mot de passe ni vos codes.',
         });
     } else if (!internal && t.memberId) {
@@ -319,3 +345,36 @@ export async function checkSla(): Promise<number> {
     }
     return n;
 }
+
+// ---- requests sent without an account ----
+
+const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
+
+/** Gives a request sent without an account its key (shown once to its device, and put in reply emails). */
+export async function issueGuestKey(ticketId: Types.ObjectId | string): Promise<string> {
+    const key = randomBytes(32).toString('base64url');
+    await Ticket.updateOne({ _id: ticketId, memberId: null }, { $set: { guestKeyHash: sha256(key), guestKeyEnc: encryptSecret(key) } });
+    return key;
+}
+
+/** True when `key` opens this request (constant-time compare of the hashes). */
+export async function guestKeyOpens(ticketId: string, key: unknown): Promise<boolean> {
+    if (!Types.ObjectId.isValid(ticketId) || typeof key !== 'string' || key.length < 20 || key.length > 100) return false;
+    const t = await Ticket.findOne({ _id: ticketId, memberId: null, source: 'public' }, { guestKeyHash: 1 }).select('+guestKeyHash').lean();
+    if (!t?.guestKeyHash) return false;
+    const a = Buffer.from(sha256(key), 'hex');
+    const b = Buffer.from(t.guestKeyHash, 'hex');
+    return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** The link that reopens the chat. The key sits after `#`: browsers never send it to a server. */
+export async function guestChatLink(ticketId: string): Promise<string | null> {
+    const t = await Ticket.findById(ticketId, { guestKeyEnc: 1 }).select('+guestKeyEnc').lean();
+    if (!t?.guestKeyEnc) return null;
+    try {
+        return `${config.memberAppUrl}/signaler-un-probleme/suivi/${ticketId}#k=${decryptSecret(t.guestKeyEnc)}`;
+    } catch {
+        return null;
+    }
+}
+

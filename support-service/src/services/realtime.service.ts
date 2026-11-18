@@ -18,6 +18,8 @@ const log = logger.getLogger('Realtime');
 
 export const DESK_ROOM = 'support-desk';
 export const memberRoom = (memberId: string) => `support-member-${memberId}`;
+/** A request sent without an account: its holder listens to that request only. */
+export const guestRoom = (ticketId: string) => `support-guest-${ticketId}`;
 export const REALTIME_TOPIC = 'support';
 
 export type TicketEventKind = 'created' | 'message' | 'status' | 'assigned' | 'priority' | 'read';
@@ -51,7 +53,7 @@ export function publishTicketEvent(e: { ticketId: string; memberId?: string | nu
     if (!realtimeEnabled()) return;
     const payload = new TextEncoder().encode(JSON.stringify({ type: 'ticket', ticketId: String(e.ticketId), kind: e.kind, at: new Date().toISOString() }));
     void send(DESK_ROOM, payload);
-    if (e.forMember && e.memberId) void send(memberRoom(String(e.memberId)), payload);
+    if (e.forMember) void send(e.memberId ? memberRoom(String(e.memberId)) : guestRoom(String(e.ticketId)), payload);
 }
 
 async function subscribeToken(who: string, room: string, name?: string) {
@@ -73,4 +75,9 @@ export async function memberRealtimeToken(memberId: string) {
 /** Agents listen to the desk room (ticket ids only; the API still checks every read). */
 export async function deskRealtimeToken(agent: { id: string; name: string }) {
     return realtimeEnabled() ? subscribeToken(`agent:${agent.id}`, DESK_ROOM, agent.name) : DISABLED;
+}
+
+/** The holder of a request sent without an account listens to that request's room only. */
+export async function guestRealtimeToken(ticketId: string) {
+    return realtimeEnabled() ? subscribeToken(`guest:${ticketId}`, guestRoom(ticketId)) : DISABLED;
 }

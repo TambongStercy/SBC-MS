@@ -27,7 +27,7 @@ describe('« Signaler un problème » without an account', () => {
     it('creates a request with the contact details, shown to agents as unverified', async () => {
         const r = await report(valid);
         expect(r.status).toBe(201);
-        expect(r.body.data).toEqual({ number: expect.stringMatching(/^SUP-/) });
+        expect(r.body.data).toEqual({ id: expect.any(String), number: expect.stringMatching(/^SUP-/), key: expect.any(String) });
 
         const t = await Ticket.findOne({ source: 'public' }).lean();
         expect(t).toMatchObject({ memberId: null, contact: { name: 'Awa Diallo', phone: '+237 6 75 09 07 55', email: 'awa.diallo@example.com' } });
@@ -81,8 +81,46 @@ describe('« Signaler un problème » without an account', () => {
         await desk('post', `/tickets/${t._id}/messages`, jar).send({ body: 'Votre compte est débloqué, reconnectez-vous.', internal: false });
         const mail = sent.find((s) => s.body.channel === 'email');
         expect(mail?.body).toMatchObject({ recipient: 'awa.diallo@example.com', userId: '000000000000000000000000' });
+        // The email reopens the chat: the key after « # » never reaches a server.
+        expect(mail?.body.data.body).toMatch(new RegExp(`/signaler-un-probleme/suivi/${t._id}#k=[A-Za-z0-9_-]{40,}`));
         expect(mail?.body.data.body).toContain('Votre compte est débloqué, reconnectez-vous.');
         expect(mail?.body.data.subject).toContain(t.number);
+    });
+});
+
+describe('the chat of a request sent without an account', () => {
+    const chat = (method: 'get' | 'post', id: string, path = '', key?: string) => {
+        const r = (request(getApp()) as any)[method](`/api/support/public/tickets/${id}${path}`).set('CF-Connecting-IP', '203.0.113.50');
+        return (key ? r.set('x-support-guest-key', key) : r) as request.Test;
+    };
+
+    it('opens only with its key, and the person chats with the agent like a member', async () => {
+        const { id, key } = (await report(valid)).body.data;
+        const other = (await report({ ...valid, contact: { ...valid.contact, email: 'autre@example.com' } }, '203.0.113.8')).body.data;
+
+        const open = await chat('get', id, '', key);
+        expect(open.status).toBe(200);
+        expect(open.body.data.messages.map((m: any) => m.body)).toEqual([valid.message]);
+        expect((await chat('get', id)).status).toBe(404);
+        expect((await chat('get', id, '', 'x'.repeat(43))).status).toBe(404);
+        expect((await chat('get', id, '', other.key)).status).toBe(404);
+        // and never through a member's account
+        expect((await request(getApp()).get(`/api/support/me/tickets/${id}`).set('Authorization', `Bearer ${memberToken('64b000000000000000000a09')}`)).status).toBe(404);
+
+        const jar = await login(await makeAgent(['support_agent']));
+        await desk('post', `/tickets/${id}/messages`, jar).send({ body: 'Quel téléphone utilisez-vous ?', internal: false });
+        await desk('post', `/tickets/${id}/messages`, jar).send({ body: 'Note pour l’équipe.', internal: true });
+        expect((await chat('get', id, '', key)).body.data.messages.map((m: any) => m.body)).toEqual([valid.message, 'Quel téléphone utilisez-vous ?']);
+
+        const up = await chat('post', id, '/attachments', key).attach('file', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]), { filename: 'capture.png', contentType: 'image/png' });
+        expect(up.status).toBe(201);
+        const reply = await chat('post', id, '/messages', key).send({ message: 'Un Samsung A12.', attachmentIds: [up.body.data.id] });
+        expect(reply.status).toBe(200);
+        expect(reply.body.data.messages.at(-1)).toMatchObject({ body: 'Un Samsung A12.', author: { type: 'member', name: 'Awa Diallo' }, attachments: [{ filename: 'capture.png' }] });
+        expect(reply.body.data.status).toBe('ouvert');
+
+        expect((await chat('post', id, '/close', key)).status).toBe(200);
+        expect((await chat('post', id, '/messages', key).send({ message: 'Encore moi' })).body.code).toBe('TICKET_CLOSED');
     });
 });
 

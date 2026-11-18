@@ -8,6 +8,9 @@ export interface ITicket {
     memberName?: string | null;
     /** Name, phone and email typed in the form (never proof of identity). */
     contact?: { name: string | null; phone: string | null; email: string | null } | null;
+    /** Request without an account: SHA-256 of its key, and the key encrypted (TOTP_ENC_KEY) to put it in reply emails. */
+    guestKeyHash?: string | null;
+    guestKeyEnc?: string | null;
     subject: string;
     category: string;
     queue: string;
@@ -34,6 +37,8 @@ const TicketSchema = new Schema<ITicket>({
     number: { type: String, required: true, unique: true },
     memberId: { type: String, default: null },
     contact: { type: new Schema({ name: String, phone: String, email: String }, { _id: false }), default: null },
+    guestKeyHash: { type: String, default: null, select: false },
+    guestKeyEnc: { type: String, default: null, select: false },
     memberName: { type: String, default: null },
     subject: { type: String, required: true, maxlength: 200 },
     category: { type: String, enum: TICKET_CATEGORY_KEYS, required: true },

@@ -203,6 +203,18 @@ escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIM
 |---|---|
 | `POST /public/tickets` `{ contact: { name, phone, email }, category, subject, message, turnstileToken?, website? }` | For people who cannot sign in. All three contact fields required (email: the reply is sent there). Text only, no files. Turnstile required when `TURNSTILE_SECRET` is set (`TURNSTILE_FAILED`); `website` is a hidden field: filled ⇒ fake 201, nothing stored; 3/hour and 10/day per IP (counted after the contact check). → `{ number }` only. The ticket has `memberId: null`, `source: 'public'`; agent replies (not internal notes) are emailed to `contact.email`. |
 
+Creating answers `{ id, number, key }`: the person then **chats with the agent like a member**, sending the key in `x-support-guest-key` (wrong or missing key ⇒ 404; 30 failures/hour per IP ⇒ 429):
+
+| Route | Notes |
+|---|---|
+| `GET /public/tickets/:id` | same shape as `GET /me/tickets/:id` |
+| `POST /public/tickets/:id/messages` `{ message, attachmentIds? }` | 60/day per request |
+| `POST /public/tickets/:id/attachments` (multipart `file`) | images/PDF ≤ 10 MB, 20/day per request → `{ id }` |
+| `POST /public/tickets/:id/close` | |
+| `GET /public/tickets/:id/realtime/token` | LiveKit room `support-guest-<id>` (listen-only) |
+
+The server keeps the key's SHA-256 and the key encrypted with `TOTP_ENC_KEY`, so agent reply emails carry the link that reopens the chat: `<MEMBER_APP_URL>/signaler-un-probleme/suivi/<id>#k=<key>` (after `#`: never sent to a server).
+
 The member form (`POST /me/tickets`) also takes an optional `contact` (same checks): how the member wants to be reached, prefilled from the account. The desk returns `ticket.contact` (`verified: false`) and, without an account, `member: { id: null, name }`. **Never treat contact details as identity**: anyone can type someone else's email or number.
 
 ### 3.3 Live updates (LiveKit data messages)
