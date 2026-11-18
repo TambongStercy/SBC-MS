@@ -43,7 +43,7 @@ export function RegularizationDialog({ target, onOpenChange }: {
     if (!target) return;
     setError('');
     const items = parseEvidence(evidence);
-    if (reason.trim().length < 5) { setError('Écrivez un motif d’au moins 5 caractères.'); return; }
+    if (reason.trim().length < 10) { setError('Écrivez un motif d’au moins 10 caractères.'); return; }
     if (items.length === 0) { setError('Ajoutez au moins une preuve (référence prestataire, lien vers la capture…).'); return; }
     setBusy(true);
     try {

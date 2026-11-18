@@ -12,7 +12,7 @@ import { Badge, Button, EmptyState, Input, PageHeader, Panel, PanelHeader, Selec
 import { cn } from '../../lib/cn';
 import { formatRelative } from '../../lib/format';
 
-type Kind = 'bool' | 'number' | 'select' | 'hours3' | 'killswitch';
+type Kind = 'bool' | 'number' | 'select' | 'hours3' | 'killswitch' | 'always';
 
 interface SettingDef {
   key: string;
@@ -41,9 +41,9 @@ export const SECTIONS: Section[] = [
     title: 'Double validation',
     description: 'Ces actions demandent l’accord d’un second agent, différent du demandeur.',
     settings: [
-      { key: 'approval.regularization', label: 'Régularisations de retrait', kind: 'bool', fallback: true },
-      { key: 'approval.manualActivation', label: 'Activations manuelles', kind: 'bool', fallback: true },
-      { key: 'approval.contactChange', label: 'Changements d’e-mail ou de téléphone', kind: 'bool', fallback: true },
+      { key: 'approval.regularization', label: 'Régularisations de retrait', kind: 'always', fallback: 'always', help: 'Toujours exigée : ce réglage ne se désactive pas.' },
+      { key: 'approval.manualActivation', label: 'Activations manuelles', kind: 'always', fallback: 'always', help: 'Toujours exigée : ce réglage ne se désactive pas.' },
+      { key: 'approval.contactChange', label: 'Changements d’e-mail ou de téléphone', kind: 'always', fallback: 'always', help: 'Toujours exigée : ce réglage ne se désactive pas.' },
       { key: 'approval.withdrawalManualCompleteAbove', label: 'Finalisation manuelle d’un retrait au-delà de', kind: 'number', unit: 'F', min: 0, fallback: 50000 },
     ],
   },
@@ -139,6 +139,9 @@ function SettingRow({ def, entry, onSave }: { def: SettingDef; entry?: SettingEn
 
   const control = (() => {
     switch (def.kind) {
+      case 'always':
+        // Fixed on the server (support-service settings accept only 'always'): shown, never edited.
+        return <span className="text-sm font-medium text-fg">Toujours</span>;
       case 'bool':
       case 'killswitch':
         return <Switch id={id} checked={draft === true} onCheckedChange={v => setDraft(v)} aria-label={def.label} className={def.kind === 'killswitch' ? 'data-[state=checked]:bg-danger' : undefined} />;

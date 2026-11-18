@@ -7,12 +7,11 @@ import { toast } from '../../components/toast';
 import { Button, Dialog, DialogContent, Field, Input, Select, Textarea } from '../../components/ui';
 
 export const GATEWAYS = ['CinetPay', 'FeexPay', 'MoneyFusion', 'NOWPayments'] as const;
+/** The packs payment-service can activate manually (CONTRACT §2.2): nothing else would survive the approval. */
 export const PLANS = [
   { value: 'CLASSIQUE', label: 'Classique' },
   { value: 'CIBLE', label: 'Ciblé' },
-  { value: 'WINNER', label: 'Pack Winner' },
-  { value: 'PRO', label: 'PRO' },
-  { value: 'MISE_EN_AVANT', label: 'Mise en avant' },
+  { value: 'UPGRADE', label: 'Passage de Classique à Ciblé' },
 ];
 
 /** French text for the refusals the server can give (CONTRACT §2.2 /activation/manual). */
@@ -53,7 +52,8 @@ export function ManualActivationDialog({ open, onOpenChange, defaults }: {
   useEffect(() => {
     if (!open) return;
     setUserId(defaults?.userId ?? '');
-    setGateway(defaults?.gateway && (GATEWAYS as readonly string[]).includes(defaults.gateway) ? defaults.gateway : '');
+    // Cases store the provider in lowercase ("cinetpay"): match it whatever its case.
+    setGateway(GATEWAYS.find(g => g.toLowerCase() === (defaults?.gateway ?? '').toLowerCase()) ?? '');
     setExternalRef(defaults?.externalRef ?? '');
     setPlan('');
     setReason('');
@@ -64,7 +64,7 @@ export function ManualActivationDialog({ open, onOpenChange, defaults }: {
     e.preventDefault();
     setError('');
     if (!userId.trim() || !gateway || !externalRef.trim() || !plan) { setError('Remplissez le membre, le prestataire, la référence et l’offre.'); return; }
-    if (reason.trim().length < 5) { setError('Écrivez un motif d’au moins 5 caractères.'); return; }
+    if (reason.trim().length < 10) { setError('Écrivez un motif d’au moins 10 caractères.'); return; }
     setBusy(true);
     try {
       const token = await reauth({ title: 'Demander une activation manuelle', description: 'Action sensible : entrez le code de votre application pour envoyer la demande.' });

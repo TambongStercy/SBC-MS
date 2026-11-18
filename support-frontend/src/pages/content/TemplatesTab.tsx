@@ -27,7 +27,7 @@ const COLUMNS: ListColumn<ResponseTemplate>[] = [
 ];
 
 type Draft = Omit<ResponseTemplate, 'id' | 'updatedAt'>;
-const EMPTY: Draft = { title: '', category: 'other', language: 'fr', body: '' };
+const EMPTY: Draft = { title: '', category: 'autre', language: 'fr', body: '' };
 
 /** Ready-made replies agents insert in tickets; managed with `templates.manage`. */
 export function TemplatesTab() {

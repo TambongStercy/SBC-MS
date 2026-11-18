@@ -17,7 +17,7 @@ import { Composer } from './Composer';
 import { Conversation } from './Conversation';
 import { categoryLabel, SlaText } from './shared';
 
-const SOURCE_LABEL: Record<Ticket['source'], string> = { member: 'Membre', assistant: 'Assistant', system: 'Système' };
+const SOURCE_LABEL: Record<Ticket['source'], string> = { member: 'Membre', assistant: 'Assistant', system: 'Système', agent: 'Agent' };
 const UNASSIGNED = 'none';
 
 /** One ticket: conversation and composer; status, assignment and history beside (below on phones). */
@@ -205,8 +205,9 @@ function eventText(e: TicketEvent): string {
   switch (e.type) {
     case 'created': return 'Ticket créé';
     case 'status': return `Statut : ${status(e.from)} → ${status(e.to)}`;
-    case 'assign': return e.to ? `Attribué à ${e.to}` : 'Attribution retirée';
+    case 'assign': return e.to ? `Attribué à ${e.toName || 'un agent'}` : 'Attribution retirée';
     case 'priority': return `Priorité : ${TICKET_PRIORITY[e.to as TicketPriority]?.label ?? e.to ?? '—'}`;
+    case 'sla_breached': return 'Délai de réponse dépassé';
     default: return e.type;
   }
 }

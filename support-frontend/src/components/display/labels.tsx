@@ -21,16 +21,15 @@ export const TICKET_PRIORITY: Record<TicketPriority, { label: string; tone: Tone
   urgent: { label: 'Urgente', tone: 'danger' },
 };
 
-/** Ticket categories (CdC §7.2 list pending; unknown keys are shown as sent). */
+/** Ticket categories: support-service's keys (config/constants.ts TICKET_CATEGORIES); unknown keys are shown as sent. */
 export const TICKET_CATEGORY: Record<string, string> = {
-  activation: 'Activation du compte',
-  withdrawal: 'Retrait',
-  payment: 'Paiement',
-  account: 'Compte et connexion',
-  identity_verification: 'Vérification d’identité',
-  ads: 'Ads Network',
-  commission: 'Commissions et filleuls',
-  other: 'Autre',
+  compte_acces: 'Compte & accès',
+  activation_paiement: 'Activation / paiement',
+  retrait: 'Retrait',
+  commissions: 'Commissions',
+  vues_whatsapp: 'Vues WhatsApp',
+  technique: 'Technique',
+  autre: 'Autre',
 };
 
 export const CASE_TYPE: Record<CaseType, string> = {
@@ -80,6 +79,7 @@ export const RECHECK_RESULT: Record<RecheckOutcome, { label: string; tone: Tone;
   not_found: { label: 'Introuvable', tone: 'danger', help: 'Le prestataire ne connaît pas cette référence. Rien n’a été activé.' },
   failed: { label: 'Échoué', tone: 'danger', help: 'Le prestataire indique un échec.' },
   provider_unavailable: { label: 'Prestataire indisponible', tone: 'warning', help: 'Le prestataire n’a pas répondu. Rien n’a changé ; réessayez plus tard.' },
+  not_finished: { label: 'Paiement non terminé', tone: 'neutral', help: 'Le paiement n’a jamais été envoyé à un opérateur : le membre dit avoir été débité quand même. Vérifiez auprès de l’opérateur.' },
 };
 
 export const APPROVAL_TYPE: Record<ApprovalType, string> = {
@@ -95,6 +95,7 @@ export const APPROVAL_STATUS: Record<ApprovalStatus, { label: string; tone: Tone
   executed: { label: 'Exécutée', tone: 'success' },
   failed: { label: 'Échec à l’exécution', tone: 'danger' },
   expired: { label: 'Expirée', tone: 'neutral' },
+  cancelled: { label: 'Annulée', tone: 'neutral' },
 };
 
 export const VIEW_STATE: Record<ViewTaskState, { label: string; tone: Tone }> = {
@@ -104,6 +105,7 @@ export const VIEW_STATE: Record<ViewTaskState, { label: string; tone: Tone }> = 
   approved: { label: 'Validée', tone: 'success' },
   rejected: { label: 'Rejetée', tone: 'danger' },
   to_review: { label: 'À revoir', tone: 'warning' },
+  closed: { label: 'Fermée', tone: 'neutral' },
 };
 
 /** A status badge from one of the tables above; an unknown value is shown as sent. */

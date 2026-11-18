@@ -14,6 +14,7 @@ export const DECISION_LABEL: Record<ViewDecision, string> = {
   reject: 'Rejetée',
   review: 'À revoir',
   technical_error: 'Erreur technique',
+  already_decided: 'Déjà décidée ailleurs',
 };
 
 export const REJECT_PRESETS = [

@@ -36,7 +36,7 @@ export interface EnrollStart {
 
 // ── Recheck (CONTRACT §2.2) ─────────────────────────────────────────────
 
-export type RecheckOutcome = 'confirmed' | 'pending' | 'not_found' | 'failed' | 'provider_unavailable';
+export type RecheckOutcome = 'confirmed' | 'pending' | 'not_found' | 'failed' | 'provider_unavailable' | 'not_finished';
 
 export interface RecheckResult {
   result: RecheckOutcome;
@@ -138,7 +138,7 @@ export interface Ticket {
   queue: string;
   priority: TicketPriority;
   status: TicketStatus;
-  source: 'member' | 'assistant' | 'system';
+  source: 'member' | 'assistant' | 'system' | 'agent';
   member: PersonRef;
   assignee?: PersonRef | null;
   slaDueAt?: string | null;
@@ -170,6 +170,8 @@ export interface TicketEvent {
   actor?: PersonRef;
   from?: string | null;
   to?: string | null;
+  /** assign events: the agent's name (to holds the id). */
+  toName?: string | null;
   reason?: string;
   at: string;
 }
@@ -294,7 +296,7 @@ export interface FinanceWithdrawal {
 // ── Approvals (assumed) ─────────────────────────────────────────────────
 
 export type ApprovalType = 'regularization' | 'manual_activation' | 'contact_change';
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | 'expired';
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | 'expired' | 'cancelled';
 
 export interface Approval {
   id: string;
@@ -313,7 +315,7 @@ export interface Approval {
 
 // ── Views (CONTRACT addendum 1.2, assumed) ──────────────────────────────
 
-export type ViewTaskState = 'available' | 'assigned' | 'in_progress' | 'approved' | 'rejected' | 'to_review';
+export type ViewTaskState = 'available' | 'assigned' | 'in_progress' | 'approved' | 'rejected' | 'to_review' | 'closed';
 
 export interface ViewProof {
   videoUrl: string;
@@ -343,7 +345,7 @@ export interface ViewTask {
   proof?: ViewProof;
 }
 
-export type ViewDecision = 'approve' | 'reject' | 'review' | 'technical_error';
+export type ViewDecision = 'approve' | 'reject' | 'review' | 'technical_error' | 'already_decided';
 
 export interface ViewAgentStatus {
   id: string;

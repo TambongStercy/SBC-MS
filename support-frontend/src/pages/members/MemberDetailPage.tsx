@@ -229,7 +229,7 @@ function ContactChangeDialog({ open, onOpenChange, member }: { open: boolean; on
     const v = value.trim();
     if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { setError('Entrez une adresse e-mail valide.'); return; }
     if (field === 'phoneNumber' && v.replace(/\D/g, '').length < 8) { setError('Entrez un numéro complet, avec l’indicatif du pays.'); return; }
-    if (reason.trim().length < 10) { setError('Expliquez la demande et les preuves vérifiées (10 caractères minimum).'); return; }
+    if (reason.trim().length < 20) { setError('Expliquez la demande et les preuves vérifiées (20 caractères minimum).'); return; }
     setBusy(true);
     try {
       const token = await reauth({ title: 'Confirmer la demande', description: 'Changement de contact d’un membre : entrez le code de votre application d’authentification.' });
