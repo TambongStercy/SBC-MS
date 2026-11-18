@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { AccessToken, DataPacket_Kind, RoomServiceClient } from 'livekit-server-sdk';
 import config from '../config';
 import logger from '../utils/logger';
@@ -53,7 +54,10 @@ export function publishTicketEvent(e: { ticketId: string; memberId?: string | nu
     if (e.forMember && e.memberId) void send(memberRoom(String(e.memberId)), payload);
 }
 
-async function subscribeToken(identity: string, room: string, name?: string) {
+async function subscribeToken(who: string, room: string, name?: string) {
+    // One identity per connection: LiveKit disconnects the older of two participants with the
+    // same identity, so a member (or agent) with two tabs or two devices would kick each other forever.
+    const identity = `${who}#${randomBytes(4).toString('hex')}`;
     const at = new AccessToken(config.livekit.apiKey, config.livekit.apiSecret, { identity, name, ttl: '4h' });
     at.addGrant({ room, roomJoin: true, canSubscribe: true, canPublish: false, canPublishData: false, canUpdateOwnMetadata: false });
     return { enabled: true as const, url: config.livekit.url, room, token: await at.toJwt() };

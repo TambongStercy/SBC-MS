@@ -33,8 +33,11 @@ describe('live ticket updates (LiveKit)', () => {
         expect(r.status).toBe(200);
         expect(r.body.data).toMatchObject({ enabled: true, url: 'wss://live.test', room: `support-member-${MEMBER}` });
         const claims: any = jwt.verify(r.body.data.token, 'secret-test-secret-test-secret-test');
-        expect(claims.sub).toBe(`member:${MEMBER}`);
+        expect(claims.sub).toMatch(new RegExp(`^member:${MEMBER}#[0-9a-f]{8}$`));
         expect(claims.video).toMatchObject({ room: `support-member-${MEMBER}`, roomJoin: true, canSubscribe: true, canPublish: false, canPublishData: false });
+        // A second tab or device gets its own identity, so the two never kick each other out.
+        const again: any = jwt.verify((await member('get', '/realtime/token')).body.data.token, 'secret-test-secret-test-secret-test');
+        expect(again.sub).not.toBe(claims.sub);
     });
 
     it('signals the desk and the member on a public reply, the desk only on an internal note; never any text', async () => {
