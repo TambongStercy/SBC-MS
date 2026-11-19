@@ -397,7 +397,22 @@ push), so a hijacker cannot silence it.
   stays `pending_admin_approval` and can be approved once the lock ends.
 - Not locked: admin direct payouts (`/withdrawals/admin/direct`,
   `/payouts/initiate`), which pay out of SBC's provider balance, not a
-  member's. MoMo number changes do not lock (not part of Rufus's rule).
+  member's.
+- **MoMo number changes lock too (Security plan Phase 0, Rufus 2026-11-19).**
+  `PUT /users/me` no longer changes `momoNumber`/`momoOperator`: unchanged
+  details pass (any format), anything else answers 409
+  `MOMO_CHANGE_NEEDS_CODE`. The change goes through
+  `POST /users/me/momo/request-change {momoNumber, momoOperator, password}`
+  (code emailed to the ACCOUNT address, bound to that number + operator), then
+  `/me/momo/confirm-change {…, code}`. Replacing a number locks withdrawals
+  (reason `momo_change`) and alerts the account email; a first number needs
+  the code but no lock. An admin replacing a member's number locks too.
+  `utils/momo.ts`, `src/scripts/check-momo-and-country-lock.ts`. The member
+  app's `MomoChangeSheet` (SBC-WEB-UI) drives it.
+- **The country is not the member's to change** (same plan item): `PUT
+  /users/me` ignores `country`; support or the admin edit changes it.
+- **Same gap still open: the crypto wallet address** (`PUT
+  /users/crypto/wallet`) changes with no code and no lock.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
 
@@ -1592,6 +1607,41 @@ Related: FeexPay's status API returned 502 for hours on 2026-09-05 during an MTN
 Mobile Money incident (`INTERNAL_PROCESSING_ERROR`). During a provider outage,
 manually settling anyone on SMS evidence risks crediting a payment the operator
 later reverses.
+
+### Security plan, Step A (2026-11-19, branch feature/security-step-a)
+
+The "SBC Security & Country Plan" (12 phases, P0–P11) starts with these:
+- **MoMo lock and country lock:** see "Withdrawals are locked 48 h…" above.
+- **Why a payment did not finish (P10):** `paymentintents.failure` `{group,
+  code, gateway, providerCode, providerMessage, step, httpStatus, requestId,
+  at}`. The group is decided once when recorded (`utils/payment-failure.ts`):
+  `sbc_code`, `provider_api`, `member`, `unknown`. It is recorded at every
+  initiation failure and in `handlePaymentCompletion` for every provider
+  FAILED/EXPIRED/CANCELED. An unknown provider text lands in `unknown` with
+  its `providerCode` kept (CinetPay 2010, FeexPay "ECHEC"): add a rule to the
+  `RULES` table once its meaning is known.
+  `src/scripts/check-payment-failure-reasons.ts`.
+- **FeexPay status-check errors no longer set ERROR.** `checkFeexpayTransactionStatus`
+  (and its by-session twin) used to set the payment to ERROR whenever FeexPay's
+  status API failed, which took it out of the payin reconciler for good, and could
+  overwrite a SUCCEEDED when completion threw afterwards. The status is left as it
+  was; the error goes to `metadata.feexpayStatusCheckError`.
+- **MoneyFusion payin status host.** `www.pay.moneyfusion.net` (their documented
+  host) fails the TLS handshake; `pay.moneyfusion.net` answers the same
+  `/paiementNotif/<token>` route (`MONEYFUSION_STATUS_URL`). The client returned
+  null on the failure and the reconciler counted it as an answer, so MoneyFusion
+  payins were never actually reconciled. A transport failure now throws (not
+  counted). MoneyFusion keeps an abandoned checkout `pending` forever.
+  Read-only audit: `src/scripts/audit-stuck-moneyfusion-payins.ts` (≤ 5 calls/s,
+  CSV, flags members who paid again later: crediting those would pay twice).
+- **Redis for hot counters:** `utils/redis.ts` in user, gateway and payment
+  services (identical but for the service name). Off while `REDIS_URL` is unset;
+  down or slower than 150 ms returns the caller's fallback (fail open), every
+  key `sbc:<service>:…` with a TTL. No caller yet. `check-redis-fail-open.ts`.
+- **Indexes:** `scripts/security-plan/indexes.mongosh.js` (dry run unless
+  `APPLY=true`, never drops; reports the redundant `referrals` indexes:
+  `referrer_1`, `archived_1`, to remove from the schema first).
+- **Load test:** `scripts/security-plan/k6/` (preprod only, README).
 
 ### Master deploys need ONE click (post-PR #73)
 
