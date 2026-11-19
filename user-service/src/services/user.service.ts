@@ -38,7 +38,8 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError, OtpThrottledError } from '../utils/errors';
+import { AppError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
+import { isSameMomo, momoChangeTarget, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
 import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsForCountry } from '../utils/country-filter';
@@ -809,16 +810,21 @@ export class UserService {
 
         if (updateData.name !== undefined) allowedFields.name = updateData.name;
         if (updateData.region !== undefined) allowedFields.region = updateData.region;
-        if (updateData.country !== undefined) {
-            allowedFields.country = normalizeCountryName(updateData.country);
-            if (updateData.country !== allowedFields.country) {
-                log.info(`Country normalized during profile update: ${updateData.country} -> ${allowedFields.country}`);
-            }
-        }
+        // The country is not the member's to change (Security plan Phase 0):
+        // it decides payment routes, prices and later the country subdomain.
+        // Support changes it. The profile page still resends it on every save,
+        // so it is ignored here rather than refused.
         if (updateData.city !== undefined) allowedFields.city = updateData.city;
         if (updateData.phoneNumber !== undefined) allowedFields.phoneNumber = updateData.phoneNumber;
-        if (updateData.momoNumber !== undefined) allowedFields.momoNumber = updateData.momoNumber;
-        if (updateData.momoOperator !== undefined) allowedFields.momoOperator = updateData.momoOperator;
+        // The MoMo number receives withdrawals. Changing it needs the password and
+        // a code sent to the account email (requestMomoChange / confirmMomoChange).
+        // The page resends the current details on every save: those pass silently.
+        if (updateData.momoNumber !== undefined || updateData.momoOperator !== undefined) {
+            const current = await userRepository.findById(userId);
+            if (!current || !isSameMomo(current, updateData, normalizeCountryName(current.country))) {
+                throw new MomoChangeNeedsCodeError();
+            }
+        }
         if (updateData.whatsappGroupLink !== undefined) allowedFields.whatsappGroupLink = updateData.whatsappGroupLink;
         if (updateData.avatar !== undefined) allowedFields.avatar = updateData.avatar;
         if (updateData.avatarId !== undefined) allowedFields.avatarId = updateData.avatarId;
@@ -2979,17 +2985,23 @@ export class UserService {
         // member's own change does: the October 2026 drain went through an
         // admin account. Forms resend unchanged values, so compare first.
         let contactChange: { reason: WithdrawalLockReason; newValue: string; previousEmail?: string } | null = null;
-        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined) {
+        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined
+            || allowedAdminUpdates.momoNumber !== undefined || allowedAdminUpdates.momoOperator !== undefined) {
             const current = await userRepository.findById(userId);
             if (current) {
                 const emailChanged = allowedAdminUpdates.email !== undefined
                     && String(allowedAdminUpdates.email).trim().toLowerCase() !== (current.email || '').toLowerCase();
                 const phoneChanged = allowedAdminUpdates.phoneNumber !== undefined
                     && !isSamePhoneNumber(current.phoneNumber, allowedAdminUpdates.phoneNumber);
+                // Replacing an existing MoMo number locks too (Security plan Phase 0).
+                const momoChanged = !!current.momoNumber
+                    && !isSameMomo(current, allowedAdminUpdates, normalizeCountryName(current.country));
                 if (emailChanged) {
                     contactChange = { reason: 'email_change', newValue: String(allowedAdminUpdates.email), previousEmail: current.email };
                 } else if (phoneChanged) {
                     contactChange = { reason: 'phone_change', newValue: String(allowedAdminUpdates.phoneNumber), previousEmail: current.email };
+                } else if (momoChanged) {
+                    contactChange = { reason: 'momo_change', newValue: String(allowedAdminUpdates.momoNumber || current.momoNumber), previousEmail: current.email };
                 }
             }
         }
@@ -3009,7 +3021,7 @@ export class UserService {
             const updatedUser = await userRepository.updateById(userId, allowedAdminUpdates);
             log.info(`Admin successfully updated user ${userId}`);
             if (updatedUser && contactChange) {
-                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
+                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : contactChange.reason === 'momo_change' ? 'MoMo details' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
                 alertContactChange({ userId, ...contactChange });
             }
             return updatedUser; // Return updated user
@@ -4443,6 +4455,109 @@ export class UserService {
 
         // Optional: Send confirmation to the *old* phone number?
         // await notificationService.sendPhoneChangeConfirmation(user.id, user.phoneNumber /* old phone */, normalizedPhoneNumber, user.name);
+    }
+
+    /**
+     * Step 1 of a Mobile Money change (Security plan Phase 0): the account
+     * password, then a code to the account email. The code proves control of
+     * the account, so it never goes to the new number (whoever holds that number
+     * is the one we cannot trust yet). It is bound to this number + operator.
+     * A resend without the password is allowed while a code for the same
+     * details is live, like the email change.
+     */
+    async requestMomoChange(
+        userId: string | Types.ObjectId,
+        input: { momoNumber?: unknown; momoOperator?: unknown; password?: unknown },
+    ): Promise<{ sentTo: string }> {
+        const operator = normalizeMomoOperator(input.momoOperator);
+        if (!MOMO_OPERATOR_PATTERN.test(operator)) {
+            throw new AppError('Choisissez votre opérateur Mobile Money.', 400);
+        }
+        const user = await UserModel.findById(userId).select('+password');
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        const country = normalizeCountryName(user.country);
+        const number = normalizeMomoNumber(input.momoNumber, country);
+        if (!number) {
+            throw new AppError('Numéro Mobile Money invalide.', 400);
+        }
+        if (user.momoNumber && user.momoOperator && isSameMomo(user, { momoNumber: number, momoOperator: operator }, country)) {
+            throw new AppError('C’est déjà votre numéro Mobile Money.', 400);
+        }
+        if (!user.email) {
+            throw new AppError('Votre compte n’a pas d’adresse e-mail : contactez le support pour changer votre numéro Mobile Money.', 400);
+        }
+        const target = momoChangeTarget(number, operator);
+        const password = typeof input.password === 'string' ? input.password : '';
+        const isResend = !password && (user.otps || []).some(o =>
+            o.purpose === 'changeMomo' && o.target === target && new Date(o.expiration) > new Date());
+        if (!isResend && (!password || !user.password || !(await bcrypt.compare(password, user.password)))) {
+            throw new AppError(password ? 'Mot de passe incorrect.' : 'Votre code a expiré : recommencez le changement de numéro.', 400);
+        }
+
+        const otpCode = await this.generateAndStoreOtp(user._id, 'otps', 10, { purpose: 'changeMomo', target });
+        await notificationService.sendOtp({
+            userId: user._id.toString(),
+            recipient: user.email,
+            channel: DeliveryChannel.EMAIL,
+            code: otpCode,
+            expireMinutes: 10,
+            isRegistration: false,
+            purpose: 'changeMomo',
+            userName: user.name,
+            language: user.language?.[0] || 'fr',
+        });
+        log.info(`MoMo change code sent to the account email of user ${userId} (number ending ${number.slice(-3)}, ${operator})`);
+        return { sentTo: maskEmail(user.email) };
+    }
+
+    /**
+     * Step 2: the code sent by requestMomoChange, for the same number and
+     * operator. Replacing an existing number locks withdrawals for
+     * WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE hours and alerts the account
+     * email; a first number (none before) only needs the code.
+     */
+    async confirmMomoChange(
+        userId: string | Types.ObjectId,
+        input: { momoNumber?: unknown; momoOperator?: unknown; code?: unknown },
+    ): Promise<{ momoNumber: string; momoOperator: string; withdrawalsLockedUntil: string | null }> {
+        const operator = normalizeMomoOperator(input.momoOperator);
+        const code = typeof input.code === 'string' ? input.code.trim() : '';
+        const user = await userRepository.findById(userId);
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        const country = normalizeCountryName(user.country);
+        const number = normalizeMomoNumber(input.momoNumber, country);
+        if (!number || !MOMO_OPERATOR_PATTERN.test(operator) || !code) {
+            throw new AppError('Numéro, opérateur et code sont requis.', 400);
+        }
+        const target = momoChangeTarget(number, operator);
+        const now = new Date();
+        const matching = (user.otps || []).find(otp => otp.purpose === 'changeMomo' && otp.target === target
+            && otpMatches(otp.code, code) && otp.expiration > now);
+        if (!matching) {
+            log.warn(`Invalid or expired MoMo change code for user ${userId}`);
+            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu par e-mail.', 400);
+        }
+        await userRepository.clearOtps(user._id, 'otps');
+
+        const hadNumber = !!user.momoNumber;
+        const changed = !isSameMomo(user, { momoNumber: number, momoOperator: operator }, country);
+        const lock = hadNumber && changed ? withdrawalLockFields('momo_change') : null;
+        await userRepository.updateById(user._id, {
+            momoNumber: number,
+            momoOperator: operator,
+            ...(lock ?? {}),
+        });
+        if (lock) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'momo_change', newValue: number });
+            log.warn(`MoMo details of user ${userId} changed (now ending ${number.slice(-3)}, ${operator}): withdrawals locked until ${lock.withdrawalsLockedUntil.toISOString()}`);
+        } else {
+            log.info(`MoMo details of user ${userId} set (ending ${number.slice(-3)}, ${operator})`);
+        }
+        return { momoNumber: number, momoOperator: operator, withdrawalsLockedUntil: lock ? lock.withdrawalsLockedUntil.toISOString() : null };
     }
 
     /** Whether withdrawals are blocked after an email/phone change (utils/withdrawal-lock.ts). */

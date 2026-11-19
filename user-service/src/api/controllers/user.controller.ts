@@ -1109,14 +1109,14 @@ export class UserController {
             const updateData: Record<string, any> = {};
             if (name !== undefined) updateData.name = name;
             if (region !== undefined) updateData.region = region;
-            if (country !== undefined) updateData.country = country;
+            // `country` is read but never saved: members cannot change it (support does).
+            void country;
             if (city !== undefined) updateData.city = city;
             if (phoneNumber !== undefined) {
                 // --- Phone Number Normalization for Update ---
-                // For phone number updates, we need the country.
-                // If `country` is also being updated, use that. Otherwise, fetch the user's current country.
-                let countryForNormalization = country; // Country from request body
-                if (!countryForNormalization) {
+                // Normalized with the account's own country (the body's country is ignored).
+                let countryForNormalization: string | undefined;
+                {
                     const currentUser = await this.userService.getUserProfile(userId); // Fetch current profile
                     if (currentUser && currentUser.country) {
                         countryForNormalization = currentUser.country;
@@ -1222,6 +1222,10 @@ export class UserController {
 
         } catch (error: any) {
             log.error(`Error modifying user profile: ${error.message}`);
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message, code: (error as any).code });
+                return;
+            }
             // Handle specific errors, e.g., duplicate phone number if changed
             if (error.message.includes('duplicate key') && error.message.includes('phoneNumber')) {
                 res.status(409).json({ success: false, message: 'Phone number is already in use.' });
@@ -2457,6 +2461,52 @@ export class UserController {
             } else {
                 res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
             }
+        }
+    }
+
+    /**
+     * @route POST /users/me/momo/request-change { momoNumber, momoOperator, password }
+     * Sends a code to the account email for this MoMo number + operator.
+     */
+    async requestMomoChange(req: AuthenticatedRequest, res: Response): Promise<void> {
+        const userId = req.user?.userId;
+        if (!userId) {
+            res.status(401).json({ success: false, message: 'Authentication required.' });
+            return;
+        }
+        try {
+            const data = await this.userService.requestMomoChange(userId, req.body || {});
+            res.status(200).json({ success: true, data, message: `Un code a été envoyé à ${data.sentTo}.` });
+        } catch (error: any) {
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            log.error(`[Controller] MoMo change request failed for user ${userId}:`, error);
+            res.status(500).json({ success: false, message: 'Le code n’a pas pu être envoyé. Réessayez.' });
+        }
+    }
+
+    /**
+     * @route POST /users/me/momo/confirm-change { momoNumber, momoOperator, code }
+     * Applies the change; replacing a number locks withdrawals (48 h by default).
+     */
+    async confirmMomoChange(req: AuthenticatedRequest, res: Response): Promise<void> {
+        const userId = req.user?.userId;
+        if (!userId) {
+            res.status(401).json({ success: false, message: 'Authentication required.' });
+            return;
+        }
+        try {
+            const data = await this.userService.confirmMomoChange(userId, req.body || {});
+            res.status(200).json({ success: true, data });
+        } catch (error: any) {
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            log.error(`[Controller] MoMo change confirm failed for user ${userId}:`, error);
+            res.status(500).json({ success: false, message: 'Le changement n’a pas pu être enregistré. Réessayez.' });
         }
     }
 

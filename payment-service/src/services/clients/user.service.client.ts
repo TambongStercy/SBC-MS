@@ -44,7 +44,7 @@ export interface WithdrawalLock {
     locked: boolean;
     /** ISO date, only when locked. */
     until?: string;
-    reason?: 'email_change' | 'phone_change';
+    reason?: 'email_change' | 'phone_change' | 'momo_change';
 }
 
 interface WithdrawalLimitCheckResponse {

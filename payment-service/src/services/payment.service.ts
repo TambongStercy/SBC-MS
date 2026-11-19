@@ -492,6 +492,7 @@ class PaymentService {
         const until = new Date(lock.until);
         const what = lock.reason === 'email_change' ? "de l'adresse e-mail"
             : lock.reason === 'phone_change' ? 'du numéro de téléphone'
+            : lock.reason === 'momo_change' ? 'du numéro Mobile Money'
             : "de l'adresse e-mail ou du numéro de téléphone";
         log.warn(`Withdrawal refused for user ${userId}: locked until ${lock.until} after ${lock.reason ?? 'contact change'} (${audience})`);
 

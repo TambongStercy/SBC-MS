@@ -258,6 +258,9 @@ router.post('/confirm-change-email', mediumLimiter, (req, res, next) => userCont
 router.post('/request-change-phone', (req, res, next) => userController.requestChangePhoneOtp(req as AuthenticatedRequest, res, next));
 // COMPLETE Phone Change (Authenticated, rate limited)
 router.post('/confirm-change-phone', mediumLimiter, (req, res, next) => userController.confirmChangePhone(req as AuthenticatedRequest, res, next));
+// Mobile Money number that receives withdrawals: password + code to the account email (Security plan Phase 0).
+router.post('/me/momo/request-change', strictLimiter, (req, res) => userController.requestMomoChange(req as AuthenticatedRequest, res));
+router.post('/me/momo/confirm-change', mediumLimiter, (req, res) => userController.confirmMomoChange(req as AuthenticatedRequest, res));
 
 // === Admin Routes ===
 // Apply admin authorization middleware for these routes
