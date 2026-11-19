@@ -1,8 +1,18 @@
+import { createHash, timingSafeEqual } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import config from '../../config';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
+
+/** Constant-time comparison of a presented secret with the expected one. */
+function secretEquals(presented: string | undefined, expected: string | undefined): boolean {
+    if (!presented || !expected) return false;
+    const a = createHash('sha256').update(presented).digest();
+    const b = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(a, b);
+}
+
 
 const log = logger.getLogger('AuthMiddleware');
 
@@ -62,7 +72,7 @@ export const authenticateServiceRequest = (req: Request, res: Response, next: Ne
         }
 
         const token = authHeader.slice(7);
-        if (token !== config.services.serviceSecret) {
+        if (!secretEquals(token, config.services.serviceSecret)) {
             log.warn('Invalid service token received');
             return res.status(401).json({ success: false, message: 'Invalid service authentication' });
         }

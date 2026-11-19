@@ -68,6 +68,18 @@ export function getOtpExpiration(minutesToExpire = 10): Date {
 }
 
 /**
+ * A short keyed fingerprint of a code, for logs. Logs must never hold a usable
+ * code (anyone reading them could sign in as the member while it is valid), but
+ * an investigator who has the code can recompute this and match the log line.
+ * Case-folded like otpMatches, so a typed "FJ9EYB" matches the stored "Fj9EYB".
+ */
+export function otpFingerprint(code: string | undefined | null): string {
+    if (!code) return 'none';
+    const key = process.env.SERVICE_SECRET || process.env.JWT_SECRET || 'otp-fingerprint';
+    return crypto.createHmac('sha256', key).update(String(code).trim().toLowerCase()).digest('hex').slice(0, 10);
+}
+
+/**
  * Compares a stored OTP against what the user typed.
  *
  * Deliberately case-insensitive: codes are mixed-case (`Fj9EYB`) and phone

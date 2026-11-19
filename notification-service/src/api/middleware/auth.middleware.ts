@@ -1,6 +1,16 @@
+import { createHash, timingSafeEqual } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import config from '../../config';
+
+/** Constant-time comparison of a presented secret with the expected one. */
+function secretEquals(presented: string | undefined, expected: string | undefined): boolean {
+    if (!presented || !expected) return false;
+    const a = createHash('sha256').update(presented).digest();
+    const b = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(a, b);
+}
+
 
 // Define JWT payload interface
 interface JwtPayload {
@@ -122,7 +132,7 @@ export const authenticateServiceRequest = async (
         const token = authHeader.split(' ')[1];
 
         // Validate service token against the shared secret
-        if (token !== config.services.serviceSecret) { // Use the correct config path
+        if (!secretEquals(token, config.services.serviceSecret)) { // Use the correct config path
             return res.status(403).json({ success: false, message: 'Invalid service token' });
         }
 
@@ -163,7 +173,7 @@ export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: Nex
  */
 export const authenticateServiceOrAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith('Bearer ') && authHeader.substring(7) === config.services.serviceSecret) {
+    if (authHeader?.startsWith('Bearer ') && secretEquals(authHeader.substring(7), config.services.serviceSecret)) {
         return next();
     }
     return authenticate(req, res, () => requireAdmin(req, res, next));
