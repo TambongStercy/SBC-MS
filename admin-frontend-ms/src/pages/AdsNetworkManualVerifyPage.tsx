@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { HugeiconsIcon } from '@hugeicons/react';
@@ -7,10 +7,13 @@ import ReviewVideoPlayer from '../components/common/ReviewVideoPlayer';
 import { Can } from '../components/Can';
 import { usePageFilters } from '../hooks/usePageFilters';
 import { PageFilters } from '../components/filters/PageFilters';
-import { Badge, Button, EmptyState, Field, Input, MenuItem, PageHeader, Panel, Skeleton } from '../components/ui';
+import { Badge, Button, EmptyState, Field, Input, MenuItem, PageHeader, Pagination, Panel, Skeleton } from '../components/ui';
 import { ConfirmDialog, DateText, ErrorState, Notice, RowMenu, TodoPanel, formatNumber, type ConfirmOptions } from '../components/moduleKit';
 import { apiErrorMessage, approveManualVerification, rejectManualVerification, type ManualVerification } from '../api/adsNetwork';
-import { countryOnly, fetchManualVerifications } from '../components/adsNetwork/api';
+import { countryOnly, fetchManualVerificationPage } from '../components/adsNetwork/api';
+import { useAuth } from '../context/AuthContext';
+
+const PAGE_SIZE = 20;
 
 /**
  * Video-proof review queue (module adsProofs). Each item is a diffuseur's
@@ -19,17 +22,26 @@ import { countryOnly, fetchManualVerifications } from '../components/adsNetwork/
  * count off the video, then validates (the day is verified and the diffuseur
  * credited) or refuses, optionally banning the diffuseur in the same action.
  * Country = the diffuseur's; period = when the video was received.
+ *
+ * Decisions now belong to SBC Support (its verifiers' space): while the service
+ * says `readOnly`, this page only shows the queue. The super admin keeps the
+ * buttons, under a warning, and the service logs each such override.
  */
 export default function AdsNetworkManualVerifyPage() {
   const filters = usePageFilters();
   const qc = useQueryClient();
+  const { role } = useAuth();
+  const [page, setPage] = useState(1);
   const queueScope = countryOnly(filters.apiParams);
+
+  useEffect(() => { setPage(1); }, [filters.apiParams]);
+
   const list = useQuery({
-    queryKey: ['ads', 'proofs', filters.apiParams],
-    queryFn: () => fetchManualVerifications(filters.apiParams),
+    queryKey: ['ads', 'proofs', page, filters.apiParams],
+    queryFn: () => fetchManualVerificationPage({ page, limit: PAGE_SIZE }, filters.apiParams),
     placeholderData: prev => prev,
   });
-  const all = useQuery({ queryKey: ['ads', 'queue', 'proofs', queueScope], queryFn: () => fetchManualVerifications(queueScope) });
+  const all = useQuery({ queryKey: ['ads', 'queue', 'proofs', queueScope], queryFn: () => fetchManualVerificationPage({ page: 1, limit: 1 }, queueScope) });
   const [views, setViews] = useState<Record<string, string>>({});
   const [missing, setMissing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmOptions | null>(null);
@@ -71,14 +83,21 @@ export default function AdsNetworkManualVerifyPage() {
     },
   });
 
-  const items = list.data ?? [];
+  const items = list.data?.items ?? [];
+  const pagination = list.data?.pagination;
+  // The service is the authority (it answers 403 otherwise); role is a fallback while loading.
+  const readOnly = list.data?.adminDecisions.readOnly ?? true;
+  const canDecide = list.data ? list.data.adminDecisions.allowed : role === 'admin';
+  const overriding = readOnly && canDecide;
 
   return (
     <div className="space-y-6">
       <PageHeader
        
         title="Vérifications vidéo"
-        description="Enregistrements d’écran des diffuseurs : vérifiez le code, lisez le nombre de vues, puis validez ou refusez."
+        description={readOnly
+          ? 'Enregistrements d’écran des diffuseurs en attente de vérification.'
+          : 'Enregistrements d’écran des diffuseurs : vérifiez le code, lisez le nombre de vues, puis validez ou refusez.'}
         actions={(
           <Button variant="outline" size="lg" className="w-full sm:w-auto" onClick={() => void refresh()} loading={list.isFetching}>
             {!list.isFetching && <HugeiconsIcon icon={RefreshIcon} size={16} aria-hidden="true" />}
@@ -87,7 +106,18 @@ export default function AdsNetworkManualVerifyPage() {
         )}
       />
 
-      <TodoPanel loading={all.isLoading} items={[{ key: 'p', label: 'Preuves vidéo à vérifier', hint: 'Chaque diffuseur attend la validation de son jour pour être crédité.', count: all.data?.length ?? 0 }]} />
+      <TodoPanel loading={all.isLoading} items={[{ key: 'p', label: 'Preuves vidéo à vérifier', hint: 'Chaque diffuseur attend la validation de son jour pour être crédité.', count: all.data?.pagination.total ?? 0 }]} />
+
+      {readOnly && (
+        <Notice tone={overriding ? 'warning' : 'info'}>
+          <p className="font-medium">Les décisions se prennent dans l’espace SBC Support.</p>
+          <p className="mt-0.5 text-fg-muted">
+            {overriding
+              ? 'En tant que super admin, vous pouvez encore valider ou refuser ici. Chaque décision prise ici est une dérogation enregistrée à votre nom : ne l’utilisez qu’en cas de nécessité.'
+              : 'Cette page affiche la file en lecture seule. Les vérificateurs valident ou refusent les preuves depuis SBC Support.'}
+          </p>
+        </Notice>
+      )}
 
       <PageFilters filters={filters} />
 
@@ -138,8 +168,10 @@ export default function AdsNetworkManualVerifyPage() {
                   Code émis <DateText value={mv.codeIssuedAt} />{mv.uploadedAt && <> · vidéo reçue <DateText value={mv.uploadedAt} /></>}
                 </p>
 
+                {canDecide && (
                 <Can module="adsProofs" write>
                   <div className="mt-auto space-y-2 border-t border-line pt-3">
+                    {overriding && <p className="text-xs font-medium text-warning">Dérogation super admin : décision journalisée.</p>}
                     <Field label="Nombre de vues lu sur la vidéo" error={missing === id ? 'Indiquez le nombre de vues lu sur la vidéo.' : undefined}>
                       <Input
                         type="number" min={0} inputMode="numeric" placeholder="ex. 262" className="h-11"
@@ -160,10 +192,17 @@ export default function AdsNetworkManualVerifyPage() {
                     </div>
                   </div>
                 </Can>
+                )}
               </Panel>
             );
           })}
         </div>
+      )}
+
+      {pagination && pagination.totalPages > 1 && (
+        <Panel>
+          <Pagination page={page} totalPages={pagination.totalPages} total={pagination.total} pageSize={PAGE_SIZE} onPageChange={setPage} className="border-t-0" />
+        </Panel>
       )}
 
       <ConfirmDialog options={confirm} onClose={() => setConfirm(null)} />

@@ -50,5 +50,26 @@ export const fetchManualVerifications = async (f: AdminFilterParams): Promise<Ma
   return data.data;
 };
 
+/**
+ * One page of the video-proof queue. `adminDecisions.readOnly`: proofs are
+ * decided in SBC Support; `allowed` is true only for the super admin then.
+ */
+export interface ManualVerificationPage {
+  items: ManualVerification[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  adminDecisions: { readOnly: boolean; allowed: boolean };
+}
+
+export const fetchManualVerificationPage = async (params: { page: number; limit: number }, f: AdminFilterParams): Promise<ManualVerificationPage> => {
+  const { data } = await apiClient.get('/advertising/admin/manual-verifications', { params: { ...params, ...f } });
+  const items = (data.data ?? []) as ManualVerification[];
+  return {
+    items,
+    pagination: data.pagination ?? { page: params.page, limit: params.limit, total: items.length, totalPages: 1 },
+    // An older service without the flag behaves as before (decisions open).
+    adminDecisions: data.adminDecisions ?? { readOnly: false, allowed: true },
+  };
+};
+
 /** Country only (queues show everything pending whatever the period). */
 export const countryOnly = (f: AdminFilterParams): AdminFilterParams => (f.country ? { country: f.country } : {});
