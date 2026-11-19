@@ -121,7 +121,7 @@ const PaymentIntentSchema: Schema = new Schema(
          * Why the payment did not finish (Security plan Phase 10), grouped once
          * when recorded: sbc_code, provider_api, member or unknown. See
          * utils/payment-failure.ts. Its index {failure.group, createdAt} is built
-         * by scripts/create-security-plan-indexes.ts, at night, not at startup.
+         * by scripts/security-plan/indexes.mongosh.js, at night, not at startup.
          */
         failure: {
             type: new Schema({
