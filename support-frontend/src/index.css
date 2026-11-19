@@ -1,0 +1,229 @@
+@import 'tailwindcss';
+
+/*
+ * SBC Support design tokens (copied from admin-frontend-ms). Token NAMES follow the aselel design system
+ * (background, surface, line, fg, primary…); VALUES are SBC's brand
+ * (ui/src/index.css: primary #115CF6, accent #F68F0F, success #0C7C3C…).
+ * Every colour of the new shell and of src/components/ui comes from these
+ * variables, defined once for light (:root) and once for dark (.dark on <html>,
+ * set by public/theme-init.js and ThemeContext from the admin's choice).
+ * Shapes: 8px for controls (buttons, fields), 12px for panels and dialogs.
+ *
+ * The dark values sit on Tailwind's gray scale (background = gray-900,
+ * surface-2 = gray-800, line-strong = gray-700) so the original pages, which
+ * are drawn with bg-gray-800/900, blend into the new shell.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --background: #F8FAFC;
+  --surface: #FFFFFF;
+  --surface-2: #F1F5F9;
+  --surface-3: #E8EDF3;
+  --line: #E6E9EF;
+  --line-strong: #CBD5E1;
+  --fg: #0F172A;
+  --fg-muted: #475569;
+  --fg-subtle: #94A3B8;
+  --ink: #0F172A;
+  --ink-hover: #1E293B;
+  --ink-fg: #FFFFFF;
+  --primary: #115CF6;
+  --primary-hover: #0D49C4;
+  --primary-fg: #FFFFFF;
+  --primary-soft: #EAF2FF;
+  --accent: #F68F0F;
+  --accent-soft: #FEF3E2;
+  --success: #0C7C3C;
+  --success-soft: #E8F7EE;
+  --warning: #B45309;
+  --warning-soft: #FEF3C7;
+  --danger: #DC2626;
+  --danger-soft: #FEE2E2;
+  --info: #0369A1;
+  --info-soft: #E0F2FE;
+  --shadow-color: 222 30% 25%;
+  /* Chart series: brand blue and orange first, then distinct hues */
+  /* Chart series in this fixed order (blue, orange, violet, green, magenta, cyan),
+     checked with the dataviz validator: colour-blind separation, lightness band,
+     contrast. Light and dark are stepped separately. */
+  --chart-1: #115CF6;
+  --chart-2: #E07A00;
+  --chart-3: #8B5CF6;
+  --chart-4: #0C7C3C;
+  --chart-5: #DB2777;
+  --chart-6: #0891B2;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #101828;
+  --surface: #151E2E;
+  --surface-2: #1E2939;
+  --surface-3: #283446;
+  --line: #283445;
+  --line-strong: #364153;
+  --fg: #F3F4F6;
+  --fg-muted: #AEB8C8;
+  --fg-subtle: #8592A6;
+  --ink: #F3F4F6;
+  --ink-hover: #D1D8E2;
+  --ink-fg: #101828;
+  /* SBC blue lightened so it reads on dark surfaces (5.9:1 on surface); dark text on it */
+  --primary: #5B93FF;
+  --primary-hover: #7AA8FF;
+  --primary-fg: #06122B;
+  --primary-soft: #172A4D;
+  --accent: #FFA53D;
+  --accent-soft: #3A2610;
+  --success: #34C77B;
+  --success-soft: #0F2E20;
+  --warning: #F5B544;
+  --warning-soft: #3A2A0E;
+  --danger: #F87171;
+  --danger-soft: #3B1518;
+  --info: #38BDF8;
+  --info-soft: #0C2A3D;
+  --shadow-color: 222 47% 3%;
+  --chart-1: #4A86F5;
+  --chart-2: #C27315;
+  --chart-3: #8E79F0;
+  --chart-4: #2A9A50;
+  --chart-5: #E0559A;
+  --chart-6: #1797B2;
+}
+
+@theme inline {
+  --font-sans: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-ink: var(--ink);
+  --color-ink-hover: var(--ink-hover);
+  --color-ink-fg: var(--ink-fg);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  /* Flat design (owner, 2026-11-16): no shadows anywhere. Panels, menus and
+     dialogs are told apart by their border and surface colour. */
+  --shadow-panel: none;
+  --shadow-overlay: none;
+}
+
+/*
+ * No shadows, whatever class a page still carries (shadow-lg, hover:shadow-xl…).
+ * Tailwind 4 builds box-shadow from several variables; only the shadow one is
+ * emptied, so focus rings (ring-*) keep working for keyboard users.
+ */
+*, *::before, *::after {
+  --tw-shadow: 0 0 #0000 !important;
+  --tw-inset-shadow: 0 0 #0000 !important;
+  --tw-drop-shadow: !important;
+}
+
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--line);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  html,
+  body {
+    background-color: var(--background);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    /* The shell scrolls its own content area; the page itself never scrolls. */
+    overflow: hidden;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+/* Sign-in background: the admin's photo, slowly panning */
+.auth-background {
+  background: url('./assets/bg-login.jpg');
+  background-position: center;
+  background-size: cover;
+  animation: auth-pan 50s linear infinite;
+}
+
+@keyframes auth-pan {
+  0% { background-position: left center; }
+  50% { background-position: right center; }
+  100% { background-position: left center; }
+}
+
+/* Toasts (src/components/toast.tsx) */
+@keyframes toast-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-toast-in {
+  animation: toast-in 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
