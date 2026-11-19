@@ -31,35 +31,6 @@ function monthStartFromKey(key: string): Date | null {
 class AdminController {
 
     /**
-     * Admin Login - Existing
-     * @route POST /api/admin/login
-     */
-    async loginAdmin(req: Request, res: Response): Promise<void> {
-        try {
-            const { email, password } = req.body;
-            const result = await userService.loginAdmin(email, password, req.ip);
-            res.status(200).json({ success: true, data: result });
-        } catch (error: any) {
-            log.error('Admin login failed:', error);
-            res.status(401).json({ success: false, message: error.message || 'Admin login failed' });
-        }
-    }
-
-    /**
-     * Admin Login, step two: exchange the emailed code for the admin token.
-     * @route POST /api/users/admin/login/verify-otp
-     */
-    async verifyAdminLoginOtp(req: Request, res: Response): Promise<void> {
-        try {
-            const { userId, otpCode } = req.body;
-            const result = await userService.verifyAdminLoginOtp(String(userId || ''), String(otpCode || ''), req.ip);
-            res.status(200).json({ success: true, data: result });
-        } catch (error: any) {
-            res.status(401).json({ success: false, message: error.message || 'Invalid code' });
-        }
-    }
-
-    /**
      * Export Unpaid Initial Users - Implemented
      * @route GET /api/admin/users/unpaid-initial
      */

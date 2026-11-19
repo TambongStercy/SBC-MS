@@ -157,12 +157,23 @@ interface RawApiResponse<T> {
     message?: string;
 }
 
-/** Step one of the admin login: the password was right and a code was emailed. */
-export interface AdminLoginChallenge {
-    otpRequired: true;
-    userId: string;
-    otpSent: boolean;
-    otpRetryAfterSeconds: number;
+/**
+ * Admin sign-in, like the support desk (user-service admin-auth.service):
+ * password, then the authenticator app. The very first time, a code is emailed
+ * and the authenticator is set up (QR code), then 10 backup codes are shown.
+ */
+export type AdminLoginStep =
+    | { step: 'totp'; challengeId: string }
+    | { step: 'email'; challengeId: string; codeSent?: boolean; retryAfterSeconds?: number };
+
+export interface AdminEnrolment { otpauthUrl: string; qrDataUrl: string; secret: string }
+
+export interface AdminSignedIn extends AdminLoginResponse {
+    sessionId: string;
+    expiresAt: string;
+    /** Only right after setting up the authenticator: shown once. */
+    backupCodes?: string[];
+    backupCodesRemaining?: number;
 }
 
 const postLoginStep = async <T>(path: string, body: Record<string, string>): Promise<T> => {
@@ -171,21 +182,32 @@ const postLoginStep = async <T>(path: string, body: Record<string, string>): Pro
         if (response.data && response.data.success === true && response.data.data) {
             return response.data.data;
         }
-        throw new Error(response.data?.message || 'Login failed: invalid response from server.');
+        throw new Error(response.data?.message || 'La connexion a échoué.');
     } catch (error) {
         if (axios.isAxiosError(error) && error.response) {
-            throw new Error(error.response.data?.message || 'Admin login failed');
+            throw new Error(error.response.data?.message || 'La connexion a échoué.');
         }
         if (error instanceof Error) throw error;
-        throw new Error('Admin login failed due to an unknown error.');
+        throw new Error('La connexion a échoué.');
     }
 };
 
-export const loginAdmin = (credentials: { email: string; password: string }): Promise<AdminLoginChallenge> =>
-    postLoginStep<AdminLoginChallenge>('/users/admin/login', credentials);
+export const loginAdmin = (credentials: { email: string; password: string }): Promise<AdminLoginStep> =>
+    postLoginStep<AdminLoginStep>('/users/admin/login', credentials);
 
-export const verifyAdminLoginOtp = (userId: string, otpCode: string): Promise<AdminLoginResponse> =>
-    postLoginStep<AdminLoginResponse>('/users/admin/login/verify-otp', { userId, otpCode });
+/** First sign-in only: the code emailed to the account. */
+export const verifyAdminEmailCode = (challengeId: string, code: string): Promise<{ step: 'enroll'; challengeId: string }> =>
+    postLoginStep('/users/admin/login/email-code', { challengeId, code });
+
+export const startAdminEnrolment = (challengeId: string): Promise<AdminEnrolment> =>
+    postLoginStep('/users/admin/login/enroll/start', { challengeId });
+
+export const confirmAdminEnrolment = (challengeId: string, code: string): Promise<AdminSignedIn> =>
+    postLoginStep('/users/admin/login/enroll/confirm', { challengeId, code });
+
+/** The authenticator's 6 digits, or one backup code. */
+export const completeAdminTotp = (challengeId: string, answer: { code: string } | { backupCode: string }): Promise<AdminSignedIn> =>
+    postLoginStep('/users/admin/login/totp', { challengeId, ...answer });
 
 export const listUsers = async (
     filters: AdminUserListFilters = {},

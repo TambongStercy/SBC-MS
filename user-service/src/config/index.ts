@@ -36,6 +36,19 @@ interface IConfig {
         secret: string;
         expiresIn: string;
     };
+    /**
+     * The admin's own sign-in (authenticator app, like the support desk).
+     * totpEncKey: 32 bytes, base64 (ADMIN_TOTP_ENC_KEY). Without it no admin can
+     * sign in; members are unaffected. Never rotate it without resetting every
+     * admin's authenticator.
+     */
+    adminAuth: {
+        totpEncKey: Buffer | null;
+        idleTimeoutMs: number;
+        absoluteTimeoutMs: number;
+        challengeTtlMs: number;
+        issuer: string;
+    };
     sso: {
         // SEPARATE secret from the main user JWT — keeps SSO access tokens and SBC user
         // JWTs non-interchangeable. Compromise of one secret should not let an attacker
@@ -117,6 +130,18 @@ const config: IConfig = {
     jwt: {
         secret: process.env.JWT_SECRET || 'your_jwt_secret',
         expiresIn: process.env.JWT_EXPIRATION || '1d'
+    },
+
+    adminAuth: {
+        totpEncKey: (() => {
+            const raw = process.env.ADMIN_TOTP_ENC_KEY || '';
+            const key = raw ? Buffer.from(raw, 'base64') : null;
+            return key && key.length === 32 ? key : null;
+        })(),
+        idleTimeoutMs: (parseInt(process.env.ADMIN_IDLE_TIMEOUT_MIN || '30', 10) || 30) * 60 * 1000,
+        absoluteTimeoutMs: (parseInt(process.env.ADMIN_SESSION_MAX_HOURS || '12', 10) || 12) * 3600 * 1000,
+        challengeTtlMs: 10 * 60 * 1000,
+        issuer: process.env.ADMIN_TOTP_ISSUER || 'SBC Admin',
     },
 
     sso: {
