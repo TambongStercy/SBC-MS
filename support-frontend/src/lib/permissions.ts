@@ -28,6 +28,8 @@ export const PERMISSIONS = [
   'templates.manage',
   'reports.read',
   'export',
+  'analytics.read',
+  'errors.manage',
   'agents.manage',
   'settings.manage',
   'audit.read',
@@ -74,7 +76,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'members.read', 'members.read.full', 'members.contact.request', 'members.contact.approve',
     'tickets.read', 'tickets.reply', 'tickets.assign', 'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'views.supervise', 'kb.edit', 'kb.publish', 'templates.manage',
-    'reports.read', 'export', 'agents.manage', 'settings.manage', 'audit.read',
+    'reports.read', 'export', 'analytics.read', 'errors.manage', 'agents.manage', 'settings.manage', 'audit.read',
   ],
 };
 

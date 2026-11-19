@@ -12,7 +12,7 @@ describe('menu filtered by permissions', () => {
     ['finance_manager', ['/', '/tickets', '/membres', '/activation', '/finance', '/approbations', '/contenus', '/rapports']],
     ['verifier', ['/', '/verifications']],
     ['views_supervisor', ['/', '/tickets', '/membres', '/verifications', '/supervision', '/contenus', '/rapports']],
-    ['support_admin', ['/', '/tickets', '/membres', '/activation', '/finance', '/approbations', '/supervision', '/contenus', '/rapports', '/admin/agents', '/admin/reglages', '/admin/audit']],
+    ['support_admin', ['/', '/tickets', '/membres', '/activation', '/finance', '/approbations', '/supervision', '/contenus', '/rapports', '/analytique', '/admin/agents', '/admin/reglages', '/admin/audit']],
   ])('%s', (role, expected) => {
     expect(paths(role)).toEqual(expected);
   });

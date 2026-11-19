@@ -23,6 +23,7 @@ const VerificationsPage = lazy(() => import('./pages/views/VerificationsPage'));
 const SupervisionPage = lazy(() => import('./pages/views/SupervisionPage'));
 const ContentPage = lazy(() => import('./pages/content/ContentPage'));
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage'));
+const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const AgentsPage = lazy(() => import('./pages/admin/AgentsPage'));
 const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'));
 const AuditPage = lazy(() => import('./pages/admin/AuditPage'));
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="supervision" element={<Guard><SupervisionPage /></Guard>} />
         <Route path="contenus" element={<Guard><ContentPage /></Guard>} />
         <Route path="rapports" element={<Guard><ReportsPage /></Guard>} />
+        <Route path="analytique" element={<Guard><AnalyticsPage /></Guard>} />
         <Route path="admin/agents" element={<Guard><AgentsPage /></Guard>} />
         <Route path="admin/reglages" element={<Guard><SettingsPage /></Guard>} />
         <Route path="admin/audit" element={<Guard><AuditPage /></Guard>} />

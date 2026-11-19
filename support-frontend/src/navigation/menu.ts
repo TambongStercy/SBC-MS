@@ -2,7 +2,7 @@ import type { IconSvgElement } from '@hugeicons/react';
 import {
   Activity01Icon,
   BookOpen01Icon,
-  ChartBarLineIcon,
+  Analytics01Icon, ChartBarLineIcon,
   CheckListIcon,
   FileSecurityIcon,
   Home01Icon,
@@ -77,6 +77,7 @@ export const MENU: MenuGroup[] = [
     items: [
       { label: 'Contenus', path: '/contenus', icon: BookOpen01Icon, access: { any: ['kb.edit', 'kb.publish', 'templates.manage'] } },
       { label: 'Rapports', path: '/rapports', icon: ChartBarLineIcon, access: { all: ['reports.read'] } },
+      { label: 'Analytique', path: '/analytique', icon: Analytics01Icon, access: { all: ['analytics.read'] } },
     ],
   },
   {
