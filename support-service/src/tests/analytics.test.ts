@@ -81,6 +81,15 @@ describe('analytics for the support administrator', () => {
         expect((await desk('get', '/analytics', agent)).status).toBe(403);
     });
 
+    it('a period « up to today » ends today, never on an empty future day', async () => {
+        const { dayKey } = await import('../services/client-error.service');
+        const today = new Date().toISOString().slice(0, 10);
+        const from = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+        const admin = await login(await makeAgent(['support_admin']));
+        const d = (await desk('get', `/analytics?from=${from}&to=${today}`, admin)).body.data;
+        expect(d.series[d.series.length - 1].date).toBe(dayKey(new Date()));
+    });
+
     it('opens a member session that hit an error only through an audited call', async () => {
         config.openreplay.dashboardUrl = 'https://replay.sbc.test';
         await asMember(M1, 'post', '/client-errors').send({ errors: [{ method: 'GET', path: '/api/users/me', status: 500, replay: { sessionId: '99', url: 'https://replay.sbc.test/1/session/99' } }] });

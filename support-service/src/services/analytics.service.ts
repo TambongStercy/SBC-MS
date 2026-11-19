@@ -77,6 +77,8 @@ function ticketKpis(created: T[], handled: T[]) {
 }
 
 export async function analytics(from: Date, to: Date) {
+    // A period « up to today » ends now: no empty future day at the end of the curves.
+    to = new Date(Math.min(to.getTime(), Date.now()));
     const span = to.getTime() - from.getTime();
     const prevFrom = new Date(from.getTime() - span);
     const now = new Date();
@@ -266,6 +268,8 @@ type Cat = { label: string; share: number | null; count: number; change: number 
 type E = { count: number; state: string; members: number; method: string; route: string; status: number };
 type S = { backlog: number };
 
+const fr = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+
 /** A few plain sentences that point at a decision: where it hurts and what changed. */
 function insights(k: K, categories: Cat[], errors: E[], series: S[]) {
     const out: { tone: 'good' | 'warning' | 'critical' | 'info'; text: string }[] = [];
@@ -274,11 +278,11 @@ function insights(k: K, categories: Cat[], errors: E[], series: S[]) {
     if (top && t.created >= 5) {
         out.push({
             tone: top.change !== null && top.change >= 25 ? 'warning' : 'info',
-            text: `« ${top.label} » représente ${top.share} % des demandes (${top.count})${top.change !== null ? `, ${top.change >= 0 ? '+' : ''}${top.change} % par rapport à la période précédente` : ''}.`,
+            text: `« ${top.label} » représente ${fr(top.share ?? 0)} % des demandes (${top.count})${top.change !== null ? `, ${top.change >= 0 ? '+' : '−'}${fr(Math.abs(top.change))} % par rapport à la période précédente` : ''}.`,
         });
     }
     if (t.slaBreachRate !== null && t.slaBreachRate >= 10) {
-        out.push({ tone: t.slaBreachRate >= 25 ? 'critical' : 'warning', text: `${t.slaBreachRate} % des demandes ont dépassé leur délai (SLA) : renforcer l’équipe aux heures de pointe ou revoir les priorités.` });
+        out.push({ tone: t.slaBreachRate >= 25 ? 'critical' : 'warning', text: `${fr(t.slaBreachRate)} % des demandes ont dépassé leur délai (SLA) : renforcer l’équipe aux heures de pointe ou revoir les priorités.` });
     }
     const first = series[0]?.backlog ?? 0;
     const last = series[series.length - 1]?.backlog ?? 0;
@@ -299,9 +303,9 @@ function insights(k: K, categories: Cat[], errors: E[], series: S[]) {
     if (k.assistant.settledWithoutAgentRate !== null && k.assistant.conversations >= 10) {
         out.push({
             tone: k.assistant.settledWithoutAgentRate >= 60 ? 'good' : 'info',
-            text: `L’assistant a réglé ${k.assistant.settledWithoutAgentRate} % des questions sans agent (${k.assistant.conversations - k.assistant.escalated} sur ${k.assistant.conversations}).`,
+            text: `L’assistant a réglé ${fr(k.assistant.settledWithoutAgentRate)} % des questions sans agent (${k.assistant.conversations - k.assistant.escalated} sur ${k.assistant.conversations}).`,
         });
     }
-    if (k.reopened.rate !== null && k.reopened.rate >= 10) out.push({ tone: 'warning', text: `${k.reopened.rate} % des demandes résolues ont été rouvertes par le membre : la réponse ne réglait pas le problème.` });
+    if (k.reopened.rate !== null && k.reopened.rate >= 10) out.push({ tone: 'warning', text: `${fr(k.reopened.rate)} % des demandes résolues ont été rouvertes par le membre : la réponse ne réglait pas le problème.` });
     return out.slice(0, 6);
 }
