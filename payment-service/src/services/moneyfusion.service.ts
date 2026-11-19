@@ -304,7 +304,12 @@ export class MoneyFusionService {
             }
         } catch (error: any) {
             log.error(`MoneyFusion payment error: ${error.message}`);
-            throw new Error(`MoneyFusion payment failed: ${error.response?.data?.message || error.message}`);
+            // Keep the HTTP status, body and transport code: the failure reason
+            // (utils/payment-failure.ts) is read from them.
+            throw Object.assign(new Error(`MoneyFusion payment failed: ${error.response?.data?.message || error.message}`), {
+                code: error.code,
+                response: error.response ? { status: error.response.status, data: error.response.data } : undefined,
+            });
         }
     }
 

@@ -30,6 +30,7 @@ import { ssoWebhookService } from './sso-webhook.service';
 import { buildCinetPayPayer } from '../utils/cinetpay-payer';
 import { checkCallbackUrl, callbackAllowlistEnforced } from '../utils/callback-allowlist';
 import * as sandbox from './sandbox.service';
+import { failureFromError, failureFromProviderResult } from '../utils/payment-failure';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -2758,6 +2759,16 @@ class PaymentService {
      */
     public async handlePaymentCompletion(paymentIntent: IPaymentIntent): Promise<void> {
         log.info(`Handling payment completion for PaymentIntent ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
+        // Every provider's final "failed/expired" answer comes through here:
+        // record why, from the provider data that came with it.
+        if ([PaymentStatus.FAILED, PaymentStatus.EXPIRED, PaymentStatus.CANCELED].includes(paymentIntent.status) && !paymentIntent.failure) {
+            const last = (paymentIntent.webhookHistory || []).slice(-1)[0];
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromProviderResult({
+                gateway: paymentIntent.gateway,
+                status: paymentIntent.status,
+                providerData: last?.providerData ?? paymentIntent.gatewayRawResponse,
+            }));
+        }
         try {
             // Notify originating service (do this regardless of commission outcome).
             // For SSO payments tied to a feature subscription (e.g. VISIBILITE_MAX),
@@ -3217,8 +3228,12 @@ class PaymentService {
             return finalPaymentIntent;
         } catch (error) {
             log.error(`Error during payment initiation for session ${sessionId}:`, error);
-            // If payment initiation fails, update the status to ERROR
+            // If payment initiation fails, update the status to ERROR, with the
+            // reason (the gateway's own catch records it first when it can).
             await paymentIntentRepository.updateBySessionId(sessionId, { status: PaymentStatus.ERROR });
+            if (!(error as any)?.failureRecorded) {
+                await paymentIntentRepository.recordFailure(sessionId, failureFromError(error, { step: 'initiate', gateway: updatedIntent.gateway }));
+            }
             throw error; // Re-throw the original error for the controller
         }
     }
@@ -3642,8 +3657,10 @@ class PaymentService {
             } else {
                 log.error(`FeexPay request setup error: ${error.message}`);
             }
-            // Don't set status to ERROR here; let submitPaymentDetails handle it
-            throw new Error('Failed to initiate FeexPay payment');
+            // Don't set status to ERROR here; let submitPaymentDetails handle it.
+            // The reason is recorded here, while the provider's answer is at hand.
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.FEEXPAY }));
+            throw Object.assign(new Error('Failed to initiate FeexPay payment'), { failureRecorded: true });
         }
     }
 
@@ -3747,7 +3764,7 @@ class PaymentService {
             });
 
             if (!result.success || !result.token) {
-                throw new Error(result.message || 'MoneyFusion payment initiation failed');
+                throw Object.assign(new Error(result.message || 'MoneyFusion payment initiation failed'), { providerRefusal: true });
             }
 
             const updateData: UpdatePaymentIntentInput = {
@@ -3780,6 +3797,8 @@ class PaymentService {
                 status: PaymentStatus.FAILED,
                 gatewayRawResponse: { error: error.message } as any,
             });
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.MONEYFUSION }));
+            error.failureRecorded = true;
             throw error;
         }
     }
@@ -4324,7 +4343,10 @@ class PaymentService {
                 return updatedIntent;
             } else {
                 log.error(`CinetPay payment initiation failed: ${JSON.stringify(response.data)}`);
-                throw new Error(`Failed to initiate CinetPay payment: ${response.data?.status || 'Unknown error'}`);
+                throw Object.assign(new Error(`Failed to initiate CinetPay payment: ${response.data?.status || 'Unknown error'}`), {
+                    providerRefusal: true,
+                    response: { status: response.status, data: response.data },
+                });
             }
         } catch (error: any) {
             if (error.response) {
@@ -4334,7 +4356,8 @@ class PaymentService {
             } else {
                 log.error(`CinetPay setup error: ${error.message}`);
             }
-            throw new Error('Failed to initiate CinetPay payment');
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.CINETPAY }));
+            throw Object.assign(new Error('Failed to initiate CinetPay payment'), { failureRecorded: true });
         }
     }
 
@@ -4564,6 +4587,8 @@ class PaymentService {
                     }
                 });
                 log.info(`Updated payment intent ${paymentIntent.sessionId} status to ERROR after NOWPayments failure`);
+                await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.NOWPAYMENTS }));
+                error.failureRecorded = true;
             } catch (updateError: any) {
                 log.error(`Failed to update payment intent status after NOWPayments error:`, updateError);
             }
@@ -6368,14 +6393,15 @@ class PaymentService {
             return updatedIntent || paymentIntent; // Return the updated intent or original if no status change
         } catch (error: any) {
             log.error(`Error checking FeexPay status for ${gatewayPaymentId}:`, error.response?.data || error.message);
-            // If API call fails, update status to ERROR and log the error for debugging
+            // Keep the status as it was. An unreachable status API says nothing
+            // about the payment, and this catch also sees errors thrown after a
+            // SUCCEEDED was written (handlePaymentCompletion). Setting ERROR here
+            // took FeexPay payments out of the payin reconciler for good.
+            // One key only: a full metadata write from this stale copy would undo
+            // what completion stamped (splitApplied…).
             await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-                status: PaymentStatus.ERROR,
-                metadata: {
-                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
-                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
-                }
-            });
+                'metadata.feexpayStatusCheckError': error.response?.data || error.message,
+            } as any);
             throw new AppError('Failed to retrieve or update FeexPay transaction status.', error.response?.status || 500);
         }
     }
@@ -6486,14 +6512,15 @@ class PaymentService {
             return updatedIntent || paymentIntent; // Return the updated intent or original if no status change
         } catch (error: any) {
             log.error(`Error checking FeexPay status for ${feexpayReference} (session ${sessionId}):`, error.response?.data || error.message);
-            // If API call fails, update status to ERROR and log the error for debugging
+            // Keep the status as it was. An unreachable status API says nothing
+            // about the payment, and this catch also sees errors thrown after a
+            // SUCCEEDED was written (handlePaymentCompletion). Setting ERROR here
+            // took FeexPay payments out of the payin reconciler for good.
+            // One key only: a full metadata write from this stale copy would undo
+            // what completion stamped (splitApplied…).
             await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-                status: PaymentStatus.ERROR,
-                metadata: {
-                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
-                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
-                }
-            });
+                'metadata.feexpayStatusCheckError': error.response?.data || error.message,
+            } as any);
             throw new AppError('Failed to retrieve or update FeexPay transaction status. Please try again later.', error.response?.status || 500);
         }
     }
