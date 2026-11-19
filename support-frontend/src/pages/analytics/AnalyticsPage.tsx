@@ -31,18 +31,18 @@ const fmtMin = (m: number | null | undefined) => (m == null ? '—' : formatDura
 const fmtHours = (h: number | null | undefined) => (h == null ? '—' : formatDuration(Math.round(h * 3600)));
 
 /** Change vs the previous period: arrow + sign + words, coloured by whether it is good (never colour alone). */
-function Delta({ now, before, better, unit = '%' }: { now: number | null | undefined; before: number | null | undefined; better: 'up' | 'down'; unit?: '%' | 'pts' }) {
-  if (now == null || before == null) return <span className="text-fg-subtle">pas de comparaison</span>;
+function Delta({ now, before, better, unit = '%', compact = false }: { now: number | null | undefined; before: number | null | undefined; better: 'up' | 'down'; unit?: '%' | 'pts'; /** In a table: the column says « Évolution ». */ compact?: boolean }) {
+  if (now == null || before == null) return <span className="text-fg-subtle">{compact ? '—' : 'pas de comparaison'}</span>;
   const diff = unit === 'pts' ? now - before : before === 0 ? null : ((now - before) / before) * 100;
-  if (diff == null) return <span className="text-fg-subtle">nouveau sur la période</span>;
-  if (Math.abs(diff) < 0.5) return <span className="text-fg-muted">stable vs période précédente</span>;
+  if (diff == null) return <span className="whitespace-nowrap text-fg-subtle">{compact ? 'nouveau' : 'nouveau sur la période'}</span>;
+  if (Math.abs(diff) < 0.5) return <span className="whitespace-nowrap text-fg-muted">{compact ? 'stable' : 'stable vs période précédente'}</span>;
   const up = diff > 0;
   const good = up === (better === 'up');
   return (
-    <span className={cn('inline-flex items-center gap-0.5', good ? 'text-success' : 'text-danger')}>
+    <span className={cn('inline-flex items-center gap-0.5 whitespace-nowrap', good ? 'text-success' : 'text-danger')}>
       <HugeiconsIcon icon={up ? ArrowUp01Icon : ArrowDown01Icon} size={12} aria-hidden="true" />
       {up ? '+' : '−'}{Math.abs(Math.round(diff * 10) / 10).toLocaleString('fr-FR')}{unit === 'pts' ? ' pt' : ' %'}
-      <span className="text-fg-muted">&nbsp;vs période préc.</span>
+      {!compact && <span className="text-fg-muted">&nbsp;vs période préc.</span>}
     </span>
   );
 }
@@ -196,13 +196,13 @@ function Categories({ data }: { data: Analytics }) {
                   <td className="px-4 py-2 text-right tabular-nums">{fmtNum(c.count)}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
+                      <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
                         <div className="h-full rounded-full" style={{ width: `${c.share ?? 0}%`, background: 'var(--chart-1)' }} />
                       </div>
-                      <span className="tabular-nums text-fg-muted">{fmtPct(c.share)}</span>
+                      <span className="whitespace-nowrap tabular-nums text-fg-muted">{fmtPct(c.share)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-2 text-right text-xs"><Delta now={c.count} before={c.prevCount} better="down" /></td>
+                  <td className="px-4 py-2 text-right text-xs"><Delta compact now={c.count} before={c.prevCount} better="down" /></td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtHours(c.resolutionMedianHours)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtPct(c.slaBreachRate)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtNum(c.open)}</td>
@@ -286,7 +286,7 @@ function ErrorTypes({ rows }: { rows: ErrorTypeRow[] }) {
                     {r.message && <p className="mt-0.5 text-xs text-fg-muted">« {r.message} »</p>}
                     {r.regressions > 0 && <p className="mt-0.5 text-xs text-danger">Revenue {r.regressions} fois après correction</p>}
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(r.count)}<div className="text-xs"><Delta now={r.count} before={r.prevCount} better="down" /></div></td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(r.count)}<div className="text-xs"><Delta compact now={r.count} before={r.prevCount} better="down" /></div></td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtNum(r.members)}</td>
                   <td className="px-4 py-2 text-xs text-fg-muted">{formatDateTime(r.lastSeen)}</td>
                   <td className="px-4 py-2"><Badge tone={STATE[r.state].tone}>{STATE[r.state].label}</Badge>{r.stateBy && <p className="mt-0.5 text-xs text-fg-muted">par {r.stateBy}</p>}</td>
