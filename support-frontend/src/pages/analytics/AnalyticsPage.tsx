@@ -180,32 +180,32 @@ function Categories({ data }: { data: Analytics }) {
           <table className="w-full text-sm" aria-label="Problèmes qui reviennent">
             <thead className="bg-surface-2 text-left text-xs text-fg-muted">
               <tr>
-                <th scope="col" className="px-4 py-2 font-medium">Sujet</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Demandes</th>
-                <th scope="col" className="px-4 py-2 font-medium">Part</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Évolution</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Résolution (médiane)</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Délais dépassés</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Encore ouvertes</th>
+                <th scope="col" className="px-3 py-2 font-medium">Sujet</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Demandes</th>
+                <th scope="col" className="px-3 py-2 font-medium">Part</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Évolution</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Résolution (médiane)</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Délais dépassés</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Encore ouvertes</th>
               </tr>
             </thead>
             <tbody>
               {data.categories.map(c => (
                 <tr key={c.key} className="border-t border-line">
-                  <th scope="row" className="px-4 py-2 text-left font-medium text-fg">{c.label}</th>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(c.count)}</td>
-                  <td className="px-4 py-2">
+                  <th scope="row" className="min-w-36 px-3 py-2 text-left font-medium text-fg">{c.label}</th>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtNum(c.count)}</td>
+                  <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
+                      <div className="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-surface-3 xl:block" aria-hidden="true">
                         <div className="h-full rounded-full" style={{ width: `${c.share ?? 0}%`, background: 'var(--chart-1)' }} />
                       </div>
                       <span className="whitespace-nowrap tabular-nums text-fg-muted">{fmtPct(c.share)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-2 text-right text-xs"><Delta compact now={c.count} before={c.prevCount} better="down" /></td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtHours(c.resolutionMedianHours)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtPct(c.slaBreachRate)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(c.open)}</td>
+                  <td className="px-3 py-2 text-right text-xs"><Delta compact now={c.count} before={c.prevCount} better="down" /></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtHours(c.resolutionMedianHours)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtPct(c.slaBreachRate)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtNum(c.open)}</td>
                 </tr>
               ))}
             </tbody>
@@ -270,28 +270,21 @@ function ErrorTypes({ rows }: { rows: ErrorTypeRow[] }) {
           <table className="w-full text-sm" aria-label="Erreurs qui reviennent">
             <thead className="bg-surface-2 text-left text-xs text-fg-muted">
               <tr>
-                <th scope="col" className="px-4 py-2 font-medium">Appel</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Fois</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Membres</th>
-                <th scope="col" className="px-4 py-2 font-medium">Dernière fois</th>
-                <th scope="col" className="px-4 py-2 font-medium">État</th>
-                <th scope="col" className="px-4 py-2 font-medium"><span className="sr-only">Actions</span></th>
+                <th scope="col" className="px-3 py-2 font-medium">Appel</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Fois</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Membres</th>
+                <th scope="col" className="px-3 py-2 font-medium">Dernière fois</th>
+                <th scope="col" className="px-3 py-2 font-medium">État</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.id} className="border-t border-line align-top">
-                  <td className="px-4 py-2">
-                    <p className="font-mono text-xs text-fg"><span className="font-semibold">{r.method}</span> {r.route} <Badge tone={r.status === 0 || r.status >= 500 ? 'danger' : 'warning'}>{statusLabel(r.status)}</Badge>{r.code && <span className="ml-1 text-fg-muted">{r.code}</span>}</p>
+                  <td className="px-3 py-2">
+                    <p className="break-all font-mono text-xs text-fg"><span className="font-semibold">{r.method}</span> {r.route} <Badge tone={r.status === 0 || r.status >= 500 ? 'danger' : 'warning'}>{statusLabel(r.status)}</Badge>{r.code && <span className="ml-1 text-fg-muted">{r.code}</span>}</p>
                     {r.message && <p className="mt-0.5 text-xs text-fg-muted">« {r.message} »</p>}
                     {r.regressions > 0 && <p className="mt-0.5 text-xs text-danger">Revenue {r.regressions} fois après correction</p>}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(r.count)}<div className="text-xs"><Delta compact now={r.count} before={r.prevCount} better="down" /></div></td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(r.members)}</td>
-                  <td className="px-4 py-2 text-xs text-fg-muted">{formatDateTime(r.lastSeen)}</td>
-                  <td className="px-4 py-2"><Badge tone={STATE[r.state].tone}>{STATE[r.state].label}</Badge>{r.stateBy && <p className="mt-0.5 text-xs text-fg-muted">par {r.stateBy}</p>}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex flex-wrap justify-end gap-1.5">
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       {r.hasReplay && (
                         <Button size="sm" variant="outline" loading={busy === r.id} onClick={() => void openReplay(r.id)}>
                           <HugeiconsIcon icon={PlayCircleIcon} size={14} aria-hidden="true" />Voir une session
@@ -308,6 +301,10 @@ function ErrorTypes({ rows }: { rows: ErrorTypeRow[] }) {
                       )}
                     </div>
                   </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.count)}<div className="text-xs"><Delta compact now={r.count} before={r.prevCount} better="down" /></div></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.members)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs text-fg-muted">{formatDateTime(r.lastSeen)}</td>
+                  <td className="px-3 py-2"><Badge tone={STATE[r.state].tone}>{STATE[r.state].label}</Badge>{r.stateBy && <p className="mt-0.5 text-xs text-fg-muted">par {r.stateBy}</p>}</td>
                 </tr>
               ))}
             </tbody>
@@ -327,19 +324,19 @@ function Agents({ data }: { data: Analytics }) {
           <table className="w-full text-sm" aria-label="Charge par agent">
             <thead className="bg-surface-2 text-left text-xs text-fg-muted">
               <tr>
-                <th scope="col" className="px-4 py-2 font-medium">Agent</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Réglées</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">Ouvertes suivies</th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">1re réponse (médiane)</th>
+                <th scope="col" className="px-3 py-2 font-medium">Agent</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Réglées</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Ouvertes suivies</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">1re réponse (médiane)</th>
               </tr>
             </thead>
             <tbody>
               {data.agents.map(a => (
                 <tr key={a.id} className="border-t border-line">
-                  <th scope="row" className="px-4 py-2 text-left font-medium text-fg">{a.name}</th>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(a.handled)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtNum(a.open)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtMin(a.firstResponseMedianMin)}</td>
+                  <th scope="row" className="px-3 py-2 text-left font-medium text-fg">{a.name}</th>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtNum(a.handled)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtNum(a.open)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMin(a.firstResponseMedianMin)}</td>
                 </tr>
               ))}
             </tbody>
