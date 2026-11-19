@@ -611,8 +611,8 @@ class PaymentServiceClient {
                     status: response.status,
                     responseData: response.data
                 });
-                // On API error, assume no pending transactions to avoid blocking legitimate conversions
-                return false;
+                // Fail closed: an unanswered check must not let a conversion spend money in flight.
+                return true;
             }
         } catch (error: any) {
             this.log.error(`Error checking pending transactions for user ${userId}: ${error.message}`);
@@ -622,8 +622,8 @@ class PaymentServiceClient {
                     data: error.response?.data
                 });
             }
-            // On communication error, assume no pending transactions to avoid blocking legitimate conversions
-            return false;
+            // Fail closed: an unanswered check must not let a conversion spend money in flight.
+            return true;
         }
     }
     /**
@@ -726,6 +726,21 @@ class PaymentServiceClient {
             }
             throw new Error('Payment service communication error (recordActivationTransaction)');
         }
+    }
+
+    /**
+     * Records an admin balance adjustment as a transaction (record only: the
+     * balance itself is moved by user-service, ledger reference = `reference`).
+     * Idempotent on `reference` on the payment-service side.
+     */
+    async recordAdjustmentTransaction(payload: {
+        userId: string; amount: number; reason: string; adminId: string; reference: string; status: 'pending' | 'completed' | 'failed';
+    }): Promise<{ transactionId: string }> {
+        const response = await this.apiClient.post<PaymentServiceResponse<{ transactionId: string }>>('/internal/adjustment-transaction', payload);
+        if (!response.data?.success || !response.data.data?.transactionId) {
+            throw new Error(response.data?.message || 'Failed to record adjustment transaction');
+        }
+        return response.data.data;
     }
 }
 

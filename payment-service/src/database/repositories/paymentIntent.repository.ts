@@ -252,10 +252,24 @@ class PaymentIntentRepository {
     /**
      * Add webhook event to payment intent history
      */
+    /**
+     * Records a provider event and moves the intent to `status` in ONE
+     * conditional write (support phase 2). Returns null when the intent is
+     * already there or in a state it may not leave — so of two concurrent or
+     * replayed webhooks only one gets the document back, and only that one runs
+     * handlePaymentCompletion (subscription, commissions, callbacks).
+     *   SUCCEEDED: from anything but SUCCEEDED (a provider may confirm after a
+     *              FAILED/expired answer — CinetPay's status API is re-asked);
+     *   FAILED:    never over SUCCEEDED or FAILED;
+     *   others:    never over a final state, never to the same state.
+     */
     async addWebhookEvent(sessionId: string, status: PaymentStatus, providerData: any): Promise<IPaymentIntent | null> {
         try {
+            const forbiddenFrom = status === PaymentStatus.SUCCEEDED
+                ? [PaymentStatus.SUCCEEDED]
+                : [PaymentStatus.SUCCEEDED, PaymentStatus.FAILED, status];
             const paymentIntent = await this.model.findOneAndUpdate(
-                { sessionId },
+                { sessionId, status: { $nin: forbiddenFrom } },
                 {
                     $set: { status },
                     $push: {

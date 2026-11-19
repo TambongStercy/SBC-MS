@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { paymentController } from '../controllers/payment.controller';
 import { authenticateServiceRequest } from '../middleware/auth.middleware';
+import { Types } from 'mongoose';
+import TransactionModel, { TransactionStatus, TransactionType, Currency } from '../../database/models/transaction.model';
+import transactionRepository from '../../database/repositories/transaction.repository';
 
 const router = Router();
 
@@ -31,6 +34,43 @@ router.post('/withdrawal', (req, res, next) => paymentController.recordInternalW
 /** Ads Network campaigns paid with the SBC balance: atomic debit, and its refund (at most once). */
 router.post('/balance-spend', (req, res, next) => paymentController.spendFromBalance(req, res, next));
 router.post('/balance-refund', (req, res, next) => paymentController.refundBalanceSpend(req, res, next));
+
+/**
+ * @route   POST /api/internal/adjustment-transaction
+ * @desc    Record (only) an admin balance adjustment made by user-service. Idempotent on
+ *          `reference` (= the wallet ledger reference): 'pending' creates it once,
+ *          'completed' / 'failed' close it once.
+ * @access  Private (Service-to-Service)
+ */
+router.post('/adjustment-transaction', async (req, res) => {
+    try {
+        const { userId, amount, reason, adminId, reference, status } = req.body || {};
+        if (!Types.ObjectId.isValid(String(userId)) || !Number.isFinite(Number(amount)) || !reference || !['pending', 'completed', 'failed'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'userId, amount, reference and status are required' });
+        }
+        let tx = await TransactionModel.findOne({ type: TransactionType.ADMIN_ADJUSTMENT, 'metadata.adjustmentRef': String(reference) });
+        if (!tx) {
+            tx = await transactionRepository.create({
+                userId: String(userId),
+                type: TransactionType.ADMIN_ADJUSTMENT,
+                amount: Number(amount),
+                currency: Currency.XAF,
+                status: TransactionStatus.PENDING,
+                description: `Ajustement admin du solde : ${String(reason || '').slice(0, 300)}`,
+                metadata: { adjustmentRef: String(reference), adminId: String(adminId || ''), reason: String(reason || '').slice(0, 500) },
+            }) as any;
+        }
+        if (status !== 'pending') {
+            await TransactionModel.updateOne(
+                { _id: tx!._id, status: TransactionStatus.PENDING },
+                { $set: { status: status === 'completed' ? TransactionStatus.COMPLETED : TransactionStatus.FAILED } },
+            );
+        }
+        return res.status(200).json({ success: true, data: { transactionId: tx!.transactionId } });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 /**
  * @route   POST /api/internal/conversion

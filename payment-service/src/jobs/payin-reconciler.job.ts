@@ -241,8 +241,12 @@ export class PayinReconciler {
         // Anything else is still in flight on their side. Say nothing.
         if (!event) return 'unknown';
 
-        await paymentService.handleMoneyFusionPayinWebhook({ ...data, event, tokenPay });
-        return event === 'payin.session.completed' ? 'succeeded' : 'failed';
+        // `data` is MF's own status answer: the handler applies it only if it matches the intent.
+        await paymentService.handleMoneyFusionPayinWebhook({ ...data, event, tokenPay }, data);
+        const after = await PaymentIntentModel.findOne({ gatewayPaymentId: tokenPay, gateway: PaymentGateway.MONEYFUSION }).select('status').lean();
+        if (after?.status === PaymentStatus.SUCCEEDED) return 'succeeded';
+        if (after?.status === PaymentStatus.FAILED) return 'failed';
+        return 'unknown';
     }
 
     /**

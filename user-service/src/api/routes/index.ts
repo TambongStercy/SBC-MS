@@ -10,12 +10,15 @@ import activationBalanceRoutes from './activation-balance.routes';
 import advertisingBalanceRoutes from './advertising-balance.routes';
 import eventOrganizerBalanceRoutes from './event-organizer-balance.routes';
 import ssoRoutes from './sso.routes';
+import walletInternalRoutes from './wallet-internal.routes';
 const router = Router();
 
 
 
 // Mount routes
 router.use('/users/admin', adminRoutes);
+// Before /users: its serviceRouter would otherwise see /internal/wallet/... first.
+router.use('/users/internal/wallet', walletInternalRoutes);
 router.use('/admin/vcf-cache', vcfCacheRoutes);
 router.use('/users', userRoutes);
 router.use('/contacts', contactRoutes);

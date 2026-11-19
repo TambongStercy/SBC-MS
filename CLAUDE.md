@@ -438,6 +438,43 @@ push), so a hijacker cannot silence it.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
 
+### Withdrawal reservations, wallet ledger, webhook rules (support phase 2, 2026-11)
+
+- **Reservation:** a withdrawal holds its gross amount from the request (`users.reservedBalance`,
+  USD: `reservedUsdBalance`, rows in user-service `balancereservations`). Available money =
+  `balance - debt - reservedBalance`. Every debit except a withdrawal's own settlement is
+  refused beyond it (spend, transfer, conversion, admin adjust, internal withdrawal). Success
+  converts (balance and reserved drop once, ledger ref `withdrawal:<txId>`); a confirmed
+  failure, rejection, cancellation or approval expiry releases. Nothing releases on a timeout.
+- **Ledger:** every balance change is a `walletmovements` row (unique `{reference, direction}`).
+  Opening balances: `user-service/src/scripts/snapshot-opening-balances.ts` (dry run, `--apply`).
+- **Status changes** go through `payment-service/src/services/withdrawal-lifecycle.ts`
+  (one conditional write; money moves only for the call that made the transition).
+- **MoneyFusion payout webhooks are hints.** A "completed" applies only with concordant
+  amount + number (`MONEYFUSION_PAYOUT_STRICT_MATCH=true`, the default; `false` = the tokenPay
+  match is enough, as before). A "cancelled" never fails a withdrawal: it opens a review case
+  and the money stays reserved. So **the old webhook-simulation pattern (rule 7 above) no
+  longer works for MoneyFusion**: use Mark Completed / Mark Failed or the support
+  `regularize` route. A provider-confirmed success still completes a FAILED withdrawal (debit
+  once, divergence case).
+- **Deploy order:** user-service first (wallet routes `/api/users/internal/wallet/*`), then
+  payment-service **immediately after, back to back**. Against an older user-service,
+  payment-service refuses withdrawals with a 503 ("mise à jour en cours") — nothing is paid
+  without a reservation. The other mix is the dangerous one: a new user-service guards every
+  debit (`balance - debt - reserved`), and the OLD payment-service's FeexPay webhook handler
+  marks a payout FAILED when its debit is refused — a paid payout recorded as failed. Keep
+  the window between the two deploys as short as possible; `WITHDRAWALS_ENABLED=false` stops
+  new payouts but not the webhooks of payouts already sent, so it does not close this window.
+- **Required:** `NOWPAYMENTS_IPN_SECRET` in payment-service `.env` (every NOWPayments
+  webhook without a valid HMAC is refused with 401, and crypto payins only complete through
+  them). `SUPPORT_SERVICE_URL` in both services (cases are only logged without it).
+- **Prod MongoDB must be ≥ 5.0** for the partial unique indexes
+  (`paymentintents.uniq_gateway_ref_since_20261118`, `transactions.uniq_user_idempotency_key`,
+  `walletconversions.one_open_conversion_per_user`); check with `db.version()` before deploying.
+- Kill switches: `LEDGER_CHECK_DISABLED`, `FINANCE_RECONCILIATION_DISABLED`.
+- Assertions: `user-service/src/scripts/check-wallet-reservations.ts`,
+  `payment-service/src/scripts/check-support-money.ts` (test DBs only).
+
 ### Withdrawal investigation cheat-sheet (read before pinging Sterling)
 
 Recurring "user says they didn't receive their withdrawal" requests. The

@@ -1,4 +1,9 @@
 import paymentService from '../../services/payment.service';
+import PaymentIntentModel from '../../database/models/PaymentIntent';
+import { supportFinanceService } from '../../services/support-finance.service';
+import { verifyPayinAtProvider } from '../../services/provider-verification.service';
+import ManualRefClaimModel from '../../database/models/manual-ref-claim.model';
+import nowPaymentsService from '../../services/nowpayments.service';
 import { Request, Response, NextFunction } from 'express';
 import { IPaymentIntent, PaymentStatus } from '../../database/interfaces/IPaymentIntent';
 import { Currency, TransactionType } from '../../database/models/transaction.model';
@@ -603,6 +608,12 @@ export class PaymentController {
 
             log.info(`Received NOWPayments webhook for order: ${payload?.order_id}, payment: ${payload?.payment_id}`);
 
+            // Signature is mandatory: no header, no secret or a wrong HMAC → refused.
+            if (!nowPaymentsService.verifyIpnRequest((req as any).rawBody, payload, signature)) {
+                log.warn(`NOWPayments webhook refused: missing or invalid signature (order ${payload?.order_id})`);
+                return res.status(401).json({ success: false, message: 'Invalid signature' });
+            }
+
             if (!payload.payment_id || !payload.order_id) {
                 log.warn('NOWPayments webhook missing required fields');
                 return res.status(400).json({
@@ -631,6 +642,12 @@ export class PaymentController {
         try {
             const payload = req.body;
             const signature = req.headers['x-nowpayments-sig'] as string;
+
+            // Signature is mandatory: no header, no secret or a wrong HMAC → refused.
+            if (!nowPaymentsService.verifyIpnRequest((req as any).rawBody, payload, signature)) {
+                log.warn('NOWPayments payout webhook refused: missing or invalid signature');
+                return res.status(401).json({ success: false, message: 'Invalid signature' });
+            }
 
             // Handle both array and single object responses
             const payoutData = Array.isArray(payload) ? payload[0] : payload;
@@ -792,7 +809,7 @@ export class PaymentController {
             res.status(200).json(result);
         } catch (error: any) {
             log.error('Error creating crypto payout:', error);
-            res.status(500).json({
+            res.status(error.statusCode || 500).json({
                 success: false,
                 message: error.message || 'Failed to create crypto payout'
             });
@@ -1697,11 +1714,26 @@ export class PaymentController {
                 return;
             }
 
-            if (!amount || amount <= 0) {
+            // A finite positive number, or nothing is compared (NaN passed every check before).
+            const amountValue = typeof amount === 'number' ? amount : (typeof amount === 'string' && amount.trim() !== '' ? Number(amount) : NaN);
+            if (!Number.isFinite(amountValue) || amountValue <= 0) {
                 res.status(400).json({
                     success: false,
                     message: 'Montant valide et positif requis'
                 });
+                return;
+            }
+            // The plan priced below is exactly the plan granted: only packs with a known price.
+            const MANUAL_PLANS: Record<string, { planId: string; planName: string; isUpgrade: boolean }> = {
+                CLASSIQUE: { planId: 'CLASSIQUE', planName: 'Abonnement Classique', isUpgrade: false },
+                CIBLE: { planId: 'CIBLE', planName: 'Abonnement Ciblé', isUpgrade: false },
+                UPGRADE: { planId: 'CIBLE', planName: 'Upgrade to Ciblé', isUpgrade: true },
+            };
+            const requestedPlan = metadata?.subscriptionType === undefined || metadata?.subscriptionType === null || metadata?.subscriptionType === ''
+                ? 'CLASSIQUE' : String(metadata.subscriptionType).toUpperCase();
+            const planDef = MANUAL_PLANS[requestedPlan];
+            if (!planDef) {
+                res.status(400).json({ success: false, code: 'UNKNOWN_PLAN', message: `Pack ${requestedPlan} non activable manuellement (prix inconnu). Packs possibles : CLASSIQUE, CIBLE, UPGRADE.` });
                 return;
             }
 
@@ -1761,6 +1793,31 @@ export class PaymentController {
             }
             // ─── End duplicate-recovery guard ──────────────────────────────────
 
+            // The external reference must be a payment the provider confirms, used once
+            // (support phase 2: the same reference had been reused for several activations).
+            const reference = typeof externalReference === 'string' ? externalReference.trim() : '';
+            if (!reference) {
+                res.status(400).json({ success: false, code: 'REFERENCE_REQUIRED', message: 'Référence externe du paiement requise (vérifiée auprès du prestataire).' });
+                return;
+            }
+            const adminId = (req as any).user?.userId || (req as any).user?.id || 'admin';
+            const planKey = requestedPlan;
+            let verified: any;
+            let claimedRefs: string[] = [];
+            try {
+                // Confirmed at the provider, every provider id unused and claimed, not
+                // paid for another account, amount >= pack price and >= `amount`.
+                const out = await supportFinanceService.verifyExternalPayment({
+                    gateway: provider, ref: reference, userId: String(userId), plan: planKey, by: `admin:${adminId}`,
+                    minAmount: amountValue, requestId: String(req.header('x-request-id') || 'admin'),
+                });
+                verified = out.answer;
+                claimedRefs = out.refs;
+            } catch (refusal: any) {
+                res.status(refusal.statusCode || 409).json({ success: false, code: refusal.code, message: refusal.message, data: refusal.data });
+                return;
+            }
+
             // Fetch user information from user service including subscription info
             let userInfo = null;
             try {
@@ -1810,36 +1867,52 @@ export class PaymentController {
                 log.warn(`Erreur lors de la récupération des informations utilisateur pour ${userId}:`, userFetchError.message);
             }
 
+            // metadata may carry notes, never where the result is sent nor what is granted
+            // (plan fields and product keys are set from the priced plan only).
+            const {
+                callbackPath: _cb, originatingService: _os, userId: _uid, product: _p, offerId: _o, winnerFrom: _w,
+                planId: _pi, planType: _pt, planName: _pn, isUpgrade: _iu, ...safeMetadata
+            } = (metadata && typeof metadata === 'object') ? metadata : ({} as any);
+
             // Create the payment intent with proper webhook metadata
             const paymentIntent = await paymentService.createPaymentIntent({
                 userId,
-                amount,
+                amount: amountValue,
                 currency: finalCurrency,
                 paymentType,
                 metadata: {
+                    // Admin-supplied metadata first: everything below wins over it.
+                    ...safeMetadata,
                     // Core subscription metadata (matches normal payment intent structure)
                     userId: userId,
-                    planId: metadata.subscriptionType || 'CLASSIQUE',
-                    planName: metadata.subscriptionType === 'CLASSIQUE' ? 'Abonnement Classique' : 
-                              metadata.subscriptionType === 'CIBLE' ? 'Abonnement Ciblé' : 
-                              metadata.subscriptionType === 'UPGRADE' ? 'Upgrade to Ciblé' : 'Abonnement Classique',
-                    planType: metadata.subscriptionType || 'CLASSIQUE',
-                    isUpgrade: metadata.subscriptionType === 'UPGRADE',
+                    subscriptionType: requestedPlan,
+                    planId: planDef.planId,
+                    planName: planDef.planName,
+                    planType: planDef.planId,
+                    isUpgrade: planDef.isUpgrade,
                     
                     // Service communication metadata
                     originatingService: 'user-service',
                     callbackPath: `${config.services.userServiceUrl || 'http://localhost:3001/api'}/subscriptions/webhooks/payment-confirmation`,
                     
                     // Additional metadata for admin tracking
-                    ...metadata,
                     isManualAdmin: true,
                     adminNote: adminNote || 'Récupération manuelle par admin',
                     createdBy: 'admin',
-                    externalReference
+                    externalReference: reference,
+                    providerVerification: { result: verified.result, providerStatus: verified.providerStatus, amount: verified.amount ?? null, at: new Date() },
                 }
             });
+            await supportFinanceService.bindExternalRefs(provider, claimedRefs, paymentIntent.sessionId);
 
             let finalIntent = paymentIntent;
+
+            if (!autoMarkSucceeded) {
+                // Bind the verified reference now, so it cannot serve another intent.
+                finalIntent = (await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
+                    gateway: provider, gatewayPaymentId: reference,
+                } as any)) || paymentIntent;
+            }
 
             // If auto-mark as succeeded is enabled
             if (autoMarkSucceeded) {
@@ -1852,13 +1925,11 @@ export class PaymentController {
                              provider === 'feexpay' ? 'feexpay' :
                              provider === 'moneyfusion' ? 'moneyfusion' :
                              provider === 'nowpayments' ? 'nowpayments' : 'testing',
-                    paidAmount: amount,
+                    paidAmount: amountValue,
                     paidCurrency: finalCurrency
                 };
 
-                if (externalReference) {
-                    updateData.gatewayPaymentId = externalReference;
-                }
+                updateData.gatewayPaymentId = reference;
 
                 // Use the payment intent repository to update the status directly
                 finalIntent = await paymentIntentRepository.updateBySessionId(
@@ -2077,26 +2148,68 @@ export class PaymentController {
 
             log.info(`Intention de paiement trouvée: ${existingIntent.sessionId}, statut actuel: ${existingIntent.status}`);
 
-            // Update to succeeded status
-            const updateData = {
-                status: PaymentStatus.SUCCEEDED,
+            // The provider must confirm the payment behind this intent (support phase 2).
+            // An intent without a provider reference can only be recovered with one
+            // (externalReference), which is then checked and claimed like a manual activation.
+            const bodyRef = typeof req.body.externalReference === 'string' ? req.body.externalReference.trim() : '';
+            const reference = existingIntent.gatewayPaymentId || bodyRef;
+            if (!reference) {
+                res.status(400).json({ success: false, code: 'REFERENCE_REQUIRED', message: 'Cette intention n\'a pas de référence prestataire : fournissez externalReference.' });
+                return;
+            }
+            const adminId = (req as any).user?.userId || (req as any).user?.id || 'admin';
+            const claimsNewRef = !existingIntent.gatewayPaymentId;
+            if (claimsNewRef) {
+                try {
+                    await supportFinanceService.claimExternalRef(existingIntent.gateway, reference, `admin:${adminId}`, { userId: String(existingIntent.userId) });
+                } catch (claimError: any) {
+                    res.status(claimError.statusCode || 409).json({ success: false, code: claimError.code || 'REF_ALREADY_USED', message: claimError.message, data: claimError.data });
+                    return;
+                }
+            }
+            const verified = await verifyPayinAtProvider(existingIntent.gateway, reference, { countryCode: existingIntent.countryCode });
+            const vd: any = verified.details || {};
+            const providerAmount = Number(verified.amount);
+            const wrongOwner = (vd.ourSessionId && String(vd.ourSessionId) !== sessionId)
+                || (vd.ownerUserId && String(vd.ownerUserId) !== String(existingIntent.userId));
+            const tooLow = verified.result === 'confirmed' && (!(providerAmount > 0) || providerAmount < Number(existingIntent.metadata?.mfPayinAmount ?? existingIntent.amount ?? 0) - 0.01);
+            if (verified.result === 'confirmed' && (wrongOwner || tooLow)) {
+                if (claimsNewRef) await supportFinanceService.releaseExternalRef(existingIntent.gateway, reference);
+                res.status(422).json({
+                    success: false, code: wrongOwner ? 'PAID_FOR_ANOTHER_ACCOUNT' : 'AMOUNT_TOO_LOW',
+                    message: wrongOwner ? 'Ce paiement appartient à un autre paiement ou un autre compte.' : `Montant confirmé (${verified.amount ?? 'inconnu'}) inférieur au montant attendu (${existingIntent.amount}).`,
+                });
+                return;
+            }
+            if (verified.result !== 'confirmed') {
+                if (claimsNewRef) await supportFinanceService.releaseExternalRef(existingIntent.gateway, reference);
+                res.status(422).json({
+                    success: false, code: 'PROVIDER_NOT_CONFIRMED',
+                    message: `Le prestataire ne confirme pas ce paiement (${verified.result}, ${verified.providerStatus}).`,
+                    data: { result: verified.result, providerStatus: verified.providerStatus, amount: verified.amount ?? null },
+                });
+                return;
+            }
+
+            // One conditional write: two recoveries (or a recovery racing the real webhook) complete it once.
+            const updatedIntent = await paymentIntentRepository.addWebhookEvent(sessionId, PaymentStatus.SUCCEEDED, {
+                manualRecovery: true, by: adminId, verified: { providerStatus: verified.providerStatus, amount: verified.amount ?? null },
+            });
+            if (!updatedIntent) {
+                res.status(409).json({ success: false, code: 'STATE_CHANGED', message: 'Cette intention a déjà été finalisée entre-temps.' });
+                return;
+            }
+            await PaymentIntentModel.updateOne({ sessionId }, { $set: {
                 paidAmount: existingIntent.amount,
                 paidCurrency: existingIntent.currency,
-                metadata: {
-                    ...existingIntent.metadata,
-                    recoveredBy: 'admin',
-                    recoveryDate: new Date().toISOString(),
-                    recoveryNote: adminNote || `Récupération admin de l'intention ${sessionId}`,
-                    originalStatus: existingIntent.status
-                }
-            };
-
-            const updatedIntent = await paymentIntentRepository.updateBySessionId(sessionId, updateData);
-
-            if (!updatedIntent) {
-                log.error(`Échec de mise à jour de l'intention de paiement ${sessionId} vers réussie`);
-                throw new Error('Échec de mise à jour du statut de l\'intention de paiement');
-            }
+                ...(claimsNewRef ? { gatewayPaymentId: reference } : {}),
+                'metadata.recoveredBy': 'admin',
+                'metadata.recoveredByAdminId': adminId,
+                'metadata.recoveryDate': new Date().toISOString(),
+                'metadata.recoveryNote': adminNote || `Récupération admin de l'intention ${sessionId}`,
+                'metadata.originalStatus': existingIntent.status,
+            } });
+            if (claimsNewRef) await ManualRefClaimModel.updateOne({ gateway: String(existingIntent.gateway).toLowerCase(), ref: reference }, { $set: { sessionId } });
 
             log.info(`Intention de paiement ${sessionId} mise à jour avec succès vers SUCCEEDED`);
 
