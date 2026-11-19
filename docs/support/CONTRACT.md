@@ -295,6 +295,9 @@ base64, required), `SERVICE_SECRET` (required), `JWT_SECRET` (member tokens, req
 all optional, live updates are off without them (§3.3),
 `R2_*` (reuse the names used by other services; private bucket for attachments:
 `R2_PRIVATE_BUCKET`, default `sbc-support-private`, objects under `support/attachments/`).
+Without R2 keys every attachment upload answers 503 (« Stockage des fichiers indisponible »).
+Local development: `R2_ENDPOINT` points at an S3-compatible store (MinIO), `R2_ACCOUNT_ID` empty;
+leave `R2_ENDPOINT` empty on preprod/prod.
 Optional: `REDIS_KEY_PREFIX` (default `sbc-support:<NODE_ENV>:`), `MEMBER_APP_URL`,
 `COOKIE_SECURE=false` (local http only; ignored in production), `LOGIN_MIN_MS` (700),
 `JOBS_ENABLED`, `DEEPSEEK_PRICE_IN_PER_M` / `DEEPSEEK_PRICE_OUT_PER_M` (budget accounting).

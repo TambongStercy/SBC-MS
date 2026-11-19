@@ -154,6 +154,8 @@ function load() {
         },
         r2: {
             accountId: process.env.R2_ACCOUNT_ID || '',
+            // Local development only: an S3-compatible store (MinIO). Empty in prod = R2.
+            endpoint: ensureNoTrailingSlash(process.env.R2_ENDPOINT || ''),
             accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
             secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
             // Private bucket for ticket attachments (presigned URLs only).

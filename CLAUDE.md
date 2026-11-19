@@ -1274,7 +1274,8 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   (same as user-service), `MONGODB_URI`, `SUPPORT_PUBLIC_URL`; then the four
   service URLs, `TURNSTILE_SECRET`, `DEEPSEEK_API_KEY`, `R2_*` +
   `R2_PRIVATE_BUCKET` (default `sbc-support-private`). It refuses to start
-  without the required ones.
+  without the required ones. Without the R2 keys (or with the bucket missing) every
+  attachment upload answers 503; locally, `R2_ENDPOINT` points at a MinIO instead.
 - **First deploy:** the usual new-service traps apply (section above): the
   deploy script picks the service up only on the 2nd run, run `npm install` in
   `support-service/` by hand, set `SUPPORT_SERVICE_URL` in `gateway-service/.env`

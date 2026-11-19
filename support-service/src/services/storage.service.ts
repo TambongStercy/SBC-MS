@@ -17,7 +17,9 @@ export interface StorageDriver {
 class R2Driver implements StorageDriver {
     private client = new S3Client({
         region: 'auto',
-        endpoint: `https://${config.r2.accountId}.r2.cloudflarestorage.com`,
+        endpoint: config.r2.endpoint || `https://${config.r2.accountId}.r2.cloudflarestorage.com`,
+        // MinIO (R2_ENDPOINT, local dev) serves buckets by path, not by sub-domain.
+        forcePathStyle: Boolean(config.r2.endpoint),
         credentials: { accessKeyId: config.r2.accessKeyId, secretAccessKey: config.r2.secretAccessKey },
         requestChecksumCalculation: 'WHEN_REQUIRED',
         responseChecksumValidation: 'WHEN_REQUIRED',
@@ -48,7 +50,7 @@ class UnconfiguredDriver implements StorageDriver {
     async presignGet(): Promise<string> { throw new DependencyError('storage'); }
 }
 
-let driver: StorageDriver = config.r2.accountId && config.r2.accessKeyId ? new R2Driver() : new UnconfiguredDriver();
+let driver: StorageDriver = (config.r2.accountId || config.r2.endpoint) && config.r2.accessKeyId ? new R2Driver() : new UnconfiguredDriver();
 
 export const storage = (): StorageDriver => driver;
 /** Tests replace the driver with an in-memory one. */
