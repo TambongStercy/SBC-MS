@@ -42,7 +42,8 @@ const sessionStillValid = async (): Promise<boolean> => {
     const token = localStorage.getItem('adminToken');
     if (!token) return false;
     try {
-        await axios.get(`${apiClient.defaults.baseURL}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+        // An admin path: it checks the admin session (authenticator sign-in), not just the token.
+        await axios.get(`${apiClient.defaults.baseURL}/users/admin/me/access`, { headers: { Authorization: `Bearer ${token}` } });
         return true;
     } catch {
         return false;
@@ -66,7 +67,10 @@ apiClient.interceptors.response.use(
                 return Promise.reject(error);
             }
 
-            if (error.response.status === 401 && !isUserServiceUrl(error.config?.url) && await sessionStillValid()) {
+            // The gateway or user-service says the admin session itself is over (sign-out,
+            // 30 min idle, 12 h, reset): back to the sign-in, whatever service answered.
+            const sessionEnded = error.response.data?.code === 'ADMIN_SESSION_ENDED';
+            if (error.response.status === 401 && !sessionEnded && !isUserServiceUrl(error.config?.url) && await sessionStillValid()) {
                 console.error('401 from a service other than user-service while the session is valid:', error.config?.url);
                 return Promise.reject(error);
             }

@@ -24,11 +24,11 @@ describe('moduleForPath', () => {
     }
   });
 
-  it('maps every signed-in route of App.tsx to a module (except /logout)', () => {
+  it('maps every signed-in route of App.tsx to a module (except the open /logout and /securite)', () => {
     const paths = appRoutePaths();
     expect(paths.length).toBeGreaterThan(40);
     for (const path of paths) {
-      if (path === '/logout') continue;
+      if (path === '/logout' || path === '/securite') continue; // every account: sign-out, own authenticator
       expect(moduleForPath(path), path).not.toBeNull();
     }
   });

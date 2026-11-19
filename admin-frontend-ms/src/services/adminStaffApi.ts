@@ -24,6 +24,15 @@ export interface StaffMember {
     /** Effective rights (the super admin has every module in write). */
     permissions: Permissions;
     updatedAt?: string;
+    /** Authenticator app (admin sign-in). */
+    security?: AccountSecurity;
+}
+
+export interface AccountSecurity {
+    authenticator: boolean;
+    backupCodesLeft: number;
+    lastLoginAt: string | null;
+    locked: boolean;
 }
 
 export interface StaffList {
@@ -65,4 +74,22 @@ export async function setStaffAccess(userId: string, permissions: Permissions): 
 /** Takes every admin right away: the account becomes a member again. */
 export async function revokeStaff(userId: string): Promise<void> {
     await apiClient.delete(`/users/admin/staff/${userId}`);
+}
+
+/** The signed-in account's own authenticator state. */
+export async function getMySecurity(): Promise<AccountSecurity> {
+    const res = await apiClient.get<Envelope<AccountSecurity>>('/users/admin/me/security');
+    return res.data.data;
+}
+
+/** New backup codes (the old ones stop working); needs a current authenticator code. */
+export async function regenerateBackupCodes(code: string): Promise<string[]> {
+    const res = await apiClient.post<Envelope<{ backupCodes: string[] }>>('/users/admin/me/backup-codes', { code });
+    return res.data.data.backupCodes;
+}
+
+/** Super admin, lost phone: removes the account's authenticator and ends its sessions. */
+export async function resetAuthenticator(userId: string): Promise<{ sessionsEnded: number }> {
+    const res = await apiClient.post<Envelope<{ sessionsEnded: number }>>(`/users/admin/staff/${userId}/reset-authenticator`);
+    return res.data.data;
 }
