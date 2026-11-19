@@ -44,6 +44,13 @@ is('POST', '/api/notifications/push/admin/audience', 'notifications', 'read');
 is('POST', '/api/notifications/push/admin/announce', 'notifications', 'write');
 is('POST', '/api/relance/admin/messages/preview', 'relance', 'read');
 is('GET', '/api/whatsapp/qr', 'whatsapp', 'read');
+// SBC Support authenticates its own desk: never caught by the admin gate.
+is('POST', '/api/support/desk/auth/login', null);
+is('GET', '/api/support/desk/tickets', null);
+is('POST', '/api/support/desk/agents/abc/admin', null);
+is('GET', '/api/support/desk/admin', null);
+is('GET', '/api/Support/Desk/../desk/admin', null);
+is('GET', '/api/support/me/kb/articles/admin', null);
 is('POST', '/api/whatsapp/logout', 'whatsapp', 'write');
 is('GET', '/api/advertising/admin/manual-verifications', 'adsProofs', 'read');
 is('GET', '/api/advertising/admin/campaigns', 'ads', 'read');

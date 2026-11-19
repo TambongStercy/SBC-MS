@@ -30,6 +30,9 @@ interface Rule {
 const WRITES = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
 const RULES: Rule[] = [
+    // SBC Support authenticates its own desk (agent accounts, TOTP, CSRF): a
+    // path such as /api/support/desk/.../admin must never fall into the staff gate.
+    { pattern: /^\/api\/support(\/|$)/, module: 'public' },
     // --- user-service ---
     { pattern: /^\/api\/users\/admin\/me\/(access|security|backup-codes)$/, module: 'self' },
     { pattern: /^\/api\/users\/admin\/logout$/, module: 'self' },
