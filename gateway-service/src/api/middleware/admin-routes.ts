@@ -31,7 +31,8 @@ const WRITES = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
 const RULES: Rule[] = [
     // --- user-service ---
-    { pattern: /^\/api\/users\/admin\/me\/access$/, module: 'self' },
+    { pattern: /^\/api\/users\/admin\/me\/(access|security|backup-codes)$/, module: 'self' },
+    { pattern: /^\/api\/users\/admin\/logout$/, module: 'self' },
     { pattern: /^\/api\/users\/admin\/staff(\/|$)/, module: 'staff' },
     { pattern: /^\/api\/users\/admin\/users\/[^/]+\/role$/, module: 'staff' },
     { pattern: /^\/api\/users\/admin\/fix-referrals$/, module: 'staff' },

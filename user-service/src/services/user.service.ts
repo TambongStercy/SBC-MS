@@ -215,8 +215,6 @@ const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
 export const toPlainPermissions = (p: unknown): Record<string, unknown> =>
     p instanceof Map ? Object.fromEntries(p) : ((p as Record<string, unknown>) || {});
 
-/** A valid bcrypt hash of a random string: compared against when the email is unknown, so the reply takes as long. */
-const DUMMY_BCRYPT_HASH = bcrypt.hashSync(require('crypto').randomBytes(16).toString('hex'), 10);
 
 export class UserService {
     private subscriptionRepository = subscriptionRepository; // Inject repository
@@ -2118,109 +2116,26 @@ export class UserService {
     }
 
     /**
-     * Logs in an admin user.
-     * Verifies credentials and checks for ADMIN role.
-     * Step one of two: checks the password and emails a login code.
-     * @param email - Admin's email.
-     * @param passwordAttempt - Admin's password.
-     * @param ipAddress - Optional IP address for logging/auditing.
-     * @returns The user id for step two (`verifyAdminLoginOtp`); no token yet.
+     * First admin sign-in (no authenticator yet): the emailed code proves the
+     * account's mailbox before an authenticator is enrolled. Used by
+     * admin-auth.service only.
      */
-    async loginAdmin(
-        email: string,
-        passwordAttempt: string,
-        ipAddress?: string
-    ): Promise<{ otpRequired: true; userId: string; otpSent: boolean; otpRetryAfterSeconds: number }> {
-        if (!email || !passwordAttempt) {
-            log.warn('Admin login attempt failed: Email and password are required.');
-            throw new Error('Email and password are required');
-        }
-
-        const user = await userRepository.findByEmail(email, true); // Need password
-
-        // Same answer, after the same bcrypt work, whether the email is unknown,
-        // the password is wrong or the account is not staff: the login must not
-        // tell an attacker which emails are admin accounts.
-        const isMatch = await bcrypt.compare(passwordAttempt, user?.password || DUMMY_BCRYPT_HASH);
-        const STAFF_ROLES: string[] = ADMIN_CAPABLE_ROLES;
-        if (!user || !user.password || !isMatch || !STAFF_ROLES.includes(user.role)) {
-            const why = !user || !user.password ? 'unknown email' : !isMatch ? 'wrong password' : 'not a staff role';
-            log.warn(`Admin login attempt failed for ${email}: ${why} (ip ${ipAddress || 'unknown'}).`);
-            throw new Error('Invalid email or password');
-        }
-
-        if (user.blocked) {
-            log.warn(`Admin login attempt failed: Admin account ${email} is blocked.`);
-            throw new Error('User account is blocked');
-        }
-
-        if (user.deleted) {
-            log.warn(`Admin login attempt failed: Admin account ${email} is deleted.`);
-            throw new Error('User account is deleted');
-        }
-
-        // A password alone no longer opens the admin. On 2026-10-21/22 accounts
-        // that held the admin role signed in with nothing but a password and
-        // drained members' wallets; a second factor sent to the account's email
-        // is now required before any admin token is issued.
-        let issued: { sent: boolean; retryAfterSeconds: number };
-        try {
-            issued = await this.issueAccountAccessOtp(user, { channelOverride: 'email', purpose: 'adminLogin' });
-        } catch (otpError) {
-            log.error(`Failed to send admin login code for ${email}`, otpError);
-            throw new Error('Login failed: could not send the verification code.');
-        }
-
-        log.info(`Admin password verified for ${email}; login code ${issued.sent ? 'sent' : 'throttled'} (ip ${ipAddress || 'unknown'}).`);
-        return {
-            otpRequired: true,
-            userId: user._id.toString(),
-            otpSent: issued.sent,
-            otpRetryAfterSeconds: issued.retryAfterSeconds,
-        };
+    async sendAdminEnrolmentCode(user: IUser): Promise<{ sent: boolean; retryAfterSeconds: number }> {
+        return this.issueAccountAccessOtp(user, { channelOverride: 'email', purpose: 'adminLogin' });
     }
 
-    /**
-     * Second step of the admin login: checks the emailed code and only then
-     * issues the admin token. Role, block and deletion are re-read from the
-     * database here, not trusted from the first step.
-     */
-    async verifyAdminLoginOtp(
-        userId: string,
-        otpCode: string,
-        ipAddress?: string
-    ): Promise<{ token: string; user: Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'> }> {
-        if (!userId || !otpCode || !Types.ObjectId.isValid(userId)) {
-            throw new Error('Invalid code');
-        }
-        const user = await userRepository.findById(userId);
-        const STAFF_ROLES: string[] = ADMIN_CAPABLE_ROLES;
-        if (!user || !STAFF_ROLES.includes(user.role) || user.blocked || user.deleted) {
-            log.warn(`Admin login code refused for ${userId}: not an active staff account.`);
-            throw new Error('Invalid code');
-        }
-
+    /** Checks and consumes an emailed sign-in code (never a change-of-contact code). */
+    async consumeAdminEnrolmentCode(user: IUser, code: string): Promise<boolean> {
         const now = new Date();
-        // Only a sign-in code: a code sent to prove a new email or number (purpose set) never opens the admin.
-        const valid = (user.otps || []).some(otp => !otp.purpose && otpMatches(otp.code, otpCode) && otp.expiration > now);
-        if (!valid) {
-            log.warn(`Admin login code refused for ${user.email} (ip ${ipAddress || 'unknown'}).`);
-            throw new Error('Invalid or expired code');
-        }
-        await userRepository.clearOtps(user._id, 'otps');
+        const valid = (user.otps || []).some(otp => !otp.purpose && otpMatches(otp.code, code) && otp.expiration > now);
+        if (valid) await userRepository.clearOtps(user._id, 'otps');
+        return valid;
+    }
 
-        if (ipAddress && ipAddress !== user.ipAddress) {
-            userRepository.updateIpAddress(user._id, { ipAddress });
-        }
-
-        const token = signToken({ userId: user._id, id: user._id, email: user.email, role: user.role });
-        await userRepository.updateById(user._id, { token });
-
-        log.info(`Admin user ${user.email} logged in successfully (ip ${ipAddress || 'unknown'}).`);
-        // The admin shows only the modules the account may open; the gateway
-        // enforces the same map on every call (GET /users/admin/me/access refreshes it).
+    /** The admin's profile as the admin app shows it, with their module rights. */
+    adminProfile(user: IUser) {
         const permissions = effectivePermissions(user.role, toPlainPermissions(user.adminPermissions));
-        return { token, user: { ...this.mapUserToResponse(user), adminPermissions: permissions } as any };
+        return { ...this.mapUserToResponse(user), adminPermissions: permissions } as any;
     }
 
     /**

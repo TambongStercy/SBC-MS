@@ -123,7 +123,7 @@ const PATH_RULES: { pattern: RegExp; module: AdminModule }[] = [
 ];
 
 /** Screens every signed-in account may open, whatever its rights. */
-const OPEN_PATHS = new Set(['/logout']);
+const OPEN_PATHS = new Set(['/logout', '/securite']);
 
 /** The module a screen belongs to, or null when the path is not mapped. */
 export function moduleForPath(pathname: string): AdminModule | null {

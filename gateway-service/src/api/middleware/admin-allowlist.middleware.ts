@@ -32,8 +32,15 @@ const log = logger.getLogger('AdminAllowlist');
  * holds what. Super admins (`admin`) hold every module.
  */
 
-// Signing in happens before an admin token exists.
-const SIGN_IN_PATHS = new Set(['/api/users/admin/login', '/api/users/admin/login/verify-otp']);
+// Signing in happens before an admin token exists (password, then the authenticator).
+const SIGN_IN_PATHS = new Set([
+    '/api/users/admin/login',
+    '/api/users/admin/login/email-code',
+    '/api/users/admin/login/enroll/start',
+    '/api/users/admin/login/enroll/confirm',
+    '/api/users/admin/login/totp',
+]);
+const LOGOUT_PATH = '/api/users/admin/logout';
 
 const allowedIds = (): Set<string> =>
     new Set((process.env.ADMIN_ALLOWLIST || '').split(',').map(id => id.trim()).filter(Boolean));
@@ -72,16 +79,21 @@ export const normalizePath = (originalUrl: string): string => {
     return p.length > 1 ? p.replace(/\/+$/, '') : p;
 };
 
-type Access = { role: string; blocked: boolean; permissions: Partial<Record<AdminModule, AccessLevel>> };
+type Access = {
+    role: string; blocked: boolean; permissions: Partial<Record<AdminModule, AccessLevel>>;
+    /** The admin session the token carries (user-service admin-auth.service): only 'active' passes. */
+    session?: string;
+};
 const ACCESS_TTL_MS = 60 * 1000;
 const accessCache = new Map<string, { value: Access; expiresAt: number }>();
 
 /** The account's admin rights, from user-service (cached a minute; null when unknown). */
-async function getAccess(userId: string): Promise<Access | null> {
-    const hit = accessCache.get(userId);
+async function getAccess(userId: string, sid: string): Promise<Access | null> {
+    const cacheKey = `${userId}:${sid}`;
+    const hit = accessCache.get(cacheKey);
     if (hit && hit.expiresAt > Date.now()) return hit.value;
     try {
-        const r = await fetch(`${config.services.userServiceUrl}/api/users/internal/${encodeURIComponent(userId)}/admin-access`, {
+        const r = await fetch(`${config.services.userServiceUrl}/api/users/internal/${encodeURIComponent(userId)}/admin-access?sid=${encodeURIComponent(sid)}`, {
             headers: { Authorization: `Bearer ${config.services.serviceSecret}`, 'X-Service-Name': 'gateway-service' },
             signal: AbortSignal.timeout(4000),
         });
@@ -89,7 +101,7 @@ async function getAccess(userId: string): Promise<Access | null> {
         if (!r.ok) throw new Error(`user-service answered ${r.status}`);
         const value = (await r.json())?.data as Access;
         if (!value || typeof value.permissions !== 'object') throw new Error('malformed admin access');
-        accessCache.set(userId, { value, expiresAt: Date.now() + ACCESS_TTL_MS });
+        accessCache.set(cacheKey, { value, expiresAt: Date.now() + ACCESS_TTL_MS });
         return value;
     } catch (err: any) {
         log.error(`Admin access lookup failed for ${userId}: ${err?.message}`);
@@ -102,6 +114,10 @@ export const clearAccessCache = () => accessCache.clear();
 
 const refuse = (res: Response, status: number, message: string) =>
     res.status(status).json({ success: false, message });
+
+/** 401 so the admin app signs out and asks for the password and the authenticator again. */
+const sessionEnded = (res: Response) =>
+    res.status(401).json({ success: false, code: 'ADMIN_SESSION_ENDED', message: 'Votre session d’administration est terminée. Reconnectez-vous.' });
 
 export const adminAllowlist = async (req: Request, res: Response, next: NextFunction) => {
     const p = normalizePath(req.originalUrl);
@@ -122,12 +138,26 @@ export const adminAllowlist = async (req: Request, res: Response, next: NextFunc
         return refuse(res, 403, 'Admin access denied');
     }
 
+    // Only a token from the admin sign-in (password + authenticator) opens the
+    // admin: a member-app token of the same account carries no admin session.
+    const sid = typeof claims?.asid === 'string' ? claims.asid : '';
+    if (!sid) {
+        log.warn(`Admin path refused (no admin session in the token): ${req.method} ${p} user=${userId} ip=${req.ip}`);
+        return sessionEnded(res);
+    }
+
     let access: Access | null;
     try {
-        access = await getAccess(userId);
+        access = await getAccess(userId, sid);
     } catch {
         return refuse(res, 503, 'Vérification des droits impossible pour le moment. Réessayez.');
     }
+    if (access && access.session !== 'active') {
+        log.warn(`Admin path refused (session ${access.session ?? 'unknown'}): ${req.method} ${p} user=${userId}`);
+        return sessionEnded(res);
+    }
+    // Signing out must take effect at once, not when the cached answer expires.
+    if (p === LOGOUT_PATH) accessCache.delete(`${userId}:${sid}`);
     if (!access || access.blocked || !allows(access.permissions, route)) {
         log.warn(`Admin module refused: ${req.method} ${p} module=${route.module} level=${route.level} user=${userId} role=${access?.role ?? 'unknown'}`);
         return refuse(res, 403, route.level === 'write'
