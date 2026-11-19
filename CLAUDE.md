@@ -262,7 +262,8 @@ Rufus: staff accounts get, per module, no access / read-only / write.
     because Express routes case-insensitively.
   - Rights come from `GET /users/internal/:id/admin-access`, cached 60 s, and a
     failed lookup refuses (503). A revoked account therefore keeps access for at
-    most a minute; tokens are not revocable.
+    most a minute. Since 2026-11-19 the same lookup checks the admin session
+    (see "Admin sign-in" below); signing out takes effect at once.
   - `ADMIN_ALLOWLIST` still applies to every admin call, staff included.
   - An admin path missing from the table is super-admin only, so a new route
     stays closed to staff until it is mapped.
@@ -292,6 +293,42 @@ Rufus: staff accounts get, per module, no access / read-only / write.
 - **Team API (super admin):** `GET /users/admin/staff`, `PUT /users/admin/staff/:id
   {permissions}` (makes the member `staff`), `DELETE /users/admin/staff/:id`
   (back to member); `GET /users/admin/me/access` for the signed-in account.
+
+### Admin sign-in: authenticator app, like the support desk (2026-11-19)
+
+Sterling: "It should be like support desk". The admin signs in with the password,
+then the 6-digit code of an authenticator app (Google/Microsoft Authenticator,
+2FAS), or a single-use backup code. user-service `services/admin-auth.service.ts`,
+routes `/users/admin/login`, `/login/email-code`, `/login/enroll/{start,confirm}`,
+`/login/totp`, `/logout`, `/me/security`, `/me/backup-codes`,
+`/staff/:id/reset-authenticator`.
+- **First sign-in of each admin** (all of them after the deploy): password, then a
+  code emailed to the account (proves the mailbox), then the authenticator is set
+  up from a QR code and 10 backup codes are shown once.
+- **Sessions:** the admin token carries `asid`. The gateway (and user-service's own
+  admin routes) refuse any admin call whose session is missing, signed out, idle
+  `ADMIN_IDLE_TIMEOUT_MIN` (30) or older than `ADMIN_SESSION_MAX_HOURS` (12):
+  401 `ADMIN_SESSION_ENDED`, the admin app goes back to the sign-in. **A member-app
+  token of an admin account no longer opens the admin** (it used to: same JWT,
+  same role).
+- **Lockout:** 5 failures (password or code) in 24 h lock the account 15 min,
+  then 1 h, then 24 h, and email the admin; a new device and a used backup code
+  email them too. Every refusal gives the same message.
+- **Storage:** secrets AES-256-GCM with `ADMIN_TOTP_ENC_KEY`, in their own
+  collections (`adminauths`, `adminsessions`, `adminloginchallenges`), never on
+  the user document.
+- **Lost phone:** sign in with a backup code; a super admin resets the
+  authenticator in Équipe (not their own). Last resort on the server:
+  `node dist/scripts/reset-admin-authenticator.js --email <email> [--apply]`.
+- **Deploy (prod and preprod): set `ADMIN_TOTP_ENC_KEY` in user-service `.env`
+  first** (`openssl rand -base64 32`, one per environment). Without it no admin can
+  sign in (503); members are unaffected. Never rotate it without resetting every
+  admin's authenticator. Check: `src/scripts/check-admin-authenticator.ts`
+  (Node 20/22), gateway `check-admin-permissions.ts`.
+- Still different from the desk: the admin token stays in localStorage (the admin
+  calls the API cross-origin, so the desk's httpOnly cookie would need an `/api`
+  location on the admin vhosts first), and there is no code re-check before
+  sensitive actions.
 
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
