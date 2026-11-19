@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
-  Cancel01Icon, CheckmarkCircle02Icon, Edit02Icon, InformationCircleIcon, RefreshIcon, UserAdd01Icon, UserRemove01Icon, UserShield01Icon,
+  Cancel01Icon, CheckmarkCircle02Icon, Edit02Icon, InformationCircleIcon, RefreshIcon, SecurityLockIcon, UserAdd01Icon, UserRemove01Icon, UserShield01Icon,
 } from '@hugeicons/core-free-icons';
+import { useAuth } from '../context/AuthContext';
 import { getAvatarUrl } from '../api/apiClient';
-import { apiErrorMessage, listStaff, revokeStaff, setStaffAccess, type StaffMember } from '../services/adminStaffApi';
+import { apiErrorMessage, listStaff, resetAuthenticator, revokeStaff, setStaffAccess, type StaffMember } from '../services/adminStaffApi';
 import type { AdminUserData } from '../services/adminUserApi';
 import { summarizePermissions, type Permissions } from '../lib/permissions';
 import { ROLE_LABEL } from '../lib/roles';
@@ -29,6 +30,15 @@ const ROLE_TONE: Record<string, 'primary' | 'info' | 'warning' | 'neutral'> = {
 
 function RoleBadge({ role }: { role: string }) {
   return <Badge tone={ROLE_TONE[role] ?? 'neutral'}>{ROLE_LABEL[role] ?? role}</Badge>;
+}
+
+/** Authenticator app of the admin sign-in (user-service admin-auth.service). */
+function AuthenticatorBadge({ member }: { member: StaffMember }) {
+  const sec = member.security;
+  if (!sec) return <span className="text-xs text-fg-subtle">—</span>;
+  if (sec.locked) return <Badge tone="danger">Bloqué (essais)</Badge>;
+  if (!sec.authenticator) return <Badge tone="warning">À configurer</Badge>;
+  return <Badge tone="success">Activé{sec.backupCodesLeft <= 3 ? ` · ${sec.backupCodesLeft} code${sec.backupCodesLeft > 1 ? 's' : ''} de secours` : ''}</Badge>;
 }
 
 const rightsSummary = (m: StaffMember) => (m.role === 'admin' ? 'Tous les droits' : summarizePermissions(m.permissions));
@@ -57,6 +67,9 @@ export default function TeamPage() {
   const [editing, setEditing] = useState<RightsTarget | null>(null);
   const [removing, setRemoving] = useState<StaffMember | null>(null);
   const [saved, setSaved] = useState<{ id: string; name: string } | null>(null);
+  const [resetting, setResetting] = useState<StaffMember | null>(null);
+  const { adminUser } = useAuth();
+  const myId = adminUser?._id;
 
   const staff = useMemo(() => staffQuery.data?.staff ?? [], [staffQuery.data]);
   const teamIds = useMemo(() => new Set(staff.map(m => m._id)), [staff]);
@@ -83,6 +96,16 @@ export default function TeamPage() {
     onError: error => toast.error(apiErrorMessage(error, 'Impossible de retirer l’accès.')),
   });
 
+  const reset = useMutation({
+    mutationFn: (member: StaffMember) => resetAuthenticator(member._id),
+    onSuccess: (_, member) => {
+      toast.success(`Application réinitialisée pour ${member.name || member.email}. À sa prochaine connexion, un code lui sera envoyé par email pour configurer la nouvelle.`);
+      setResetting(null);
+      void queryClient.invalidateQueries({ queryKey: STAFF_KEY });
+    },
+    onError: error => toast.error(apiErrorMessage(error, 'Impossible de réinitialiser l’application.')),
+  });
+
   const edit = (m: StaffMember) => setEditing({ _id: m._id, name: m.name, email: m.email, avatar: m.avatar, role: m.role, permissions: m.permissions });
 
   const pick = (member: AdminUserData) => {
@@ -95,13 +118,22 @@ export default function TeamPage() {
     setEditing({ _id: member._id, name: member.name, email: member.email, avatar: member.avatar, role: member.role ?? 'user', permissions: {} });
   };
 
+  const resetButton = (m: StaffMember, phone: boolean) => (m._id !== myId && m.security?.authenticator ? (
+    <Button variant={phone ? 'outline' : 'ghost'} size={phone ? 'lg' : 'sm'} onClick={() => setResetting(m)}>
+      <HugeiconsIcon icon={SecurityLockIcon} size={16} aria-hidden="true" />
+      Réinitialiser l’application
+    </Button>
+  ) : null);
+
   const actions = (m: StaffMember, phone = false) => {
     if (m.role === 'admin') {
-      return <span className="text-xs text-fg-subtle">Non modifiable ici</span>;
+      const r = resetButton(m, phone);
+      return r ? <div className={phone ? 'grid grid-cols-1 gap-2' : 'flex justify-end gap-1'}>{r}</div> : <span className="text-xs text-fg-subtle">Non modifiable ici</span>;
     }
     const size = phone ? 'lg' : 'sm';
     return (
       <div className={phone ? 'grid grid-cols-1 gap-2' : 'flex justify-end gap-1'}>
+        {resetButton(m, phone)}
         <Button variant={phone ? 'outline' : 'ghost'} size={size} onClick={() => edit(m)}>
           <HugeiconsIcon icon={Edit02Icon} size={16} aria-hidden="true" />
           {m.role === 'staff' ? 'Modifier les droits' : 'Passer en Équipe'}
@@ -119,6 +151,7 @@ export default function TeamPage() {
     { key: 'role', header: 'Rôle', cell: m => <RoleBadge role={m.role} /> },
     { key: 'rights', header: 'Droits', cell: m => <span className="text-sm text-fg">{rightsSummary(m)}</span> },
     { key: 'state', header: 'État', cell: m => (m.blocked ? <Badge tone="danger">Bloqué</Badge> : <Badge tone="success">Actif</Badge>) },
+    { key: 'authenticator', header: 'Authentificateur', cell: m => <AuthenticatorBadge member={m} /> },
     { key: 'actions', header: <span className="sr-only">Actions</span>, cell: m => actions(m), className: 'text-right', hideOnCard: true },
   ];
 
@@ -128,6 +161,7 @@ export default function TeamPage() {
       <div className="flex flex-wrap items-center gap-2">
         <RoleBadge role={m.role} />
         {m.blocked && <Badge tone="danger">Bloqué</Badge>}
+        <AuthenticatorBadge member={m} />
         <span className="text-sm text-fg-muted">{rightsSummary(m)}</span>
       </div>
       {actions(m, true)}
@@ -226,6 +260,31 @@ export default function TeamPage() {
         onSave={permissions => editing && save.mutate({ id: editing._id, permissions })}
         onOpenChange={open => { if (!open) setEditing(null); }}
       />
+
+      <Dialog open={!!resetting} onOpenChange={open => { if (!open && !reset.isPending) setResetting(null); }}>
+        {resetting && (
+          <DialogContent
+            size="sm"
+            title="Réinitialiser l’application d’authentification ?"
+            description={`Pour un téléphone perdu ou changé. ${resetting.name || resetting.email} est déconnecté partout, et ses codes de secours ne marchent plus.`}
+            footer={(
+              <>
+                <DialogClose asChild>
+                  <Button variant="outline" size="lg" disabled={reset.isPending}>Annuler</Button>
+                </DialogClose>
+                <Button variant="danger" size="lg" loading={reset.isPending} onClick={() => reset.mutate(resetting)}>
+                  Réinitialiser
+                </Button>
+              </>
+            )}
+          >
+            <p className="text-sm text-fg-muted">
+              À sa prochaine connexion, après le mot de passe, un code lui est envoyé par email, puis il configure l’application sur son nouveau téléphone.
+              Faites-le seulement si la personne vous l’a demandé de vive voix.
+            </p>
+          </DialogContent>
+        )}
+      </Dialog>
 
       <Dialog open={!!removing} onOpenChange={open => { if (!open && !revoke.isPending) setRemoving(null); }}>
         {removing && (

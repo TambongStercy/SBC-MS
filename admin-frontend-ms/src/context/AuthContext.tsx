@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { AdminUserData, loginAdmin, verifyAdminLoginOtp, AdminLoginChallenge } from '../services/adminUserApi';
+import { AdminUserData, loginAdmin, AdminLoginStep, AdminLoginResponse } from '../services/adminUserApi';
 import { getMyAccess } from '../services/adminStaffApi';
 import { roleFromToken } from '../lib/roles';
 import { permissionsForRole, sanitizePermissions, type Permissions } from '../lib/permissions';
@@ -27,10 +27,10 @@ export interface AuthContextType {
   accessError: boolean;
   /** Asks the server for this account's rights again. */
   refreshAccess: () => Promise<void>;
-  /** Step one: checks the password and emails a code. */
-  login: (credentials: { email: string; password: string }) => Promise<AdminLoginChallenge>;
-  /** Step two: exchanges the emailed code for the session. */
-  verifyLoginCode: (userId: string, code: string) => Promise<void>;
+  /** Step one: checks the password; the next step is the authenticator (or, the first time, the emailed code). */
+  login: (credentials: { email: string; password: string }) => Promise<AdminLoginStep>;
+  /** Last step done (authenticator code or set-up): keeps the session. */
+  finishLogin: (session: AdminLoginResponse) => void;
   logout: () => void;
   isLoading: boolean;
 }
@@ -78,7 +78,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [token, adminUser]);
 
-  const login = async (credentials: { email: string; password: string }): Promise<AdminLoginChallenge> => {
+  const login = async (credentials: { email: string; password: string }): Promise<AdminLoginStep> => {
     setIsLoading(true);
     try {
       return await loginAdmin(credentials);
@@ -87,26 +87,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const verifyLoginCode = async (userId: string, code: string): Promise<void> => {
-    setIsLoading(true);
-    try {
-      const response = await verifyAdminLoginOtp(userId, code);
-      if (!response.token || !response.user) {
-        throw new Error('Login response missing token or user data');
-      }
-      const { adminPermissions, ...user } = response.user;
-      lastRefresh.current = Date.now();
-      setAccessError(false);
-      setToken(response.token);
-      setAdminUser(adminPermissions ? { ...user, adminPermissions: sanitizePermissions(adminPermissions) } : user);
-    } catch (error) {
-      setToken(null);
-      setAdminUser(null);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const finishLogin = useCallback((response: AdminLoginResponse) => {
+    if (!response.token || !response.user) throw new Error('Réponse de connexion incomplète.');
+    const { adminPermissions, ...user } = response.user;
+    lastRefresh.current = Date.now();
+    setAccessError(false);
+    setToken(response.token);
+    setAdminUser(adminPermissions ? { ...user, adminPermissions: sanitizePermissions(adminPermissions) } : user);
+  }, []);
 
   const logout = useCallback(() => {
     setToken(null);
@@ -168,7 +156,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   return (
     <AuthContext.Provider value={{
       isAdminAuthenticated: !!token, adminUser, token, role, permissions, accessError, refreshAccess,
-      login, verifyLoginCode, logout, isLoading,
+      login, finishLogin, logout, isLoading,
     }}>
       {children}
     </AuthContext.Provider>

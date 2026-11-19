@@ -33,6 +33,7 @@ import WithdrawalHistoryPage from './pages/WithdrawalHistoryPage';
 import UserFinancialAnalyticsPage from './pages/UserFinancialAnalyticsPage';
 import UserRolesManagement from './pages/UserRolesManagement';
 import TeamPage from './pages/TeamPage';
+import SecurityPage from './pages/SecurityPage';
 import ChatPage from './pages/ChatPage';
 import StatusPage from './pages/StatusPage';
 import ImpactChallengePage from './pages/ImpactChallengePage';
@@ -80,6 +81,7 @@ function App() {
             <Route path="/tombola/draw/:monthId" element={<TombolaDrawPage />} />
             <Route path="/sbclove" element={<SbcLoveManagementPage />} />
             <Route path="/logout" element={<Deconnexion />} />
+            <Route path="/securite" element={<SecurityPage />} />
             <Route path="/userpage/:userId" element={<UsersPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/notifications/push" element={<PushAnnouncementsPage />} />

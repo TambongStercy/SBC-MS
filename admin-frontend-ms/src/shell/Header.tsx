@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { ComputerIcon, Download01Icon, Logout01Icon, Menu01Icon, Moon02Icon, Search01Icon, Sun03Icon, ViewIcon } from '@hugeicons/core-free-icons';
+import { ComputerIcon, Download01Icon, Logout01Icon, SecurityLockIcon, Menu01Icon, Moon02Icon, Search01Icon, Sun03Icon, ViewIcon } from '@hugeicons/core-free-icons';
 import { useCurrentAccess } from '../hooks/usePermission';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, type ThemePreference } from '../contexts/theme';
@@ -129,6 +129,9 @@ export function Header({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
                 <HugeiconsIcon icon={Download01Icon} size={16} aria-hidden="true" /> Installer l'application
               </MenuItem>
             )}
+            <MenuItem onSelect={() => navigate('/securite')}>
+              <HugeiconsIcon icon={SecurityLockIcon} size={16} aria-hidden="true" /> Sécurité du compte
+            </MenuItem>
             <MenuItem destructive onSelect={() => navigate(LOGOUT.path)}>
               <HugeiconsIcon icon={Logout01Icon} size={16} aria-hidden="true" /> {LOGOUT.label}
             </MenuItem>
