@@ -25,7 +25,7 @@ export const PERMISSIONS = [
     'finance.regularize.request', 'finance.regularize.approve',
     'views.verify', 'views.supervise',
     'kb.edit', 'kb.publish', 'templates.manage',
-    'reports.read', 'export',
+    'reports.read', 'export', 'analytics.read', 'errors.manage',
     'agents.manage', 'settings.manage', 'audit.read',
 ] as const;
 export type Permission = typeof PERMISSIONS[number];
@@ -55,6 +55,9 @@ const MATRIX: Record<Permission, Role[]> = {
     'templates.manage': [FM, VS, SA],
     'reports.read': [FA, FM, VS, SA],
     'export': [FM, VS, SA],
+    // Analytics and technical errors: the support administrator.
+    'analytics.read': [SA],
+    'errors.manage': [SA],
     'agents.manage': [SA],
     'settings.manage': [SA],
     'audit.read': [SA],

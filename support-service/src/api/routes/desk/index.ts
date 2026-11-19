@@ -9,6 +9,7 @@ import kbRoutes from './kb.routes';
 import financeRoutes from './finance.routes';
 import viewRoutes from './views.routes';
 import reportRoutes from './reports.routes';
+import analyticsRoutes from './analytics.routes';
 
 /** Agent desk (/api/support/desk/*). CSRF + Origin on every mutation, agent session on everything but sign-in. */
 const router = Router();
@@ -23,5 +24,6 @@ router.use('/', kbRoutes);
 router.use('/', financeRoutes);
 router.use('/views', viewRoutes);
 router.use('/', reportRoutes);
+router.use('/', analyticsRoutes);
 
 export default router;

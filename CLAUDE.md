@@ -1325,6 +1325,13 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   Emails with no member (agents, public requests) carry `userId` `000000000000000000000000`:
   notification-service refuses an email without a userId, which silently dropped every
   agent email (activation, lockout, alerts) until 2026-11-18.
+- **Analytique (desk, support administrator):** `GET /desk/analytics` computes the KPIs
+  (requests in/handled, median and p90 first response and resolution, SLA breaches, backlog
+  and its oldest, reopened, recurring categories, assistant settled without an agent, cases,
+  approvals, agent load) against the previous period, daily series, and plain-sentence
+  insights. Technical errors come from the member app (`POST /me/client-errors`,
+  `clienterror*` collections), each type open / handling / resolved (`errors.manage`); a
+  resolved type that recurs is a regression.
 - **Phone alerts (ntfy):** every new request (member, assistant, public form) is pushed to
   `NTFY_URL`/`NTFY_TOPIC` (`services/ntfy.service.ts`, JSON publish, `NTFY_TOKEN` for a
   protected topic): number, category, priority (urgent→5 … low→2), name, title, start of

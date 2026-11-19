@@ -15,6 +15,7 @@ import { getSetting } from '../../services/settings.service';
 import { notFound } from '../../utils/errors';
 import { memberRealtimeToken } from '../../services/realtime.service';
 import { cleanContact } from '../../services/contact.service';
+import { recordClientErrors } from '../../services/client-error.service';
 
 /** Member help space (/api/support/me/*), member JWT, any role. */
 const router = Router();
@@ -93,6 +94,11 @@ router.post('/tickets/:id/messages', memberLimit('ticket-message', 60, 24 * 3600
 
 router.post('/tickets/:id/close', ah(async (req, res) => {
     res.json({ success: true, data: await tickets.memberClose(req.params.id, memberOf(req).userId) });
+}));
+
+/** Failed API calls the member's app hit (batched by the app): counted for the support analytics. */
+router.post('/client-errors', memberLimit('client-errors', 500, 24 * 3600, 'Trop de rapports d’erreurs aujourd’hui.'), ah(async (req, res) => {
+    res.status(202).json({ success: true, data: await recordClientErrors(memberOf(req).userId, req.body?.errors) });
 }));
 
 router.post('/attachments', memberLimit('attachments', 30, 24 * 3600, 'Trop de fichiers envoyés aujourd’hui.'), upload.single('file'), ah(async (req, res) => {
