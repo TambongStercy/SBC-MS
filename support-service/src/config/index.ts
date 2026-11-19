@@ -134,6 +134,12 @@ function load() {
             apiKey: process.env.LIVEKIT_API_KEY || '',
             apiSecret: process.env.LIVEKIT_API_SECRET || '',
         },
+        /** Phone notifications for new requests (ntfy); off without url + topic. */
+        ntfy: {
+            url: ensureNoTrailingSlash(process.env.NTFY_URL || ''),
+            topic: process.env.NTFY_TOPIC || '',
+            token: process.env.NTFY_TOKEN || '',
+        },
         /** Self-hosted OpenReplay dashboard (e.g. https://replay.sniperbuisnesscenter.com); replays on tickets are off without it. */
         openreplay: {
             dashboardUrl: ensureNoTrailingSlash(process.env.OPENREPLAY_DASHBOARD_URL || ''),

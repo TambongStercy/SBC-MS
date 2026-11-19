@@ -11,6 +11,7 @@ import { badRequest, conflict, notFound } from '../utils/errors';
 import { attachmentLinks, claimAttachments } from './attachment.service';
 import { notifyAgents, notifyMember } from './notifier.service';
 import { cleanReplay } from './replay.service';
+import { notifyNewTicket } from './ntfy.service';
 import type { TicketContact } from './contact.service';
 import { sendEmail } from './clients/notification.client';
 import { publishTicketEvent } from './realtime.service';
@@ -62,6 +63,7 @@ export async function createTicket(args: {
     await event(ticket._id, 'created', args.author, null, { status: 'nouveau', category, priority });
     await notifyAgents({ role: 'support_agent', kind: 'ticket.new', title: `Nouveau ticket ${number}`, body: `${cat.label} : ${subject.slice(0, 80)}`, link: `/tickets/${ticket._id}`, dedupKey: `ticket-new:${ticket._id}` });
     publishTicketEvent({ ticketId: String(ticket._id), memberId: args.memberId, kind: 'created', forMember: true });
+    notifyNewTicket({ id: String(ticket._id), number, category, priority, source: args.source, subject, body, name: args.contact?.name ?? args.memberName ?? null });
     return ticket.toObject();
 }
 

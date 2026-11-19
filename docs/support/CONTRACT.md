@@ -286,6 +286,7 @@ base64, required), `SERVICE_SECRET` (required), `JWT_SECRET` (member tokens, req
 `NOTIFICATION_SERVICE_URL`, `SUPPORT_PUBLIC_URL`, `SUPPORT_ALLOWED_ORIGINS`,
 `TURNSTILE_SECRET` (optional; login skips Turnstile when unset, logs a warning in prod),
 `DEEPSEEK_API_KEY` (optional), `DEEPSEEK_MODEL` (default `deepseek-chat`),
+`NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN` (optional; a phone notification per new request: number, category, priority, name, title, start of the message, link to the desk; never a phone or email),
 `OPENREPLAY_DASHBOARD_URL` (optional; self-hosted OpenReplay dashboard, replays on tickets are off without it),
 `LIVEKIT_URL` (wss URL the browsers connect to), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`,
 `LIVEKIT_HTTP_URL` (optional; server API URL, defaults to `LIVEKIT_URL` with ws→http) —

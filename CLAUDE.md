@@ -1325,6 +1325,10 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   Emails with no member (agents, public requests) carry `userId` `000000000000000000000000`:
   notification-service refuses an email without a userId, which silently dropped every
   agent email (activation, lockout, alerts) until 2026-11-18.
+- **Phone alerts (ntfy):** every new request (member, assistant, public form) is pushed to
+  `NTFY_URL`/`NTFY_TOPIC` (`services/ntfy.service.ts`, JSON publish, `NTFY_TOKEN` for a
+  protected topic): number, category, priority (urgent→5 … low→2), name, title, start of
+  the message, click → the desk ticket. No phone or email in it. Off without the two vars.
 - **Audit:** `auditlogs` is append-only and hash-chained;
   `node dist/scripts/verify-audit-chain.js` exits 1 on any altered or missing
   row. Give the service's Mongo user no update/remove right on it when users
