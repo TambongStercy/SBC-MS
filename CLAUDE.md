@@ -403,7 +403,9 @@ push), so a hijacker cannot silence it.
   details pass (any format), anything else answers 409
   `MOMO_CHANGE_NEEDS_CODE`. The change goes through
   `POST /users/me/momo/request-change {momoNumber, momoOperator, password}`
-  (code emailed to the ACCOUNT address, bound to that number + operator), then
+  (code sent to the account's owner on their OTP channel — email, or WhatsApp
+  mirrored to email when `WHATSAPP_OTP_ENABLED` — never to the new number;
+  bound to that number + operator), then
   `/me/momo/confirm-change {…, code}`. Replacing a number locks withdrawals
   (reason `momo_change`) and alerts the account email; a first number needs
   the code but no lock. An admin replacing a member's number locks too.
@@ -416,7 +418,10 @@ push), so a hijacker cannot silence it.
   otherwise, a first wallet included). Setting or changing it:
   `POST /users/crypto/wallet/request-change {cryptoWalletCurrency,
   cryptoWalletAddress, password}`, then `/crypto/wallet/confirm-change {…, code}`
-  (purpose `changeCrypto`, target `CURRENCY|address`). Replacing a wallet locks
+  (purpose `changeCrypto`, target `CURRENCY|address`; code delivered like the
+  MoMo one). Both codes use notification-service's `verify-account-change`
+  template, which names what is changing (never the login-code e-mail).
+  Replacing a wallet locks
   withdrawals (reason `crypto_change`) and alerts the account email. Addresses
   are checked against the network's format (`utils/crypto-wallet.ts`): a TRON
   address on USDTBSC is refused before any code. payment-service's
