@@ -127,6 +127,17 @@ export interface IUser extends Document {
      */
     withdrawalsLockedUntil?: Date;
     withdrawalLockReason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset';
+    /** Security plan Phase 1 (signals), only for members who accepted the policy announcing it. */
+    geo?: {
+        lastCountry?: string;
+        lastCountryAt?: Date;
+        /** Country with the most active days over 30 days (min. 5 days), recomputed nightly. */
+        usualCountry?: string | null;
+        usualShare?: number | null;
+        usualComputedAt?: Date;
+    };
+    lastActiveAt?: Date;
+    lastLoginAt?: Date;
     ipAddress?: string;
     ipCity?: string;
     ipRegion?: string;
@@ -244,6 +255,15 @@ const UserSchema = new Schema<IUser>(
         otpSendLog: { type: [Date], default: undefined },
         withdrawalsLockedUntil: { type: Date },
         withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change', 'momo_change', 'crypto_change', 'authenticator_reset'] },
+        geo: {
+            lastCountry: { type: String },
+            lastCountryAt: { type: Date },
+            usualCountry: { type: String, default: undefined },
+            usualShare: { type: Number, default: undefined },
+            usualComputedAt: { type: Date },
+        },
+        lastActiveAt: { type: Date, index: true },
+        lastLoginAt: { type: Date },
         ipAddress: { type: String },
         ipCity: { type: String, index: true },
         ipRegion: { type: String },

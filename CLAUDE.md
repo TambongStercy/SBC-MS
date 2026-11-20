@@ -429,6 +429,39 @@ push), so a hijacker cannot silence it.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
 
+### Signals: country, device, activity (Security plan Phase 1, 2026-11-20)
+
+- **nginx (preprod done 2026-11-20, prod not yet):** `nginx/sbc-cloudflare.conf`
+  (http level, `$sbc_from_cloudflare` from Cloudflare's IP list) + in the SBC 443
+  blocks `if ($sbc_from_cloudflare = 0) { return 403; }`: the origin IP is
+  public through the other sites on the server. `/api/` gets
+  `X-SBC-Geo $http_cf_ipcountry` (overwrites the client's) and `X-SBC-ASN
+  $http_x_cf_asn` (only meaningful once a Cloudflare transform rule sets
+  `X-CF-ASN` = `ip.src.asnum`). Keep the range list in step with
+  https://www.cloudflare.com/ips (the vhost was missing 173.245.48.0/20).
+- **Gateway** `activity-signals.middleware.ts` (off unless
+  `ACTIVITY_SIGNALS_ENABLED=true`): counts each authenticated request in memory
+  per member/Douala day/country (sources web/app/api from `X-SBC-Client`,
+  device `X-SBC-Device`, /24 range, ASN), no DB or await on the request,
+  flushes every 30 s / 500 keys to `POST /users/internal/activity/batch`; a
+  failed flush is dropped. No Redis needed: counts are `$inc`-merged.
+- **user-service** `activity-signals.service.ts`: stores only for members whose
+  `consents.privacy.version` ≥ `SIGNALS_POLICY_VERSION` (default `2026-12`, the
+  policy still to be published, so nothing is stored yet); `user_geo_days`
+  (one doc per member/day/country, lists capped at 5, TTL 180 days);
+  `users.lastActiveAt`, `lastLoginAt` (sign-ins recorded in `verifyOtp`),
+  `geo.lastCountry`, nightly `geo.usualCountry`/`usualShare` (≥ 5 active days in
+  30, 03:30 Douala). In the data export; erased on account deletion.
+- **Web app:** `utils/deviceSignals.ts` wraps `fetch` for same-origin `/api/`
+  calls only (a cross-origin custom header would trigger a CORS preflight).
+- **To switch on:** Rufus approves `docs/security-plan/privacy-signals-draft.md`
+  → publish it and bump `PRIVACY_POLICY_VERSION` to `2026-12` (backend + app) →
+  `ACTIVITY_SIGNALS_ENABLED=true` in gateway `.env`.
+- Not done: failed sign-in attempts, GeoLite2 fallback (needs a MaxMind key),
+  mobile-app install ID.
+- Checks: `gateway-service/src/scripts/check-activity-signals.ts`,
+  `user-service/src/scripts/check-activity-signals.ts`.
+
 ### Member authenticator (Security plan Phase 3, Sterling 2026-11-20)
 
 Rule: a member must set up an authenticator app (Google Authenticator,

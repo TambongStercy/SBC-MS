@@ -56,6 +56,8 @@ serviceRouter.post('/:userId/withdrawal/success', (req, res) => userController.p
 
 // Withdrawals blocked after an email/phone change (payment-service checks it before every payout)
 serviceRouter.get('/:userId/withdrawal-lock', (req, res) => userController.getWithdrawalLock(req, res));
+// Security plan Phase 1: aggregated request signals from the gateway.
+serviceRouter.post('/activity/batch', (req, res) => userController.ingestActivityBatch(req, res));
 // Member authenticator (Security plan Phase 3): payment-service checks it before a withdrawal.
 serviceRouter.get('/:userId/authenticator', (req, res) => userController.internalAuthenticatorStatus(req, res));
 serviceRouter.post('/:userId/authenticator/verify', (req, res) => userController.internalVerifyAuthenticator(req, res));

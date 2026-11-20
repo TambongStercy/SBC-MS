@@ -50,7 +50,7 @@ const config: IConfig = {
     cors: {
         origin: process.env.CORS_ORIGIN || '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Service-Name']
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Service-Name', 'X-SBC-Device', 'X-SBC-Client']
     },
 
     jwt: {

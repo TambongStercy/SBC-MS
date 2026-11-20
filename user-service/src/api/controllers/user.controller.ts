@@ -27,6 +27,24 @@ import {
 } from '../../services/leaderboard.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
+import { doualaDay, ingestActivityBatch, ipRange } from '../../services/activity-signals.service';
+
+/** Fire-and-forget: one login in the day's signals (headers set by nginx / the gateway). */
+function recordLogin(userId: string, req: Request): void {
+    const h = (k: string) => { const v = req.headers[k]; return typeof v === 'string' ? v : undefined; };
+    const now = new Date();
+    const client = h('x-sbc-client');
+    const source = client === 'web' || client === 'app' ? client : 'api';
+    const device = h('x-sbc-device');
+    const range = ipRange(h('x-real-ip') || req.ip);
+    const asn = Number(h('x-sbc-asn'));
+    void ingestActivityBatch([{
+        userId, day: doualaDay(now), country: h('x-sbc-geo') || 'XX', requests: 0, logins: 1,
+        sources: { [source]: 0 }, devices: device ? [device] : [], ipRanges: range ? [range] : [],
+        asns: Number.isInteger(asn) && asn > 0 ? [asn] : [], firstAt: now, lastAt: now,
+    }]).catch(() => undefined);
+}
+
 
 /**
  * A refused code send. The wait goes in the body for the app's countdown and in
@@ -990,6 +1008,8 @@ export class UserController {
                 // If valid and a new token was generated, return it
                 this.log.info(`OTP verification successful for userId: ${userId}`);
                 res.status(200).json({ success: true, message: 'Verification successful', data: { token: result.newToken, user: userProfile } });
+                // Security plan Phase 1: a sign-in counts in the day's signals (consenting members only).
+                recordLogin(String(userId), req);
             } else {
                 // If invalid or no token generated (e.g., wrong otpType used)
                 this.log.warn(`OTP verification failed for userId: ${userId}`);
@@ -2466,6 +2486,20 @@ export class UserController {
             } else {
                 res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
             }
+        }
+    }
+
+    /**
+     * @route POST /users/internal/activity/batch (service: the gateway)
+     * Security plan Phase 1: aggregated request signals, stored for consenting members only.
+     */
+    async ingestActivityBatch(req: Request, res: Response): Promise<void> {
+        try {
+            const r = await ingestActivityBatch(req.body?.records || []);
+            res.status(200).json({ success: true, data: r });
+        } catch (error: any) {
+            log.error('[Controller] Activity batch failed:', error);
+            res.status(500).json({ success: false, message: 'Activity batch failed.' });
         }
     }
 
