@@ -792,7 +792,7 @@ export class PaymentController {
             res.status(200).json(result);
         } catch (error: any) {
             log.error('Error creating crypto payout:', error);
-            res.status(500).json({
+            res.status(error?.statusCode || 500).json({
                 success: false,
                 message: error.message || 'Failed to create crypto payout'
             });
@@ -1630,9 +1630,9 @@ export class PaymentController {
 
         } catch (error: any) {
             log.error(`Error creating crypto payout: ${error.message}`, error);
-            res.status(500).json({
+            res.status(error?.statusCode || 500).json({
                 success: false,
-                message: 'Internal server error'
+                message: error?.statusCode ? error.message : 'Internal server error'
             });
         }
     };
