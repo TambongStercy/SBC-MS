@@ -99,6 +99,16 @@ const main = async () => {
     const rejected = await refusal(() => submit(r1.sessionId, '0197000000'));
     check('initiation failure carries the member text (refused on the phone)', /annulé ou refusé/.test(rejected?.memberText?.reason || ''), rejected?.memberText?.reason);
 
+    // --- retry on the same payment: the new attempt gets its own reason ---
+    await paymentService.resetPaymentIntentStatus(r1.sessionId);
+    await submit(r1.sessionId, '0197000011');
+    const retried: any = await PI.findOne({ sessionId: r1.sessionId }).lean();
+    check('a retry moves the previous reason to failureHistory and clears it', !retried.failure && retried.failureHistory?.length === 1 && retried.failureHistory[0].code === 'cancelled_by_payer');
+    await PI.updateOne({ sessionId: r1.sessionId }, { $set: { status: PaymentStatus.FAILED }, $push: { webhookHistory: { timestamp: new Date(), status: PaymentStatus.FAILED, providerData: { status: 'FAILED', message: 'Solde insuffisant' } } } });
+    await paymentService.handlePaymentCompletion((await PI.findOne({ sessionId: r1.sessionId }))!).catch(() => undefined);
+    const final: any = await PI.findOne({ sessionId: r1.sessionId }).lean();
+    check('the retry\'s own failure is recorded (low balance), history kept', final.failure?.code === 'insufficient_balance' && final.failureHistory?.length === 1, JSON.stringify(final.failure));
+
     // --- alerts ---
     await PI.deleteMany({});
     const now = new Date();
