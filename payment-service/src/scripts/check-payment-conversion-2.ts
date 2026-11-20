@@ -181,6 +181,15 @@ const main = async () => {
     const failedHtml: string = await (ejs as any).renderFile(view, { ...common, paymentStatus: 'FAILED', failureText: memberFailureText({ group: 'member', code: 'insufficient_balance' }) });
     check('failed payment page shows the reason and the next step', failedHtml.includes('solde de votre compte Mobile Money') && failedHtml.includes('Rechargez votre compte') && failedHtml.includes('Référence : S-1'));
     const archivedHtml: string = await (ejs as any).renderFile(view, { ...common, paymentStatus: 'EXPIRED', failureText: { reason: 'Ce paiement a expiré : il n’a pas été utilisé pendant plus de 7 jours.', nextStep: 'Relancez le paiement depuis l’application SBC.' } });
+    const { supportRequestUrl } = await import('../utils/support-link');
+    process.env.SUPPORT_HELP_URL = '';
+    check('no support button while SUPPORT_HELP_URL is empty', supportRequestUrl('S-1') === null && !failedHtml.includes('contact-support'));
+    process.env.SUPPORT_HELP_URL = 'https://preprod.example.com/aide/';
+    const supportUrl = supportRequestUrl('S-1');
+    const withButton: string = await (ejs as any).renderFile(view, { ...common, paymentStatus: 'FAILED', supportUrl, failureText: memberFailureText(null) });
+    check('« Contacter le support » opens a new request with the payment reference', supportUrl === 'https://preprod.example.com/aide/demandes/nouvelle?paiement=S-1' && withButton.includes('Contacter le support') && withButton.includes('href="https://preprod.example.com/aide/demandes/nouvelle?paiement=S-1"'));
+    process.env.SUPPORT_HELP_URL = 'javascript:alert(1)';
+    check('a non-http SUPPORT_HELP_URL is ignored', supportRequestUrl('S-1') === null);
     check('archived payment page renders as expired', archivedHtml.includes('Paiement Expiré') && archivedHtml.includes('Relancez le paiement'));
 
     await mongoose.connection.dropDatabase();
