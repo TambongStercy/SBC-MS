@@ -19,6 +19,7 @@ export interface ConversionSummary {
   failureGroups: Partial<Record<FailureGroup, number>>;
   topCodes: { group: FailureGroup; code: string; count: number; message: string | null }[];
   stuckOver24h: { gateway: string; count: number }[];
+  heavyRetriers: { members: number; top: { userId: string; days: number; maxPerDay: number; attempts: number }[] };
   medianSecondsToSuccess: number | null;
   computedAt: string;
 }
@@ -56,4 +57,15 @@ export async function downloadFailuresCsv(q: FailureQuery): Promise<void> {
   a.download = `paiements-echecs-${q.from || ''}-${q.to || ''}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export interface PaymentAlert {
+  key: string; kind: string; gateway: string | null; country: string | null; title: string;
+  openedAt: string; lastSeenAt: string; resolvedAt: string | null; notified: boolean;
+}
+
+/** Open payment alerts and the last closed ones (checked every 5 minutes on the server). */
+export async function getPaymentAlerts(): Promise<{ open: PaymentAlert[]; recent: PaymentAlert[] }> {
+  const r = await apiClient.get('/payments/admin/conversion/alerts');
+  return r.data.data;
 }

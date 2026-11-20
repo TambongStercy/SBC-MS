@@ -453,11 +453,42 @@ push), so a hijacker cannot silence it.
   cached 10 min) and `/conversion/failures` (cursor list, `format=csv`).
 - The payment page's polling read `result.data`, which the status route never
   sends, so it never saw a final status; fixed (`public/js/payment.js`).
-- Not done yet (plan items): provider-outage and error-spike alerts, offering
-  another provider, French reason + next step shown to the member, MoMo number
-  check before sending, archiving abandoned payments (never deleting, Sterling),
-  web/app split (no signal on payment requests), DR Congo and NOWPayments routes.
-- Checks: `payment-service/src/scripts/check-payment-conversion.ts`.
+- **Part 2 (2026-11-20):**
+  - **French reason + next step for the member** (`utils/member-failure-text.ts`,
+    by `failure.code`, else by group; the provider's own text is never shown).
+    The payment page shows it for FAILED/EXPIRED/CANCELED and when an ERROR is
+    reset for retry; the submit route answers `{message, reason, nextStep}` with
+    the error's own status code (a paid payment now gets 409, not 500).
+  - **MoMo number check** (`utils/payin-number.ts`, FeexPay countries only: BJ
+    `01`+8 digits or old 8, TG 8 digits 7x/9x, CG 9 digits starting 0).
+    `PAYIN_NUMBER_CHECK=log` (default) only records `metadata.numberCheck`;
+    `enforce` refuses with 400 before the provider and leaves the payment open,
+    so the member corrects the number on the same payment; `off`. Switch to
+    enforce only after checking the logged misses against real successes.
+  - **Team alerts** (`jobs/payment-alerts.job.ts`, every 5 min, collection
+    `paymentalerts`): provider success rate in the last hour below half its
+    7-day rate; "SBC code" failures spike (bad deploy); "provider API" spike per
+    provider (outage); per-country spike; payments created 2–24 h ago still
+    waiting above `PAYMENT_ALERT_STUCK` (100) per provider. One open alert per
+    key, closes by itself. E-mailed once to `PAYMENT_ALERT_EMAILS` (empty = no
+    e-mail); shown on the admin page (`GET /conversion/alerts`). Tunables:
+    `PAYMENT_ALERT_MIN_ATTEMPTS`, `_SPIKE_MIN`, `_SPIKE_FACTOR`,
+    `PAYMENT_ALERTS_ENABLED=false` to stop it.
+  - **Abandoned payments are archived, never deleted** (Sterling;
+    `jobs/payin-archive.job.ts`): PENDING_USER_INPUT with no provider, older than
+    7 days, are copied whole to `paymentintents_archive` (same `_id`) then removed
+    from `paymentintents`; still counted in the funnel (`$unionWith`, Mongo ≥ 4.4,
+    server has 7.0). Off unless `PAYIN_ARCHIVE_ENABLED=true` (daily 04:10
+    Douala); dry run first: `scripts/archive-abandoned-payins.ts`. An archived
+    payment's link shows "Paiement expiré".
+  - Dashboard: members above 20 attempts in a day (for Phase 4).
+- Not done (plan items): offering another provider (each country has ONE
+  provider today, BF aside; needs Rufus's call and other provider accounts),
+  web/app split (no signal on payment requests), DR Congo and NOWPayments
+  routes (provider investigations), support case on paid-not-credited (support
+  service not merged).
+- Checks: `payment-service/src/scripts/check-payment-conversion.ts`,
+  `check-payment-conversion-2.ts`.
 
 ### Signals: country, device, activity (Security plan Phase 1, 2026-11-20)
 

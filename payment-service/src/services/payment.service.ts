@@ -33,6 +33,8 @@ import { buildCinetPayPayer } from '../utils/cinetpay-payer';
 import { checkCallbackUrl, callbackAllowlistEnforced } from '../utils/callback-allowlist';
 import * as sandbox from './sandbox.service';
 import { failureFromError, failureFromProviderResult } from '../utils/payment-failure';
+import { checkPayinNumber, numberCheckMode } from '../utils/payin-number';
+import { memberFailureText } from '../utils/member-failure-text';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -3291,6 +3293,24 @@ class PaymentService {
             // Add phone and operator to data if they exist (operator might be null if country has only 1)
             if (details.operator) updateData.operator = details.operator;
 
+            // Security plan Phase 10: a number no operator of the country can have.
+            const mode = numberCheckMode();
+            if (mode !== 'off') {
+                const check = checkPayinNumber(details.countryCode, updateData.phoneNumber);
+                if (!check.ok) {
+                    log.warn(`Payin ${sessionId}: number fails the ${details.countryCode} format (${mode}); national length ${check.national?.length}.`);
+                    if (mode === 'enforce') {
+                        // Nothing reaches the provider and the payment stays open, so the
+                        // member corrects the number on the same payment.
+                        await PaymentIntentModel.updateOne({ sessionId }, { $set: { 'metadata.numberCheck': { ok: false, refused: true, expected: check.expected, at: new Date() } }, $inc: { 'metadata.numberRefusals': 1 } }).catch(() => undefined);
+                        const refusal: any = new AppError(`Numéro invalide pour ce pays : ${check.expected}.`, 400);
+                        refusal.memberText = memberFailureText({ group: 'member', code: 'number_format' });
+                        throw refusal;
+                    }
+                    await PaymentIntentModel.updateOne({ sessionId }, { $set: { 'metadata.numberCheck': { ok: false, refused: false, expected: check.expected, at: new Date() } } }).catch(() => undefined);
+                }
+            }
+
         } else if (selectedGateway === PaymentGateway.CINETPAY) {
             // CinetPay might require phone/email later for card payments, but not for this initial API call
             // We specifically *don't* set phone/operator here, letting them remain undefined in updateData
@@ -3343,9 +3363,15 @@ class PaymentService {
             // If payment initiation fails, update the status to ERROR, with the
             // reason (the gateway's own catch records it first when it can).
             await paymentIntentRepository.updateBySessionId(sessionId, { status: PaymentStatus.ERROR });
+            let failure: any = null;
             if (!(error as any)?.failureRecorded) {
-                await paymentIntentRepository.recordFailure(sessionId, failureFromError(error, { step: 'initiate', gateway: updatedIntent.gateway }));
+                failure = failureFromError(error, { step: 'initiate', gateway: updatedIntent.gateway });
+                await paymentIntentRepository.recordFailure(sessionId, failure);
+            } else {
+                failure = (await paymentIntentRepository.findBySessionId(sessionId))?.failure ?? null;
             }
+            // Security plan Phase 10: the reason and next step in French for the page.
+            if (error && typeof error === 'object') (error as any).memberText = memberFailureText(failure);
             throw error; // Re-throw the original error for the controller
         }
     }

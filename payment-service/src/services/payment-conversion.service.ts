@@ -1,5 +1,7 @@
 import PaymentIntentModel from '../database/models/PaymentIntent';
 import { PaymentStatus } from '../database/interfaces/IPaymentIntent';
+import PaymentAlertModel from '../database/models/PaymentAlert';
+import { ARCHIVE_COLLECTION } from '../jobs/payin-archive.job';
 
 /**
  * Security plan Phase 10 — payment conversion. Read-only figures for the admin
@@ -16,6 +18,7 @@ const SUCCESS = [PaymentStatus.SUCCEEDED, PaymentStatus.CONFIRMED];
 const FAILED = [PaymentStatus.FAILED, PaymentStatus.ERROR, PaymentStatus.EXPIRED, PaymentStatus.CANCELED];
 const WAITING = [PaymentStatus.PENDING_PROVIDER, PaymentStatus.PROCESSING, PaymentStatus.WAITING_FOR_CRYPTO_DEPOSIT, PaymentStatus.PARTIALLY_PAID, PaymentStatus.REQUIRES_ACTION];
 const CACHE_MS = 10 * 60 * 1000;
+const HEAVY_PER_DAY = 20;
 const MAX_RANGE_DAYS = 92;
 
 export interface ConversionFilter { from?: string; to?: string; country?: string; gateway?: string }
@@ -85,6 +88,8 @@ export async function conversionSummary(f: ConversionFilter) {
     return cached(`summary:${JSON.stringify({ ...f, from: r.from, to: r.to })}`, async () => {
         const [out] = await PaymentIntentModel.aggregate([
             { $match: match(f) },
+            // Abandoned payments moved out after 7 days (jobs/payin-archive.job) still count.
+            { $unionWith: { coll: ARCHIVE_COLLECTION, pipeline: [{ $match: match(f) }] } },
             { $addFields: { _product: productExpr, _country: { $ifNull: [{ $cond: [{ $eq: ['$countryCode', ''] }, null, '$countryCode'] }, 'none'] }, _day: { $dateToString: { date: '$createdAt', format: '%Y-%m-%d', timezone: '+01:00' } } } },
             {
                 $facet: {
@@ -98,6 +103,11 @@ export async function conversionSummary(f: ConversionFilter) {
                     failureGroups: [{ $match: { status: { $in: FAILED } } }, { $group: { _id: { $ifNull: ['$failure.group', 'unknown'] }, count: { $sum: 1 } } }],
                     topCodes: [{ $match: { status: { $in: FAILED } } }, { $group: { _id: { group: { $ifNull: ['$failure.group', 'unknown'] }, code: { $ifNull: ['$failure.code', 'non_enregistre'] } }, count: { $sum: 1 }, message: { $last: '$failure.providerMessage' } } }, { $sort: { count: -1 } }, { $limit: 10 }],
                     stuck: [{ $match: { status: { $in: WAITING }, createdAt: { $lt: new Date(Date.now() - 24 * 3600_000) } } }, { $group: { _id: '$gateway', count: { $sum: 1 } } }, { $sort: { count: -1 } }],
+                    // Plan item 6: members above 20 attempts in one day (for the fraud engine, Phase 4).
+                    heavyRetriers: [{ $group: { _id: { u: '$userId', d: '$_day' }, n: { $sum: 1 } } }, { $match: { n: { $gt: HEAVY_PER_DAY } } },
+                        { $group: { _id: '$_id.u', days: { $sum: 1 }, maxPerDay: { $max: '$n' }, attempts: { $sum: '$n' } } }, { $sort: { maxPerDay: -1 } },
+                        { $group: { _id: null, members: { $sum: 1 }, top: { $push: { userId: '$_id', days: '$days', maxPerDay: '$maxPerDay', attempts: '$attempts' } } } },
+                        { $project: { _id: 0, members: 1, top: { $slice: ['$top', 20] } } }],
                     timeToSuccess: [{ $match: { status: { $in: SUCCESS } } }, { $project: { s: { $divide: [{ $subtract: ['$updatedAt', '$createdAt'] }, 1000] } } }, { $sort: { s: 1 } }, { $group: { _id: null, all: { $push: '$s' } } }],
                 },
             },
@@ -117,6 +127,7 @@ export async function conversionSummary(f: ConversionFilter) {
             failureGroups: Object.fromEntries(out.failureGroups.map((x: any) => [x._id, x.count])),
             topCodes: out.topCodes.map((x: any) => ({ group: x._id.group, code: x._id.code, count: x.count, message: x.message ?? null })),
             stuckOver24h: out.stuck.map((x: any) => ({ gateway: x._id, count: x.count })),
+            heavyRetriers: out.heavyRetriers[0] || { members: 0, top: [] },
             medianSecondsToSuccess: times.length ? Math.round(times[Math.floor(times.length / 2)]) : null,
             computedAt: new Date().toISOString(),
         };
@@ -171,4 +182,14 @@ export async function failureCsv(f: FailureListFilter): Promise<string> {
         if (!cursor) break;
     }
     return lines.join('\n');
+}
+
+/** Open payment alerts and the last 20 closed ones (jobs/payment-alerts.job). Not cached. */
+export async function paymentAlerts() {
+    const [open, recent] = await Promise.all([
+        PaymentAlertModel.find({ open: true }).sort({ openedAt: -1 }).limit(50).lean(),
+        PaymentAlertModel.find({ open: false }).sort({ resolvedAt: -1 }).limit(20).lean(),
+    ]);
+    const shape = (a: any) => ({ key: a.key, kind: a.kind, gateway: a.gateway ?? null, country: a.country ?? null, title: a.title, openedAt: a.openedAt, lastSeenAt: a.lastSeenAt, resolvedAt: a.resolvedAt ?? null, notified: !!a.notifiedAt });
+    return { open: open.map(shape), recent: recent.map(shape) };
 }

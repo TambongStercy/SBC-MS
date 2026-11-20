@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Badge, Button, Metric, PageHeader, Panel, PanelBody, PanelHeader, Segmented, Skeleton, Table, TBody, TD, TH, THead, TR, Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui';
 import { formatDateTime, formatMoney, formatNumber } from '../components/common/format';
 import {
-  ConversionSummary, FailureGroup, FailureItem, Row,
-  downloadFailuresCsv, getConversionSummary, getFailures,
+  ConversionSummary, FailureGroup, FailureItem, PaymentAlert, Row,
+  downloadFailuresCsv, getConversionSummary, getFailures, getPaymentAlerts,
 } from '../services/adminConversionApi';
 
 /**
@@ -159,6 +159,7 @@ function FailuresTab({ range, summary }: { range: { from: string; to: string }; 
         />
         <PanelBody className="overflow-x-auto">
           {error && <p className="text-sm text-danger" role="alert">{error}</p>}
+      <AlertsPanel />
           <Table>
             <THead><TR><TH>Date</TH><TH>Membre</TH><TH>Pays</TH><TH>Fournisseur</TH><TH>Produit</TH><TH numeric>Montant</TH><TH>Groupe</TH><TH>Raison</TH><TH numeric>Vérif.</TH></TR></THead>
             <TBody>
@@ -183,6 +184,47 @@ function FailuresTab({ range, summary }: { range: { from: string; to: string }; 
         </PanelBody>
       </Panel>
     </div>
+  );
+}
+
+/** Team alerts (provider drop, error spikes, stuck payments), refreshed every minute. */
+function AlertsPanel() {
+  const [alerts, setAlerts] = useState<{ open: PaymentAlert[]; recent: PaymentAlert[] } | null>(null);
+  const [showRecent, setShowRecent] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const load = () => getPaymentAlerts().then(a => { if (alive) setAlerts(a); }).catch(() => undefined);
+    void load();
+    const id = window.setInterval(load, 60_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+  if (!alerts) return null;
+  return (
+    <Panel>
+      <PanelHeader
+        title={alerts.open.length ? `Alertes en cours (${alerts.open.length})` : 'Aucune alerte en cours'}
+        description="Vérifié toutes les 5 minutes : chute d’un fournisseur, pic d’erreurs, paiements bloqués."
+        actions={alerts.recent.length ? <Button variant="ghost" size="sm" onClick={() => setShowRecent(v => !v)}>{showRecent ? 'Masquer l’historique' : 'Historique'}</Button> : undefined}
+      />
+      {(alerts.open.length > 0 || showRecent) && (
+        <PanelBody className="space-y-2">
+          {alerts.open.map(a => (
+            <div key={a.key} className="flex flex-wrap items-center gap-2 text-sm">
+              <Badge tone="danger">En cours</Badge>
+              <span className="text-fg">{a.title}</span>
+              <span className="text-xs text-fg-muted">depuis {formatDateTime(a.openedAt)}</span>
+            </div>
+          ))}
+          {showRecent && alerts.recent.map(a => (
+            <div key={`${a.key}-${a.openedAt}`} className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
+              <Badge tone="neutral">Terminée</Badge>
+              <span>{a.title}</span>
+              <span className="text-xs">{formatDateTime(a.openedAt)} → {a.resolvedAt ? formatDateTime(a.resolvedAt) : '—'}</span>
+            </div>
+          ))}
+        </PanelBody>
+      )}
+    </Panel>
   );
 }
 
@@ -256,6 +298,19 @@ const PaymentConversionPage: React.FC = () => {
                   <THead><TR><TH>Jour</TH><TH numeric>Tentatives</TH><TH numeric>Payés</TH><TH numeric>Réussite</TH><TH numeric>Échecs</TH></TR></THead>
                   <TBody>{summary.daily.slice().reverse().map(d => (
                     <TR key={d.day}><TD>{d.day}</TD><TD numeric>{formatNumber(d.attempts)}</TD><TD numeric>{formatNumber(d.succeeded)}</TD><TD numeric>{pct(d.attempts ? Math.round((d.succeeded / d.attempts) * 1000) / 10 : null)}</TD><TD numeric>{formatNumber(d.failed)}</TD></TR>
+                  ))}</TBody>
+                </Table>
+              </PanelBody>
+            </Panel>
+          )}
+          {summary && summary.heavyRetriers.members > 0 && (
+            <Panel>
+              <PanelHeader title={`Membres à plus de 20 tentatives par jour : ${formatNumber(summary.heavyRetriers.members)}`} description="À signaler au moteur de fraude (phase 4). Les 20 plus actifs." />
+              <PanelBody className="overflow-x-auto">
+                <Table>
+                  <THead><TR><TH>Membre</TH><TH numeric>Jours au-dessus de 20</TH><TH numeric>Maximum en un jour</TH><TH numeric>Tentatives ces jours-là</TH></TR></THead>
+                  <TBody>{summary.heavyRetriers.top.map(r => (
+                    <TR key={r.userId}><TD className="font-mono text-xs">{r.userId}</TD><TD numeric>{formatNumber(r.days)}</TD><TD numeric>{formatNumber(r.maxPerDay)}</TD><TD numeric>{formatNumber(r.attempts)}</TD></TR>
                   ))}</TBody>
                 </Table>
               </PanelBody>
