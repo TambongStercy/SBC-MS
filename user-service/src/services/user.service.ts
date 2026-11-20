@@ -1,4 +1,8 @@
 import { pushNewFilleul } from './push-notify';
+import { convertBalance } from './wallet-conversion.service';
+import { InsufficientAvailableBalanceError } from '../database/repositories/user.repository';
+import { openSupportCase } from './clients/support.service.client';
+import { walletLedger } from './wallet-ledger.service';
 import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import bcrypt from 'bcrypt';
 import { IUser, UserRole, OtpPurpose, ADMIN_CAPABLE_ROLES } from '../database/models/user.model';
@@ -7,7 +11,7 @@ import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
-import { maskEmail } from '../utils/mask-email';
+import { maskEmail, maskPhone } from '../utils/mask-email';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
 import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled, otpFingerprint } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
@@ -38,7 +42,10 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError, OtpThrottledError } from '../utils/errors';
+import { AppError, AuthenticatorRequiredError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
+import { memberAuthService } from './member-auth.service';
+import { addressTail, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
+import { isSameMomo, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
 import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsForCountry } from '../utils/country-filter';
@@ -654,8 +661,10 @@ export class UserService {
         log.info(`Generated OTP fp=${otpFingerprint(otpCode)} for user ${user.email}, type: ${otpType}`);
 
         // Local/dev convenience: print the OTP prominently so it can be copied from
-        // the server console when no email/SMS provider is configured.
-        if (process.env.NODE_ENV !== 'production') {
+        // the server console when no email/SMS provider is configured. Only on a
+        // developer's machine: preprod runs with NODE_ENV=preprod, and its logs must
+        // not hold members' sign-in codes either.
+        if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
             console.log(`\n========================= OTP =========================\n  ${user.email}  ->  ${otpCode}\n=======================================================\n`);
         }
 
@@ -812,16 +821,21 @@ export class UserService {
 
         if (updateData.name !== undefined) allowedFields.name = updateData.name;
         if (updateData.region !== undefined) allowedFields.region = updateData.region;
-        if (updateData.country !== undefined) {
-            allowedFields.country = normalizeCountryName(updateData.country);
-            if (updateData.country !== allowedFields.country) {
-                log.info(`Country normalized during profile update: ${updateData.country} -> ${allowedFields.country}`);
-            }
-        }
+        // The country is not the member's to change (Security plan Phase 0):
+        // it decides payment routes, prices and later the country subdomain.
+        // Support changes it. The profile page still resends it on every save,
+        // so it is ignored here rather than refused.
         if (updateData.city !== undefined) allowedFields.city = updateData.city;
         if (updateData.phoneNumber !== undefined) allowedFields.phoneNumber = updateData.phoneNumber;
-        if (updateData.momoNumber !== undefined) allowedFields.momoNumber = updateData.momoNumber;
-        if (updateData.momoOperator !== undefined) allowedFields.momoOperator = updateData.momoOperator;
+        // The MoMo number receives withdrawals. Changing it needs the password and
+        // a code sent to the account email (requestMomoChange / confirmMomoChange).
+        // The page resends the current details on every save: those pass silently.
+        if (updateData.momoNumber !== undefined || updateData.momoOperator !== undefined) {
+            const current = await userRepository.findById(userId);
+            if (!current || !isSameMomo(current, updateData, normalizeCountryName(current.country))) {
+                throw new MomoChangeNeedsCodeError();
+            }
+        }
         if (updateData.whatsappGroupLink !== undefined) allowedFields.whatsappGroupLink = updateData.whatsappGroupLink;
         if (updateData.avatar !== undefined) allowedFields.avatar = updateData.avatar;
         if (updateData.avatarId !== undefined) allowedFields.avatarId = updateData.avatarId;
@@ -969,38 +983,66 @@ export class UserService {
 
     /**
      * Updates a user's balance with debt settlement (XAF).
+     *
+     * Same arithmetic as before, now applied by compare-and-set on
+     * balance+debt (no lost update between two concurrent credits) and
+     * recorded in the wallet ledger. `movement.reference` makes a replay a
+     * no-op (e.g. `deposit:<txId>`).
      */
-    async updateBalance(userId: string | Types.ObjectId, amount: number): Promise<number | null> {
+    async updateBalance(
+        userId: string | Types.ObjectId,
+        amount: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<number | null> {
         try {
-            const user = await userRepository.findById(userId);
-            if (!user) return null;
+            const out = await walletLedger.applyComputed({
+                userId,
+                currency: 'XAF',
+                requestedAmount: amount,
+                reference: movement.reference,
+                source: movement.source || 'user-service.updateBalance',
+                description: movement.description,
+                compute: (user) => {
+                    // A debit only takes available money (balance - debt - reserved).
+                    if (amount < 0) {
+                        const available = (user.balance ?? 0) - Math.max(0, user.debt || 0) - (user.reservedBalance ?? 0);
+                        if (available < -amount) return null;
+                    }
+                    let remainingAmountXaf = amount;
+                    let currentDebt = Math.max(0, user.debt || 0);
+                    let currentXaf = user.balance ?? 0;
 
-            let remainingAmountXaf = amount;
-            let currentDebt = Math.max(0, user.debt || 0);
-            let currentXaf = user.balance;
+                    // Settle debt BEFORE applying credit
+                    if (remainingAmountXaf > 0 && currentDebt > 0) {
+                        const payXaf = Math.min(remainingAmountXaf, currentDebt);
+                        remainingAmountXaf -= payXaf;
+                        currentDebt -= payXaf;
+                    }
 
-            // Settle debt BEFORE applying credit
-            if (remainingAmountXaf > 0 && currentDebt > 0) {
-                const payXaf = Math.min(remainingAmountXaf, currentDebt);
-                remainingAmountXaf -= payXaf;
-                currentDebt -= payXaf;
+                    // Apply remaining XAF change to balance
+                    if (remainingAmountXaf !== 0) {
+                        currentXaf += remainingAmountXaf;
+                    }
+
+                    // Settle debt AFTER update if there is still positive XAF balance
+                    if (currentDebt > 0 && currentXaf > 0) {
+                        const settle = Math.min(currentDebt, currentXaf);
+                        currentDebt -= settle;
+                        currentXaf -= settle;
+                    }
+                    return {
+                        set: { balance: currentXaf, debt: currentDebt },
+                        balanceDelta: currentXaf - (user.balance ?? 0),
+                        debtDelta: currentDebt - (user.debt || 0),
+                    };
+                },
+            });
+            if (out.pendingConflict) {
+                throw new Error(`Balance movement ${out.reference} is pending review; refusing to apply it twice`);
             }
-
-            // Apply remaining XAF change to balance
-            if (remainingAmountXaf !== 0) {
-                currentXaf += remainingAmountXaf;
-            }
-
-            // Settle debt AFTER update if there is still positive XAF balance
-            if (currentDebt > 0 && currentXaf > 0) {
-                const settle = Math.min(currentDebt, currentXaf);
-                currentDebt -= settle;
-                currentXaf -= settle;
-            }
-
-            // Persist updates atomically as best-effort: set debt & balance
-            const updated = await userRepository.updateById(userId, { balance: currentXaf, debt: currentDebt });
-            return updated ? updated.balance : null;
+            if (out.guardFailed) throw new InsufficientAvailableBalanceError();
+            if (out.reversed) throw Object.assign(new Error(`Balance movement ${out.reference} was undone; use a new reference`), { statusCode: 409, code: 'MOVEMENT_UNDONE' });
+            return out.user ? out.user.balance : null;
         } catch (error) {
             log.error(`Error updating balance for user ${userId}`, error);
             throw error;
@@ -1011,40 +1053,59 @@ export class UserService {
      * Update user's USD balance with debt settlement. Debt is in XAF.
      * When adding USD, first convert to XAF at 500 XAF/USD to pay debt, then credit leftover USD.
      */
-    async updateUsdBalance(userId: string | Types.ObjectId, amount: number): Promise<number | null> {
+    async updateUsdBalance(
+        userId: string | Types.ObjectId,
+        amount: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<number | null> {
         try {
-            const user = await userRepository.findById(userId);
-            if (!user) return null;
+            const out = await walletLedger.applyComputed({
+                userId,
+                currency: 'USD',
+                requestedAmount: amount,
+                reference: movement.reference,
+                source: movement.source || 'user-service.updateUsdBalance',
+                description: movement.description,
+                compute: (user) => {
+                    if (amount < 0 && (user.usdBalance ?? 0) - (user.reservedUsdBalance ?? 0) < -amount) return null;
+                    let remainingAmountUsd = amount;
+                    let currentDebt = Math.max(0, user.debt || 0); // XAF
+                    let currentUsd = user.usdBalance ?? 0;
 
-            let remainingAmountUsd = amount;
-            let currentDebt = Math.max(0, user.debt || 0); // XAF
-            let currentUsd = user.usdBalance;
+                    // Settle debt BEFORE applying USD credit (convert USD->XAF at 500)
+                    if (remainingAmountUsd > 0 && currentDebt > 0) {
+                        const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(remainingAmountUsd); // 500 XAF per USD
+                        const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
+                        const usdUsed = Math.round((xafPaid / 500) * 100) / 100; // inverse of withdrawal rate
+                        remainingAmountUsd = Math.max(0, Math.round((remainingAmountUsd - usdUsed) * 100) / 100);
+                        currentDebt -= xafPaid;
+                    }
 
-            // Settle debt BEFORE applying USD credit (convert USD->XAF at 500)
-            if (remainingAmountUsd > 0 && currentDebt > 0) {
-                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(remainingAmountUsd); // 500 XAF per USD
-                const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
-                const usdUsed = Math.round((xafPaid / 500) * 100) / 100; // inverse of withdrawal rate
-                remainingAmountUsd = Math.max(0, Math.round((remainingAmountUsd - usdUsed) * 100) / 100);
-                currentDebt -= xafPaid;
+                    // Apply remaining USD change to balance
+                    if (remainingAmountUsd !== 0) {
+                        currentUsd = Math.round((currentUsd + remainingAmountUsd) * 100) / 100;
+                    }
+
+                    // Settle debt AFTER update using any remaining USD
+                    if (currentDebt > 0 && currentUsd > 0) {
+                        const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(currentUsd);
+                        const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
+                        const usdUsed = Math.round((xafPaid / 500) * 100) / 100;
+                        currentUsd = Math.max(0, Math.round((currentUsd - usdUsed) * 100) / 100);
+                        currentDebt -= xafPaid;
+                    }
+                    return {
+                        set: { usdBalance: currentUsd, debt: currentDebt },
+                        balanceDelta: currentUsd - (user.usdBalance ?? 0),
+                        debtDelta: currentDebt - (user.debt || 0),
+                    };
+                },
+            });
+            if (out.pendingConflict) {
+                throw new Error(`USD balance movement ${out.reference} is pending review; refusing to apply it twice`);
             }
-
-            // Apply remaining USD change to balance
-            if (remainingAmountUsd !== 0) {
-                currentUsd = Math.round((currentUsd + remainingAmountUsd) * 100) / 100;
-            }
-
-            // Settle debt AFTER update using any remaining USD
-            if (currentDebt > 0 && currentUsd > 0) {
-                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(currentUsd);
-                const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
-                const usdUsed = Math.round((xafPaid / 500) * 100) / 100;
-                currentUsd = Math.max(0, Math.round((currentUsd - usdUsed) * 100) / 100);
-                currentDebt -= xafPaid;
-            }
-
-            const updated = await userRepository.updateById(userId, { usdBalance: currentUsd, debt: currentDebt });
-            return updated ? updated.usdBalance : null;
+            if (out.guardFailed) throw new InsufficientAvailableBalanceError();
+            return out.user ? out.user.usdBalance : null;
         } catch (error) {
             log.error(`Error updating USD balance for user ${userId}`, error);
             throw error;
@@ -1079,7 +1140,7 @@ export class UserService {
                 return { success: false, message: 'User not found' };
             }
 
-            if (user.usdBalance < usdAmount) {
+            if (!(usdAmount > 0) || (user.usdBalance ?? 0) - (user.reservedUsdBalance ?? 0) < usdAmount) {
                 return { success: false, message: 'Insufficient USD balance' };
             }
 
@@ -1095,9 +1156,11 @@ export class UserService {
             const xafAmount = CurrencyConverter.usdToXafWithdrawal(usdAmount);
             const conversionRate = CURRENCY_CONVERSION_RATES.USD_TO_XAF_WITHDRAWAL;
 
-            // Update both balances
-            await userRepository.updateUsdBalance(userId, -usdAmount);
-            await userRepository.updateBalance(userId, xafAmount);
+            // One open conversion per member; guarded debit, then credit (retried by a job, never undone).
+            const conv = await convertBalance({ userId, from: 'USD', fromAmount: usdAmount, to: 'XAF', toAmount: xafAmount });
+            if (conv.outcome === 'insufficient') return { success: false, message: 'Insufficient USD balance' };
+            if (conv.outcome === 'busy') return { success: false, message: 'Une conversion est déjà en cours : réessayez dans quelques minutes.' };
+            if (conv.outcome === 'credit_pending') return { success: false, message: 'Conversion en cours de finalisation : le montant converti sera crédité automatiquement.' };
 
             // Create conversion transaction record
             try {
@@ -1146,7 +1209,7 @@ export class UserService {
                 return { success: false, message: 'User not found' };
             }
 
-            if (user.balance < xafAmount) {
+            if (!(xafAmount > 0) || (user.balance ?? 0) - Math.max(0, user.debt || 0) - (user.reservedBalance ?? 0) < xafAmount) {
                 return { success: false, message: 'Insufficient XAF balance' };
             }
 
@@ -1162,9 +1225,11 @@ export class UserService {
             const usdAmount = CurrencyConverter.xafToUsd(xafAmount);
             const conversionRate = CURRENCY_CONVERSION_RATES.XAF_TO_USD;
 
-            // Update both balances
-            await userRepository.updateBalance(userId, -xafAmount);
-            await userRepository.updateUsdBalance(userId, usdAmount);
+            // One open conversion per member; guarded debit, then credit (retried by a job, never undone).
+            const conv = await convertBalance({ userId, from: 'XAF', fromAmount: xafAmount, to: 'USD', toAmount: usdAmount });
+            if (conv.outcome === 'insufficient') return { success: false, message: 'Insufficient XAF balance' };
+            if (conv.outcome === 'busy') return { success: false, message: 'Une conversion est déjà en cours : réessayez dans quelques minutes.' };
+            if (conv.outcome === 'credit_pending') return { success: false, message: 'Conversion en cours de finalisation : le montant converti sera crédité automatiquement.' };
 
             // Create conversion transaction record
             try {
@@ -1835,33 +1900,74 @@ export class UserService {
     }
 
     /**
-     * Update user's crypto wallet information
-     * @param userId User ID
-     * @param walletAddress Crypto wallet address
-     * @param currency Crypto currency
-     * @returns Success status
+     * The old one-step save (PUT /users/crypto/wallet). It now only accepts the
+     * wallet the member already has: setting or changing a wallet goes through
+     * requestCryptoWalletChange / confirmCryptoWalletChange (password + code
+     * sent to the account email, 48 h withdrawal lock when replacing one).
      */
     async updateUserCryptoWallet(userId: string | Types.ObjectId, walletAddress: string, currency: string): Promise<{
         success: boolean;
         message?: string;
     }> {
-        try {
-            const user = await userRepository.findById(userId);
-            if (!user) {
-                return { success: false, message: 'User not found' };
-            }
-
-            await userRepository.updateById(userId, {
-                cryptoWalletAddress: walletAddress,
-                cryptoWalletCurrency: currency
-            });
-
-            log.info(`Crypto wallet updated for user ${userId}: ${currency} - ${walletAddress.substring(0, 10)}...`);
-            return { success: true };
-        } catch (error: any) {
-            log.error(`Error updating crypto wallet for user ${userId}:`, error);
-            return { success: false, message: 'Error updating crypto wallet' };
+        const user = await userRepository.findById(userId);
+        if (!user) {
+            return { success: false, message: 'User not found' };
         }
+        if (isSameCryptoWallet(user, walletAddress, currency)) {
+            return { success: true };
+        }
+        throw new CryptoWalletChangeNeedsCodeError();
+    }
+
+    /**
+     * Sets or changes the wallet that receives crypto withdrawals (Security plan
+     * Phase 0 + 3): the account password and a code from the member's
+     * authenticator app (or a backup code). No authenticator yet → 403
+     * AUTHENTICATOR_REQUIRED, the app opens the setup. Replacing a wallet locks
+     * withdrawals and alerts the account e-mail; a first wallet locks nothing.
+     */
+    async changeCryptoWallet(
+        userId: string | Types.ObjectId,
+        input: { cryptoWalletAddress?: unknown; cryptoWalletCurrency?: unknown; password?: unknown; code?: unknown },
+    ): Promise<{ cryptoWalletAddress: string; cryptoWalletCurrency: string; withdrawalsLockedUntil: string | null }> {
+        const currency = normalizeCryptoCurrency(input.cryptoWalletCurrency);
+        if (!currency) {
+            throw new AppError('Choisissez la cryptomonnaie de votre portefeuille.', 400);
+        }
+        const address = normalizeCryptoAddress(input.cryptoWalletAddress, currency);
+        if (!address) {
+            throw new AppError(`Cette adresse n’est pas une adresse ${currency} valide. Vérifiez-la : une erreur ferait perdre l’argent.`, 400);
+        }
+        const user = await UserModel.findById(userId).select('+password');
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        if (isSameCryptoWallet(user, address, currency)) {
+            throw new AppError('C’est déjà votre portefeuille crypto.', 400);
+        }
+        if (!(await memberAuthService.isEnabled(user._id))) {
+            throw new AuthenticatorRequiredError();
+        }
+        const password = typeof input.password === 'string' ? input.password : '';
+        if (!password || !user.password || !(await bcrypt.compare(password, user.password))) {
+            throw new AppError('Mot de passe incorrect.', 400);
+        }
+        await memberAuthService.verifyCode(user._id, input.code, 'crypto_change');
+
+        const hadWallet = !!user.cryptoWalletAddress;
+        const lock = hadWallet ? withdrawalLockFields('crypto_change') : null;
+        await userRepository.updateById(user._id, {
+            cryptoWalletAddress: address,
+            cryptoWalletCurrency: currency,
+            ...(lock ?? {}),
+        });
+        if (lock) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'crypto_change', newValue: address });
+            log.warn(`Crypto wallet of user ${userId} changed (now ${currency}, ending ${addressTail(address)}): withdrawals locked until ${lock.withdrawalsLockedUntil.toISOString()}`);
+        } else {
+            log.info(`Crypto wallet of user ${userId} set (${currency}, ending ${addressTail(address)})`);
+        }
+        return { cryptoWalletAddress: address, cryptoWalletCurrency: currency, withdrawalsLockedUntil: lock ? lock.withdrawalsLockedUntil.toISOString() : null };
     }
 
     /**
@@ -2973,17 +3079,23 @@ export class UserService {
         // member's own change does: the October 2026 drain went through an
         // admin account. Forms resend unchanged values, so compare first.
         let contactChange: { reason: WithdrawalLockReason; newValue: string; previousEmail?: string } | null = null;
-        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined) {
+        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined
+            || allowedAdminUpdates.momoNumber !== undefined || allowedAdminUpdates.momoOperator !== undefined) {
             const current = await userRepository.findById(userId);
             if (current) {
                 const emailChanged = allowedAdminUpdates.email !== undefined
                     && String(allowedAdminUpdates.email).trim().toLowerCase() !== (current.email || '').toLowerCase();
                 const phoneChanged = allowedAdminUpdates.phoneNumber !== undefined
                     && !isSamePhoneNumber(current.phoneNumber, allowedAdminUpdates.phoneNumber);
+                // Replacing an existing MoMo number locks too (Security plan Phase 0).
+                const momoChanged = !!current.momoNumber
+                    && !isSameMomo(current, allowedAdminUpdates, normalizeCountryName(current.country));
                 if (emailChanged) {
                     contactChange = { reason: 'email_change', newValue: String(allowedAdminUpdates.email), previousEmail: current.email };
                 } else if (phoneChanged) {
                     contactChange = { reason: 'phone_change', newValue: String(allowedAdminUpdates.phoneNumber), previousEmail: current.email };
+                } else if (momoChanged) {
+                    contactChange = { reason: 'momo_change', newValue: String(allowedAdminUpdates.momoNumber || current.momoNumber), previousEmail: current.email };
                 }
             }
         }
@@ -3003,7 +3115,7 @@ export class UserService {
             const updatedUser = await userRepository.updateById(userId, allowedAdminUpdates);
             log.info(`Admin successfully updated user ${userId}`);
             if (updatedUser && contactChange) {
-                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
+                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : contactChange.reason === 'momo_change' ? 'MoMo details' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
                 alertContactChange({ userId, ...contactChange });
             }
             return updatedUser; // Return updated user
@@ -3071,7 +3183,27 @@ export class UserService {
                 }
                 updatedUser = await userRepository.updateActivationBalance(userId, amount);
             } else {
-                updatedUser = await userRepository.updateBalance(userId, amount);
+                // Main balance: a transaction is recorded in payment-service first
+                // (refused if payment-service cannot record it), then the balance
+                // moves once under the same ledger reference.
+                const reference = `admin-adjust:${new Types.ObjectId().toHexString()}`;
+                const recorded = await paymentService.recordAdjustmentTransaction({
+                    userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference, status: 'pending',
+                });
+                try {
+                    updatedUser = await userRepository.updateBalance(userId, amount, {
+                        reference, source: 'admin-adjust', description: `Ajustement admin: ${reason.trim()}`.slice(0, 500),
+                    });
+                } catch (moveError) {
+                    await paymentService.recordAdjustmentTransaction({
+                        userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference, status: 'failed',
+                    }).catch(() => undefined);
+                    throw moveError;
+                }
+                await paymentService.recordAdjustmentTransaction({
+                    userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference,
+                    status: updatedUser ? 'completed' : 'failed',
+                }).catch((e: any) => log.error(`Adjustment ${reference} applied but its transaction ${recorded.transactionId} could not be marked completed: ${e.message}`));
             }
 
             if (updatedUser) {
@@ -4015,6 +4147,25 @@ export class UserService {
         }
     }
 
+    /** Whether a code can reach the account's owner (e-mail, or WhatsApp when WhatsApp codes are on). */
+    canReachOwnerForCode(user: IUser): boolean {
+        return !!user.email || (whatsappOtpEnabled() && !!user.phoneNumber);
+    }
+
+    /**
+     * Sends the code that confirms a MoMo or crypto wallet change to the
+     * account's owner, on the channel they chose for their codes (e-mail or
+     * WhatsApp, WhatsApp mirrored to e-mail as for sign-in codes). Returns
+     * where it went, masked, for the confirmation screen.
+     */
+    async sendChangeCodeToOwner(user: IUser, code: string, purpose: 'changeMomo' | 'changeCrypto' | 'setupAuthenticator'): Promise<string> {
+        const { channel, recipient } = this.getOtpDeliveryInfo(user);
+        await this.sendAccountAccessOtp(user, code, { purpose });
+        if (channel !== DeliveryChannel.WHATSAPP) return maskEmail(recipient);
+        const whatsapp = `WhatsApp ${maskPhone(recipient)}`;
+        return user.email ? `${whatsapp} et ${maskEmail(user.email)}` : whatsapp;
+    }
+
     /**
      * Sends a sign-in OTP on the user's preferred channel, mirroring it to their
      * email whenever that channel is WhatsApp.
@@ -4437,6 +4588,59 @@ export class UserService {
 
         // Optional: Send confirmation to the *old* phone number?
         // await notificationService.sendPhoneChangeConfirmation(user.id, user.phoneNumber /* old phone */, normalizedPhoneNumber, user.name);
+    }
+
+    /**
+     * Sets or changes the Mobile Money number that receives withdrawals
+     * (Security plan Phase 0 + 3): the account password and a code from the
+     * member's authenticator app (or a backup code). No authenticator yet → 403
+     * AUTHENTICATOR_REQUIRED. Replacing a number locks withdrawals for
+     * WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE hours and alerts the account
+     * e-mail; a first number locks nothing.
+     */
+    async changeMomo(
+        userId: string | Types.ObjectId,
+        input: { momoNumber?: unknown; momoOperator?: unknown; password?: unknown; code?: unknown },
+    ): Promise<{ momoNumber: string; momoOperator: string; withdrawalsLockedUntil: string | null }> {
+        const operator = normalizeMomoOperator(input.momoOperator);
+        if (!MOMO_OPERATOR_PATTERN.test(operator)) {
+            throw new AppError('Choisissez votre opérateur Mobile Money.', 400);
+        }
+        const user = await UserModel.findById(userId).select('+password');
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        const country = normalizeCountryName(user.country);
+        const number = normalizeMomoNumber(input.momoNumber, country);
+        if (!number) {
+            throw new AppError('Numéro Mobile Money invalide.', 400);
+        }
+        if (user.momoNumber && user.momoOperator && isSameMomo(user, { momoNumber: number, momoOperator: operator }, country)) {
+            throw new AppError('C’est déjà votre numéro Mobile Money.', 400);
+        }
+        if (!(await memberAuthService.isEnabled(user._id))) {
+            throw new AuthenticatorRequiredError();
+        }
+        const password = typeof input.password === 'string' ? input.password : '';
+        if (!password || !user.password || !(await bcrypt.compare(password, user.password))) {
+            throw new AppError('Mot de passe incorrect.', 400);
+        }
+        await memberAuthService.verifyCode(user._id, input.code, 'momo_change');
+
+        const hadNumber = !!user.momoNumber;
+        const lock = hadNumber ? withdrawalLockFields('momo_change') : null;
+        await userRepository.updateById(user._id, {
+            momoNumber: number,
+            momoOperator: operator,
+            ...(lock ?? {}),
+        });
+        if (lock) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'momo_change', newValue: number });
+            log.warn(`MoMo details of user ${userId} changed (now ending ${number.slice(-3)}, ${operator}): withdrawals locked until ${lock.withdrawalsLockedUntil.toISOString()}`);
+        } else {
+            log.info(`MoMo details of user ${userId} set (ending ${number.slice(-3)}, ${operator})`);
+        }
+        return { momoNumber: number, momoOperator: operator, withdrawalsLockedUntil: lock ? lock.withdrawalsLockedUntil.toISOString() : null };
     }
 
     /** Whether withdrawals are blocked after an email/phone change (utils/withdrawal-lock.ts). */

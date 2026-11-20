@@ -55,6 +55,9 @@ const member = async (types: SubscriptionType[] = []) => {
 const main = async () => {
     await mongoose.connect(DB);
     await mongoose.connection.dropDatabase();
+    // Rebuild the unique indexes the checks rely on (productpayments.sessionId):
+    // autoIndex may have built them before the drop above, depending on timing.
+    await Promise.all(Object.values(mongoose.models).map((m) => m.createIndexes()));
 
     // Offers and prices
     const fresh = await member();

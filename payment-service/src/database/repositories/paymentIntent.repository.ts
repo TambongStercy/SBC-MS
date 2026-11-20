@@ -1,3 +1,4 @@
+import { PaymentFailure } from '../../utils/payment-failure';
 import { Types } from 'mongoose';
 import { nanoid } from 'nanoid';
 import PaymentIntent from '../models/PaymentIntent';
@@ -230,6 +231,18 @@ class PaymentIntentRepository {
     /**
      * Update a payment intent by session ID
      */
+    /**
+     * Records why a payment did not finish. Never throws: a failed write here
+     * must not hide the payment's own error.
+     */
+    async recordFailure(sessionId: string, failure: PaymentFailure): Promise<void> {
+        try {
+            await this.model.updateOne({ sessionId }, { $set: { failure } });
+        } catch (error: any) {
+            log.error(`Could not record the failure reason of payment ${sessionId}: ${error.message}`);
+        }
+    }
+
     async updateBySessionId(sessionId: string, update: UpdatePaymentIntentInput): Promise<IPaymentIntent | null> {
         try {
             const paymentIntent = await this.model.findOneAndUpdate(
@@ -252,10 +265,24 @@ class PaymentIntentRepository {
     /**
      * Add webhook event to payment intent history
      */
+    /**
+     * Records a provider event and moves the intent to `status` in ONE
+     * conditional write (support phase 2). Returns null when the intent is
+     * already there or in a state it may not leave — so of two concurrent or
+     * replayed webhooks only one gets the document back, and only that one runs
+     * handlePaymentCompletion (subscription, commissions, callbacks).
+     *   SUCCEEDED: from anything but SUCCEEDED (a provider may confirm after a
+     *              FAILED/expired answer — CinetPay's status API is re-asked);
+     *   FAILED:    never over SUCCEEDED or FAILED;
+     *   others:    never over a final state, never to the same state.
+     */
     async addWebhookEvent(sessionId: string, status: PaymentStatus, providerData: any): Promise<IPaymentIntent | null> {
         try {
+            const forbiddenFrom = status === PaymentStatus.SUCCEEDED
+                ? [PaymentStatus.SUCCEEDED]
+                : [PaymentStatus.SUCCEEDED, PaymentStatus.FAILED, status];
             const paymentIntent = await this.model.findOneAndUpdate(
-                { sessionId },
+                { sessionId, status: { $nin: forbiddenFrom } },
                 {
                     $set: { status },
                     $push: {

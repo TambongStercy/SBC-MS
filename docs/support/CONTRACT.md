@@ -114,6 +114,35 @@ Business status mapping (CdC §5): `REQUESTED`=`pending_otp_verification`,
 `CANCEL_REQUESTED`, `CANCELLED`=`cancelled` (confirmed), `UNKNOWN`=no final provider answer
 after the threshold (case opened, funds stay reserved, never auto-released on a timeout).
 
+Implementation notes (feature/support-money):
+- `RESERVED` = `pending` (reserved, not yet acknowledged by the provider); `SUBMITTED` =
+  `processing` without provider reference, `PENDING` = `processing` with one; `UNKNOWN` =
+  `pending`/`processing` for more than 24 h (since approval), or flagged for review (e.g. a
+  MoneyFusion webhook without concordant amount/number). Two extra values: `REJECTED`
+  (`rejected_by_admin`) and `EXPIRED` (approval window passed; reservation released).
+  `CANCEL_REQUESTED` is never produced (no flow cancels after approval).
+- `RecheckResult` also carries `internalStatus` (our status after the recheck) and `applied`.
+- `regularize` and `activation/manual` require `x-support-actor`; `regularize` requires 1–20
+  `evidence` strings and accepts only `processing`/`pending` withdrawals. `activation/manual`
+  accepts `plan` = `CLASSIQUE` | `CIBLE` | `UPGRADE` and an optional `countryCode` (CinetPay);
+  it answers `201 { sessionId, status, amount, currency, verified }`.
+- `finance/summary` returns `{ byBusinessStatus: {STATUS: {count, amount}}, openByAge:
+  {bucket: {count, amount}} }` (XAF gross amounts; `from` defaults to 30 days ago). Admin
+  direct payouts (SBC's own money) are excluded from both finance routes.
+- Withdrawal initiation (`POST /api/transactions/withdrawal/initiate`) accepts an optional
+  idempotency key: header `Idempotency-Key` or body field `idempotencyKey` (8–100 chars,
+  `[A-Za-z0-9_.:-]`). Same key for the same member = the first request is returned.
+- user-service wallet internals used by payment-service (not for support-service):
+  `/api/users/internal/wallet/{reservations, reservations/:txId/{release,convert},
+  available/:userId, movements, movements/lookup, plan-prices}`.
+- `activation/manual` (and the admin manual paths) also refuse with `422 AMOUNT_TOO_LOW`
+  (paid amount below the pack price), `422 AMOUNT_UNVERIFIED`, `422 CURRENCY_MISMATCH`,
+  `422 PAID_FOR_ANOTHER_ACCOUNT`; every provider id of the payment (CinetPay token and
+  transaction id) is claimed once (`409 REF_ALREADY_USED`).
+- `regularize complete` also accepts a `failed` withdrawal (money confirmed out on the
+  provider's dashboard): debited once, divergence case opened.
+- Member-facing `/api/transactions*` responses never carry provider references.
+
 ### 2.3 advertising-service (`/api/advertising/internal/…`)
 
 | Method & path | Body / query | Returns |

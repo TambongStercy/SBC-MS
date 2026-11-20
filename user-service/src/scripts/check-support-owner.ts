@@ -9,6 +9,7 @@
  *
  *   npx ts-node --swc src/scripts/check-support-owner.ts
  */
+export {};
 
 // Before anything reads the config.
 const DEAD = 'http://127.0.0.1:9';

@@ -67,6 +67,11 @@ export interface IPaymentIntent extends Document {
 
     metadata?: Record<string, any>; // Any other relevant data
 
+    /** Why it did not finish (utils/payment-failure.ts). Set once per failure. */
+    failure?: import('../../utils/payment-failure').PaymentFailure;
+    /** Reasons of earlier attempts on the same payment (retries), oldest first. */
+    failureHistory?: import('../../utils/payment-failure').PaymentFailure[];
+
     /** When PayinReconciler last asked the provider about this one. */
     lastReconcileAt?: Date;
     /** How many times the provider actually ANSWERED and left it unresolved. */

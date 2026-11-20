@@ -89,11 +89,15 @@ interface IConfig {
     moneyfusion: {
         apiUrl: string;
         payoutUrl: string;
+        /** Payin status (GET <statusUrl>/<tokenPay>). */
+        statusUrl: string;
         privateKey: string;
         withdrawalsEnabled: boolean;
     };
     selfBaseUrl: string; // Base URL of this service for webhooks
     withdrawalsEnabled: boolean; // Global withdrawal control switch
+    /** Security plan Phase 3: a member withdrawal needs their authenticator app (default on; MEMBER_AUTHENTICATOR_REQUIRED=false goes back to the e-mailed code). */
+    memberAuthenticatorRequired: boolean;
     // Preprod payment sandbox — fake provider responses driven by magic values.
     // Refused at runtime when nodeEnv === 'production' (see services/sandbox.service.ts).
     sandboxEnabled: boolean;
@@ -184,11 +188,15 @@ const config: IConfig = {
     moneyfusion: {
         apiUrl: process.env.MONEYFUSION_API_URL || '', // The API URL from the dashboard
         payoutUrl: process.env.MONEYFUSION_PAYOUT_URL || 'https://pay.moneyfusion.net/api/v1/withdraw',
+        // www.pay.moneyfusion.net (their documented host) fails the TLS handshake
+        // (checked 2026-11-19); pay.moneyfusion.net answers the same route.
+        statusUrl: (process.env.MONEYFUSION_STATUS_URL || 'https://pay.moneyfusion.net/paiementNotif').replace(/\/+$/, ''),
         privateKey: process.env.MONEYFUSION_PRIVATE_KEY || '', // For payout auth header
         withdrawalsEnabled: process.env.MONEYFUSION_WITHDRAWALS_ENABLED === 'true',
     },
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3003',
     withdrawalsEnabled: process.env.WITHDRAWALS_ENABLED === 'true', // Global withdrawal control - default false
+    memberAuthenticatorRequired: process.env.MEMBER_AUTHENTICATOR_REQUIRED !== 'false',
     sandboxEnabled: process.env.PAYMENT_SANDBOX_ENABLED === 'true', // Default off; never honored in production
 };
 
