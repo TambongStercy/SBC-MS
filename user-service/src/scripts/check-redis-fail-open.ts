@@ -7,6 +7,7 @@
  *
  *   npx ts-node src/scripts/check-redis-fail-open.ts
  */
+export {};
 
 let failures = 0;
 const check = (label: string, ok: boolean, detail = '') => {

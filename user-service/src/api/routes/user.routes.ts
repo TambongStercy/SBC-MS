@@ -1,4 +1,5 @@
 import { adminAccessController } from '../controllers/admin-access.controller';
+import { supportController } from '../controllers/support.controller';
 import { Router, Request, Response, NextFunction } from 'express';
 import {
     userController
@@ -75,6 +76,11 @@ serviceRouter.post('/batch-details', (req, res) => userController.getUsersDetail
 
 // Internal route to get the SBCLOVE demographic subset for one or more users
 serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDetailsByIds(req, res));
+
+// SBC Support (docs/support/CONTRACT.md §2.1): member card, search, contact change.
+serviceRouter.post('/support-details', (req, res) => supportController.details(req, res));
+serviceRouter.post('/support-search', (req, res) => supportController.search(req, res));
+serviceRouter.post('/support/contact-change', (req, res) => supportController.contactChange(req, res));
 // SBC Event: resolve an invited team member / juror from an email or phone (masked projection)
 serviceRouter.post('/event-member-lookup', (req, res) => userController.lookupEventMember(req, res));
 // SBCLOVE admin search: which of the given members match a name/email/phone/city term

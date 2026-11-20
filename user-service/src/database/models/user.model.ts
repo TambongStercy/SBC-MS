@@ -60,7 +60,8 @@ interface IOtp extends Document {
     target?: string;
 }
 
-export type OtpPurpose = 'changeEmail' | 'changePhone' | 'changeMomo' | 'changeCrypto' | 'setupAuthenticator';
+/** Codes bound to one change. The support ones are issued by SBC Support (internal contact-change) and confirm only that. */
+export type OtpPurpose = 'changeEmail' | 'changePhone' | 'changeMomo' | 'changeCrypto' | 'setupAuthenticator' | 'supportChangeEmail' | 'supportChangePhone';
 
 // Interface defining the User document structure (FIELDS ONLY)
 export interface IUser extends Document {
@@ -191,7 +192,7 @@ export interface IUser extends Document {
 const otpSchema = new Schema<IOtp>({
     code: { type: String, required: true },
     expiration: { type: Date, required: true },
-    purpose: { type: String, enum: ['changeEmail', 'changePhone', 'changeMomo', 'changeCrypto', 'setupAuthenticator'] },
+    purpose: { type: String, enum: ['changeEmail', 'changePhone', 'changeMomo', 'changeCrypto', 'setupAuthenticator', 'supportChangeEmail', 'supportChangePhone'] },
     target: { type: String },
 }, { _id: false });
 
