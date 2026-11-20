@@ -9,7 +9,7 @@ import { parseSignal } from './realtime';
 const fake = vi.hoisted(() => ({ onData: null as null | ((p: Uint8Array, a?: unknown, b?: unknown, topic?: string) => void), connects: 0 }));
 vi.mock('livekit-client', () => {
   class Room {
-    on(ev: string, cb: any) { if (ev === 'dataReceived') fake.onData = cb; return this; }
+    on(ev: string, cb: NonNullable<typeof fake.onData>) { if (ev === 'dataReceived') fake.onData = cb; return this; }
     async connect() { fake.connects++; }
     async disconnect() {}
   }
