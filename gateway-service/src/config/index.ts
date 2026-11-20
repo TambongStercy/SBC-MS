@@ -59,7 +59,7 @@ const config: IConfig = {
             return list.length === 1 ? list[0] : list;
         })(),
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Service-Name', 'X-CSRF-Token', 'X-Reauth-Token', 'X-Request-Id']
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Service-Name', 'X-CSRF-Token', 'X-Reauth-Token', 'X-Request-Id', 'X-SBC-Device', 'X-SBC-Client']
     },
 
     jwt: {

@@ -105,7 +105,7 @@ describe('sending', () => {
     // Sterling, 2026-10-03: holding pushes for the morning is only worth it for
     // announcements. A personal one is about something that just happened, and
     // some go stale held (an event reminder "dans moins d'une heure" at 07:00).
-    it.each(['money', 'chat', 'filleuls', 'relance', 'events', 'tombola', 'ads', 'subscription'] as const)(
+    it.each(['money', 'chat', 'filleuls', 'relance', 'events', 'tombola', 'ads', 'subscription', 'support'] as const)(
         'sends a %s push at night too, at once and flagged high urgency', async (category) => {
             await device();
             expect(await sendPushToUser(userId, { title: 'T', body: 'B' }, { category, now: NIGHT })).toBe('sent');
@@ -179,6 +179,7 @@ describe('the button on the notification', () => {
         ['filleuls', 'Voir mes filleuls'],
         ['events', 'Voir mes billets'],
         ['subscription', 'Renouveler'],
+        ['support', 'Voir ma demande'],
         ['announcements', 'Découvrir'],
     ] as const)('a %s push gets "%s" when the sender names no button', async (category, cta) => {
         await device();
@@ -233,6 +234,22 @@ describe('other services sending', () => {
         expect((await call('POST', '/api/notifications/push/internal/send', { auth: config.services.serviceSecret, body: { ...body, category: 'spam' } })).status).toBe(400);
         expect((await call('POST', '/api/notifications/push/internal/send', { auth: config.services.serviceSecret, body: { ...body, title: ' ' } })).status).toBe(400);
         expect((await call('POST', '/api/notifications/push/internal/send', { auth: tokenFor(userId), body })).status).toBeGreaterThanOrEqual(401);
+    });
+
+    // SBC Support (CONTRACT §2.4): its own kind, in the bell, and the member can turn it off.
+    it('takes a support push, files it in the bell, and honours the member turning support off', async () => {
+        await device();
+        const body = { userId, category: 'support', title: 'Réponse à votre demande', body: 'Un agent vous a répondu.', url: '/aide/demandes/1' };
+        const r = await call('POST', '/api/notifications/push/internal/send', { auth: config.services.serviceSecret, body });
+        expect(r.status).toBe(200);
+        expect(r.json.data).toEqual({ sent: 1 });
+        expect((await InboxItemModel.findOne({ userId }).lean())!.category).toBe('support');
+        expect(JSON.parse(sendNotification.mock.calls[0][1]).cta).toBe('Voir ma demande');
+
+        const prefs = await call('GET', '/api/notifications/push/preferences', { auth: tokenFor(userId) });
+        expect(prefs.json.data.categories).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'support', enabled: true, holdAtNight: false })]));
+        await call('PUT', '/api/notifications/push/preferences', { auth: tokenFor(userId), body: { disabled: ['support'] } });
+        expect(await sendPushToUser(userId, { title: 'T', body: 'B' }, { category: 'support', now: DAY })).toBe('disabled');
     });
 
     it('passes a sender photo and the re-buzz flag through to the phone', async () => {

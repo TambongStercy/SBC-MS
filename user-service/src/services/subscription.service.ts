@@ -10,6 +10,7 @@ import { paymentService } from './clients/payment.service.client';
 import config from '../config';
 import { userService } from './user.service'; // Import userService to get referrers
 import { partnerService } from './partner.service'; // Import partnerService
+import { reserveActivation, markActivationApplied, releaseActivation, ActivationInProgressError } from './subscription-activation';
 // import { AppError } from '../utils/AppError'; // AppError not found, using Error for now
 
 // --- Subscription Plan Definitions ---
@@ -27,6 +28,9 @@ interface SubscriptionPlan {
 }
 
 // XAF pricing for traditional payments (Mobile Money, etc.)
+/** CLASSIQUE → CIBLE upgrade price (XAF). */
+const UPGRADE_PRICE_XAF = 3150;
+
 const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
     {
         id: SubscriptionType.CLASSIQUE,
@@ -324,6 +328,21 @@ export class SubscriptionService {
     }
 
     /**
+     * Prices of the packs a manual activation can grant (payment-service checks a
+     * provider-confirmed amount against them). Same sources as the purchase flows:
+     * AVAILABLE_PLANS_*, the upgrade price, CRYPTO_SUBSCRIPTION_PRICING.
+     */
+    getPlanPrices(): Record<'CLASSIQUE' | 'CIBLE' | 'UPGRADE', { XAF: number; USD: number }> {
+        const xaf = (t: SubscriptionType) => AVAILABLE_PLANS_XAF.find((p) => p.id === t)!.price;
+        const usd = (t: SubscriptionType) => AVAILABLE_PLANS_CRYPTO_USD.find((p) => p.id === t)!.price;
+        return {
+            CLASSIQUE: { XAF: xaf(SubscriptionType.CLASSIQUE), USD: usd(SubscriptionType.CLASSIQUE) },
+            CIBLE: { XAF: xaf(SubscriptionType.CIBLE), USD: usd(SubscriptionType.CIBLE) },
+            UPGRADE: { XAF: UPGRADE_PRICE_XAF, USD: CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription },
+        };
+    }
+
+    /**
      * Get plan details for a specific subscription type and payment method
      */
     private getPlanDetails(planType: SubscriptionType, paymentMethod?: 'crypto' | 'traditional'): SubscriptionPlan | null {
@@ -458,7 +477,7 @@ export class SubscriptionService {
         }
 
         // 3. Use standard XAF pricing for PaymentIntent creation - payment service will handle crypto conversion
-        const upgradePrice = 3150; // Standard XAF amount (CIBLE 5300 − CLASSIQUE 2150)
+        const upgradePrice = UPGRADE_PRICE_XAF; // Standard XAF amount (CIBLE 5300 − CLASSIQUE 2150)
         const currency = 'XAF';
         this.log.info(`Using standard upgrade pricing: ${upgradePrice} ${currency} (payment service will handle crypto conversion if needed)`);
 
@@ -531,6 +550,22 @@ export class SubscriptionService {
         }
         const targetSubscriptionType = planId as SubscriptionType;
 
+        // ─── ONE ACTIVATION PER PAYMENT ─────────────────────────────────────
+        // Claim this sessionId before touching anything (subscriptionactivations,
+        // unique sessionId). A replayed or concurrent callback for the same
+        // payment must not activate, extend (VISIBILITE_MAX) or pay commissions
+        // twice. Released below if activation fails, so the payment can be
+        // delivered again.
+        const claim = await reserveActivation({ sessionId: paymentSessionId, userId, planId, isUpgrade: !!isUpgrade });
+        if (claim.outcome === 'already_applied') {
+            this.log.warn(`Payment ${paymentSessionId} already activated a ${targetSubscriptionType} subscription for user ${userId}; ignoring repeat.`);
+            return await this.subscriptionRepository.findActiveSubscriptionByType(new Types.ObjectId(userId), targetSubscriptionType);
+        }
+        if (claim.outcome === 'in_progress') {
+            this.log.warn(`Payment ${paymentSessionId} is being activated by another delivery; not acknowledging this one.`);
+            throw new ActivationInProgressError(paymentSessionId);
+        }
+
         // ─── COMMISSION DEDUP GUARD ─────────────────────────────────────────
         // Determine UPFRONT whether the user already has a subscription that satisfies
         // this payment. If so, the upcoming activateSubscription will be a no-op, and
@@ -543,8 +578,15 @@ export class SubscriptionService {
         let satisfiedByExisting = false;
         if (targetSubscriptionType !== SubscriptionType.RELANCE) {
             const userObjectId = new Types.ObjectId(userId);
-            const existingCible = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CIBLE);
-            const existingClassique = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CLASSIQUE);
+            let existingCible: ISubscription | null;
+            let existingClassique: ISubscription | null;
+            try {
+                existingCible = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CIBLE);
+                existingClassique = await this.subscriptionRepository.findActiveSubscriptionByType(userObjectId, SubscriptionType.CLASSIQUE);
+            } catch (lookupError) {
+                await releaseActivation(paymentSessionId);
+                throw lookupError;
+            }
             if (targetSubscriptionType === SubscriptionType.CIBLE) {
                 satisfiedByExisting = !!existingCible;
             } else if (targetSubscriptionType === SubscriptionType.CLASSIQUE) {
@@ -571,9 +613,14 @@ export class SubscriptionService {
 
         } catch (error: any) {
             this.log.error(`Failed to activate subscription for user ${userId} (Type: ${targetSubscriptionType}) after payment webhook: ${error.message}`, { paymentSessionId, metadata, error });
+            // Not applied: free the payment so its next delivery can activate it.
+            await releaseActivation(paymentSessionId);
             // Rethrow activation error
             throw new Error(`Failed to activate subscription after successful payment. Please contact support. Details: ${error.message}`);
         }
+
+        await markActivationApplied(paymentSessionId, { subscriptionId: activatedSubscription._id, alreadyActive: satisfiedByExisting })
+            .catch(err => this.log.error(`Could not mark payment ${paymentSessionId} as applied: ${err?.message ?? err}`));
 
         // --- 3. Distribute Commissions (Only for CIBLE or Upgrade) ---
         if (satisfiedByExisting) {

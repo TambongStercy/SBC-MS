@@ -43,6 +43,7 @@ export interface CreateTransactionInput {
     serviceProvider?: string;
     paymentMethod?: string;
     externalTransactionId?: string;
+    idempotencyKey?: string;
 }
 
 // Interface for updating a transaction
@@ -101,6 +102,7 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
                 serviceProvider: input.serviceProvider,
                 paymentMethod: input.paymentMethod,
                 externalTransactionId: input.externalTransactionId,
+                ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
             };
 
             const transaction = await this.model.create(transactionData); // Use this.model
@@ -154,29 +156,42 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
     }
 
     /**
-     * Atomically claim a transaction for webhook processing.
-     * This prevents race conditions where multiple webhook calls process the same transaction.
+     * Atomically claim a transaction for webhook processing: a short lease
+     * (metadata.webhookProcessingUntil) that a concurrent webhook for the same
+     * transaction cannot take. Before 2026-11 this only stamped a timestamp, so
+     * two webhooks could both "claim" and both process.
      *
-     * @param transactionId - The internal transaction ID
-     * @param excludeStatuses - Statuses that should NOT be claimed (e.g., already COMPLETED)
-     * @returns The transaction if successfully claimed, null if already in an excluded status
+     * The lease is not what prevents a double debit (the conditional status
+     * transitions in services/withdrawal-lifecycle.ts are); it keeps two
+     * deliveries from doing the provider round-trip and notifications twice.
+     * It expires by itself (leaseMs), so a crashed processor never blocks the
+     * next delivery for long. Release it with releaseProcessingClaim.
+     *
+     * @returns The transaction if claimed, null if not found, in an excluded
+     *          status, or claimed by someone else right now.
      */
     async claimTransactionForProcessing(
         transactionId: string,
-        excludeStatuses: TransactionStatus[] = [TransactionStatus.COMPLETED]
+        excludeStatuses: TransactionStatus[] = [TransactionStatus.COMPLETED],
+        leaseMs = 2 * 60 * 1000,
     ): Promise<ITransaction | null> {
         try {
-            // Atomically find and update the transaction only if it's not already in an excluded status
-            // This uses findOneAndUpdate with a condition, which is atomic in MongoDB
+            const now = new Date();
             const transaction = await this.model.findOneAndUpdate(
                 {
                     transactionId,
-                    status: { $nin: excludeStatuses }  // Only claim if NOT in excluded statuses
+                    status: { $nin: excludeStatuses },
+                    $or: [
+                        { 'metadata.webhookProcessingUntil': { $exists: false } },
+                        { 'metadata.webhookProcessingUntil': null },
+                        { 'metadata.webhookProcessingUntil': { $lte: now } },
+                    ],
                 },
                 {
                     $set: {
-                        'metadata.webhookProcessingStartedAt': new Date(),
-                        'metadata.webhookProcessingId': new Types.ObjectId().toString() // Unique ID for this processing attempt
+                        'metadata.webhookProcessingStartedAt': now,
+                        'metadata.webhookProcessingUntil': new Date(now.getTime() + leaseMs),
+                        'metadata.webhookProcessingId': new Types.ObjectId().toString(),
                     }
                 },
                 { new: true }
@@ -185,7 +200,7 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             if (transaction) {
                 log.info(`Transaction ${transactionId} claimed for webhook processing`);
             } else {
-                log.warn(`Transaction ${transactionId} could not be claimed - either not found or already in excluded status`);
+                log.warn(`Transaction ${transactionId} could not be claimed - not found, in an excluded status, or being processed`);
             }
 
             return transaction;
@@ -193,6 +208,14 @@ export class TransactionRepository extends BaseRepository<ITransaction> {
             log.error(`Error claiming transaction ${transactionId} for processing: ${error}`);
             throw error;
         }
+    }
+
+    /** Ends a processing lease taken by claimTransactionForProcessing. */
+    async releaseProcessingClaim(transactionId: string, processingId?: string): Promise<void> {
+        await this.model.updateOne(
+            { transactionId, ...(processingId ? { 'metadata.webhookProcessingId': processingId } : {}) },
+            { $set: { 'metadata.webhookProcessingUntil': null } },
+        ).exec();
     }
 
     /**

@@ -123,6 +123,7 @@ export const MENU: MenuGroup[] = [
     id: 'financial',
     label: 'Finances',
     items: [
+      { label: 'Paiements (conversion)', path: '/paiements', icon: ChartIncreaseIcon },
       { label: 'Transactions', path: '/transactions', icon: Invoice01Icon },
       { label: 'Transactions des comptes', path: '/account-transactions', icon: Wallet01Icon },
       { label: 'Retraits à valider', path: '/withdrawals/approvals', icon: CheckListIcon },

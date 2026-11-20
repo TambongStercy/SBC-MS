@@ -1,4 +1,5 @@
 import { adminAccessController } from '../controllers/admin-access.controller';
+import { supportController } from '../controllers/support.controller';
 import { Router, Request, Response, NextFunction } from 'express';
 import {
     userController
@@ -56,6 +57,11 @@ serviceRouter.post('/:userId/withdrawal/success', (req, res) => userController.p
 
 // Withdrawals blocked after an email/phone change (payment-service checks it before every payout)
 serviceRouter.get('/:userId/withdrawal-lock', (req, res) => userController.getWithdrawalLock(req, res));
+// Security plan Phase 1: aggregated request signals from the gateway.
+serviceRouter.post('/activity/batch', (req, res) => userController.ingestActivityBatch(req, res));
+// Member authenticator (Security plan Phase 3): payment-service checks it before a withdrawal.
+serviceRouter.get('/:userId/authenticator', (req, res) => userController.internalAuthenticatorStatus(req, res));
+serviceRouter.post('/:userId/authenticator/verify', (req, res) => userController.internalVerifyAuthenticator(req, res));
 // Gateway: per-module admin rights of a staff account (config/admin-modules.ts).
 serviceRouter.get('/:userId/admin-access', (req, res) => adminAccessController.getInternalAccess(req, res));
 
@@ -70,6 +76,11 @@ serviceRouter.post('/batch-details', (req, res) => userController.getUsersDetail
 
 // Internal route to get the SBCLOVE demographic subset for one or more users
 serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDetailsByIds(req, res));
+
+// SBC Support (docs/support/CONTRACT.md §2.1): member card, search, contact change.
+serviceRouter.post('/support-details', (req, res) => supportController.details(req, res));
+serviceRouter.post('/support-search', (req, res) => supportController.search(req, res));
+serviceRouter.post('/support/contact-change', (req, res) => supportController.contactChange(req, res));
 // SBC Event: resolve an invited team member / juror from an email or phone (masked projection)
 serviceRouter.post('/event-member-lookup', (req, res) => userController.lookupEventMember(req, res));
 // SBCLOVE admin search: which of the given members match a name/email/phone/city term
@@ -243,6 +254,11 @@ router.post('/crypto/check-limits', requireActiveSubscription as any, mediumLimi
 // --- Crypto Wallet Management Routes (paywalled) ---
 router.get('/crypto/wallet', requireActiveSubscription as any, (req, res) => userController.getCryptoWallet(req as AuthenticatedRequest, res));
 router.put('/crypto/wallet', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.updateCryptoWallet(req as AuthenticatedRequest, res));
+// Setting or changing the wallet: password + emailed code; replacing one locks withdrawals 48 h.
+// PUT above only accepts the wallet already saved (409 CRYPTO_CHANGE_NEEDS_CODE otherwise).
+router.post('/crypto/wallet/change', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.changeCryptoWallet(req as AuthenticatedRequest, res));
+router.post('/crypto/wallet/request-change', (req, res) => userController.retiredChangeCodeRoute(req as AuthenticatedRequest, res));
+router.post('/crypto/wallet/confirm-change', (req, res) => userController.retiredChangeCodeRoute(req as AuthenticatedRequest, res));
 
 // --- Public Profile View Route ---
 router.get('/:userId', (req, res, next) => userController.viewUserProfile(req, res, next));
@@ -258,6 +274,15 @@ router.post('/confirm-change-email', mediumLimiter, (req, res, next) => userCont
 router.post('/request-change-phone', (req, res, next) => userController.requestChangePhoneOtp(req as AuthenticatedRequest, res, next));
 // COMPLETE Phone Change (Authenticated, rate limited)
 router.post('/confirm-change-phone', mediumLimiter, (req, res, next) => userController.confirmChangePhone(req as AuthenticatedRequest, res, next));
+// Mobile Money number that receives withdrawals: password + code to the account email (Security plan Phase 0).
+router.post('/me/momo/change', mediumLimiter, (req, res) => userController.changeMomo(req as AuthenticatedRequest, res));
+router.post('/me/momo/request-change', (req, res) => userController.retiredChangeCodeRoute(req as AuthenticatedRequest, res));
+router.post('/me/momo/confirm-change', (req, res) => userController.retiredChangeCodeRoute(req as AuthenticatedRequest, res));
+// Member authenticator app (Security plan Phase 3). No subscription needed to set it up.
+router.get('/me/authenticator', (req, res) => userController.getAuthenticatorStatus(req as AuthenticatedRequest, res));
+router.post('/me/authenticator/setup/request', strictLimiter, (req, res) => userController.requestAuthenticatorSetup(req as AuthenticatedRequest, res));
+router.post('/me/authenticator/setup/start', strictLimiter, (req, res) => userController.startAuthenticatorSetup(req as AuthenticatedRequest, res));
+router.post('/me/authenticator/setup/confirm', mediumLimiter, (req, res) => userController.confirmAuthenticatorSetup(req as AuthenticatedRequest, res));
 
 // === Admin Routes ===
 // Apply admin authorization middleware for these routes

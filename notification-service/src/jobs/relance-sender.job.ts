@@ -2,7 +2,8 @@ import cron from 'node-cron';
 import RelanceConfigModel from '../database/models/relance-config.model';
 import RelanceTargetModel, { TargetStatus, ExitReason } from '../database/models/relance-target.model';
 import RelanceBounceSuppressionModel from '../database/models/relance-bounce-suppression.model';
-import { pushCreditsExhausted, pushCreditsLow, pushFilleulPaid } from '../services/relance-alerts.service';
+import { pushCreditsExhausted, pushCreditsLow } from '../services/relance-alerts.service';
+import { exitPaidReferral } from '../services/relance-paid-exit.service';
 import RelanceMessageModel from '../database/models/relance-message.model';
 import RelanceSmsTemplateModel from '../database/models/relance-sms-template.model';
 import CampaignModel, { CampaignStatus } from '../database/models/relance-campaign.model';
@@ -251,11 +252,9 @@ export async function processUserTargets(
             // target subscribers on purpose.
             if (isDefaultTarget && await referralHasPaid(referralId)) {
                 console.log(`${campaignLabel} filleul ${referralId} has paid; leaving relance`);
-                target.status = TargetStatus.COMPLETED;
-                target.exitReason = ExitReason.PAID;
-                target.exitedLoopAt = new Date();
-                await target.save();
-                pushFilleulPaid(referrerId, String(referralId));
+                // Closes this and any other journey of the filleul; pushes only
+                // to a parrain not already told when the payment came in.
+                await exitPaidReferral(String(referralId));
                 exited++;
                 continue;
             }

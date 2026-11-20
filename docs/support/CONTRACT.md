@@ -68,9 +68,25 @@ All responses: `{ success: boolean, data?: …, message?: string, code?: string 
   subscriptions: [{ type, category, status, startDate, endDate }] }
 ```
 
+Owner-side notes (feature/support-owner-apis):
+- `lastLogin` is `users.ipLastUpdated` (last authenticated request); the user model has no
+  login timestamp. `language` is the first of `users.language`. Deleted accounts are
+  returned by details and search.
+- contact-change error codes: `INVALID_INPUT`, `APPROVAL_REQUIRED`, `INVALID_VALUE`,
+  `SAME_VALUE`, `CONTACT_UNAVAILABLE` (also for values held by deleted accounts),
+  `CODE_COOLDOWN` (429, one code per minute), `CHANNEL_UNAVAILABLE` (503: a new phone number
+  can only be reached on WhatsApp; while `WHATSAPP_OTP_ENABLED` is off the code is **not**
+  sent anywhere else), `DELIVERY_FAILED` (502), `INVALID_CODE`, `STATE_CHANGED` (409,
+  contact changed meanwhile), `USER_NOT_FOUND` (404, deleted accounts too). Codes live 15 min,
+  are bound to the change (`purpose` `supportChangeEmail`/`supportChangePhone`, `target`) and
+  never sign in. `apply` clears every code on the account.
+
 Subscription activation idempotency (phase 3, owner side, no API): collection
 `subscriptionactivations` with unique `sessionId`; reserve before applying, release on failure
-(same mechanism as product-service `productpayments`).
+(same mechanism as product-service `productpayments`). A delivery that finds the same
+sessionId still being applied gets `409 code=ACTIVATION_IN_PROGRESS` from
+`/api/subscriptions/webhooks/payment-confirmation` (not acknowledged); an applied one gets 200
+and does nothing; a reservation stuck `applying` for 15 min (crash) is taken over.
 
 ### 2.2 payment-service (`/api/internal/support/…`, new `support.routes.ts`) — built on `feature/support-money`
 
@@ -98,6 +114,35 @@ Business status mapping (CdC §5): `REQUESTED`=`pending_otp_verification`,
 `CANCEL_REQUESTED`, `CANCELLED`=`cancelled` (confirmed), `UNKNOWN`=no final provider answer
 after the threshold (case opened, funds stay reserved, never auto-released on a timeout).
 
+Implementation notes (feature/support-money):
+- `RESERVED` = `pending` (reserved, not yet acknowledged by the provider); `SUBMITTED` =
+  `processing` without provider reference, `PENDING` = `processing` with one; `UNKNOWN` =
+  `pending`/`processing` for more than 24 h (since approval), or flagged for review (e.g. a
+  MoneyFusion webhook without concordant amount/number). Two extra values: `REJECTED`
+  (`rejected_by_admin`) and `EXPIRED` (approval window passed; reservation released).
+  `CANCEL_REQUESTED` is never produced (no flow cancels after approval).
+- `RecheckResult` also carries `internalStatus` (our status after the recheck) and `applied`.
+- `regularize` and `activation/manual` require `x-support-actor`; `regularize` requires 1–20
+  `evidence` strings and accepts only `processing`/`pending` withdrawals. `activation/manual`
+  accepts `plan` = `CLASSIQUE` | `CIBLE` | `UPGRADE` and an optional `countryCode` (CinetPay);
+  it answers `201 { sessionId, status, amount, currency, verified }`.
+- `finance/summary` returns `{ byBusinessStatus: {STATUS: {count, amount}}, openByAge:
+  {bucket: {count, amount}} }` (XAF gross amounts; `from` defaults to 30 days ago). Admin
+  direct payouts (SBC's own money) are excluded from both finance routes.
+- Withdrawal initiation (`POST /api/transactions/withdrawal/initiate`) accepts an optional
+  idempotency key: header `Idempotency-Key` or body field `idempotencyKey` (8–100 chars,
+  `[A-Za-z0-9_.:-]`). Same key for the same member = the first request is returned.
+- user-service wallet internals used by payment-service (not for support-service):
+  `/api/users/internal/wallet/{reservations, reservations/:txId/{release,convert},
+  available/:userId, movements, movements/lookup, plan-prices}`.
+- `activation/manual` (and the admin manual paths) also refuse with `422 AMOUNT_TOO_LOW`
+  (paid amount below the pack price), `422 AMOUNT_UNVERIFIED`, `422 CURRENCY_MISMATCH`,
+  `422 PAID_FOR_ANOTHER_ACCOUNT`; every provider id of the payment (CinetPay token and
+  transaction id) is claimed once (`409 REF_ALREADY_USED`).
+- `regularize complete` also accepts a `failed` withdrawal (money confirmed out on the
+  provider's dashboard): debited once, divergence case opened.
+- Member-facing `/api/transactions*` responses never carry provider references.
+
 ### 2.3 advertising-service (`/api/advertising/internal/…`)
 
 | Method & path | Body / query | Returns |
@@ -108,6 +153,15 @@ after the threshold (case opened, funds stay reserved, never auto-released on a 
 
 Admin "Vérifications vidéo" page becomes read-only (list paginated); a `super_admin`
 override stays possible and is logged.
+
+Owner-side notes (feature/support-owner-apis):
+- The video URL is the public media URL the admin already plays (proofs are in the public
+  bucket), not a presigned one.
+- `ban` from another role is ignored (decision still applied, `banIgnored: true`), not refused.
+- "super_admin" in SBC is user role `admin`; `staff`/`moderator`/`withdrawal_admin` get
+  `403 code=ADMIN_READONLY` while `VIDEO_VERIFICATION_ADMIN_READONLY` (default true) is on.
+- Outbound `POST /view-tasks` needs `SUPPORT_SERVICE_URL` in advertising-service; skipped with a
+  warning when unset, never fails the member's upload.
 
 ### 2.4 notification-service
 

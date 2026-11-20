@@ -93,6 +93,16 @@ const main = async () => {
     userServiceClient.updateUserUsdBalance = async (userId: string, amount: number) => {
         usdBalanceCalls.push({ userId, amount });
     };
+    // Since support phase 2 a completed withdrawal settles through user-service's
+    // reservation conversion (one debit per transactionId); record it the same way.
+    const settled = new Set<string>();
+    userServiceClient.settleWithdrawal = async (p: { transactionId: string; userId: string; amount: number; currency: string }) => {
+        if (settled.has(p.transactionId)) return { status: 'already_converted' };
+        settled.add(p.transactionId);
+        (p.currency === 'USD' ? usdBalanceCalls : balanceCalls).push({ userId: p.userId, amount: -p.amount });
+        return { status: 'debited_unreserved' };
+    };
+    userServiceClient.releaseWithdrawalFunds = async () => 'not_reserved';
     userServiceClient.getUserDetails = async () => ({ email: null, name: 'Check' });
     notificationService.sendTransactionSuccessEmail = async () => true;
     notificationService.sendTransactionFailureEmail = async () => true;

@@ -20,6 +20,31 @@ export enum ManualVerificationStatus {
     EXPIRED = 'expired',
 }
 
+/**
+ * Who took a decision on a proof. `admin` = the admin panel (reviewedBy holds
+ * the admin's user id); `support` = an agent in SBC Support, whose id lives in
+ * support-service, not in users.
+ */
+export interface IDecisionActor {
+    source: 'admin' | 'support';
+    /** Admin user id, or the support agent id. */
+    id?: string;
+    name?: string;
+    role?: string;
+    /** A super admin deciding while the admin panel is read-only. */
+    override?: boolean;
+    requestId?: string;
+}
+
+export interface IManualVerificationEvent {
+    at: Date;
+    action: 'submitted' | 'approved' | 'rejected' | 'decision_reverted';
+    by?: IDecisionActor;
+    observedViewCount?: number;
+    reason?: string;
+    ban?: boolean;
+}
+
 export interface IManualVerification extends Document {
     _id: Types.ObjectId;
     participationId: Types.ObjectId;
@@ -49,9 +74,31 @@ export interface IManualVerification extends Document {
     /** Views the admin read off the video; what the day is credited on. */
     observedViewCount?: number;
     rejectionReason?: string;
+    /** Who approved or rejected it (admin panel or SBC Support agent). */
+    decidedBy?: IDecisionActor;
+    /** Submission and decisions, oldest first. */
+    history?: IManualVerificationEvent[];
     createdAt: Date;
     updatedAt: Date;
 }
+
+const DecisionActorSchema = new Schema<IDecisionActor>({
+    source: { type: String, enum: ['admin', 'support'], required: true },
+    id: String,
+    name: String,
+    role: String,
+    override: Boolean,
+    requestId: String,
+}, { _id: false });
+
+const EventSchema = new Schema<IManualVerificationEvent>({
+    at: { type: Date, required: true },
+    action: { type: String, required: true },
+    by: { type: DecisionActorSchema, default: undefined },
+    observedViewCount: Number,
+    reason: String,
+    ban: Boolean,
+}, { _id: false });
 
 const ManualVerificationSchema = new Schema<IManualVerification>({
     participationId: { type: Schema.Types.ObjectId, ref: 'CampaignParticipation', required: true, index: true },
@@ -74,10 +121,14 @@ const ManualVerificationSchema = new Schema<IManualVerification>({
     videoDeletedAt: { type: Date },
     observedViewCount: { type: Number, min: 0 },
     rejectionReason: { type: String, trim: true, maxlength: 1000 },
+    decidedBy: { type: DecisionActorSchema, default: undefined },
+    history: { type: [EventSchema], default: undefined },
 }, { timestamps: true });
 
 // The review queue's hot query: oldest pending first.
 ManualVerificationSchema.index({ status: 1, createdAt: 1 });
+// SBC Support's catch-up sync: what changed since its last pass.
+ManualVerificationSchema.index({ status: 1, updatedAt: 1 });
 
 const ManualVerificationModel = mongoose.model<IManualVerification>('ManualVerification', ManualVerificationSchema);
 export default ManualVerificationModel;

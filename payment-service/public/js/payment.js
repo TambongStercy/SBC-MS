@@ -639,15 +639,18 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             const result = await response.json();
-            if (result.success && result.data) {
-                const newStatus = result.data;
+            // The server answers { success, status, sessionId } (older code read result.data, which
+            // never exists, so polling never saw a final status: Security plan Phase 10).
+            const polledStatus = result && (result.status || (result.data && (result.data.status || result.data)));
+            if (result.success && typeof polledStatus === 'string') {
+                const newStatus = polledStatus;
                 console.log('Statut sondé :', newStatus);
 
                 // Update global paymentStatus if it's different, for other UI elements that might depend on it
                 // Note: This client-side update of `paymentStatus` is for immediate UI reaction. Page reload is the source of truth.
                 // window.paymentStatus = newStatus; // Or however you want to manage this global if needed elsewhere
 
-                if (newStatus === 'SUCCEEDED' || newStatus === 'FAILED' || newStatus === 'CANCELED' || newStatus === 'CONFIRMED') {
+                if (newStatus === 'SUCCEEDED' || newStatus === 'FAILED' || newStatus === 'CANCELED' || newStatus === 'CONFIRMED' || newStatus === 'EXPIRED') {
                     console.log(`Le statut de paiement est final : ${newStatus}. Rechargement de la page.`);
                     if (pollingIntervalId) clearInterval(pollingIntervalId);
                     window.location.reload();
