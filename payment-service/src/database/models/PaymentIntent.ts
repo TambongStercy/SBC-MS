@@ -137,6 +137,8 @@ const PaymentIntentSchema: Schema = new Schema(
             }, { _id: false }),
             required: false,
         },
+        /** Reasons of earlier attempts on the same payment (a retry moves `failure` here). */
+        failureHistory: { type: [Schema.Types.Mixed], default: undefined },
         lastReconcileAt: { type: Date },
         reconcileAttempts: { type: Number, default: 0 },
     },

@@ -3323,6 +3323,16 @@ class PaymentService {
             log.info(`Crypto payment selected with ${finalCurrency}, no phone number required`);
         }
 
+        // A new attempt on the same payment (retry after an error): the previous
+        // attempt's reason moves to failureHistory (kept), so this attempt's own
+        // reason can be recorded (the completion handler records it only once).
+        if (paymentIntent.failure) {
+            await PaymentIntentModel.updateOne(
+                { sessionId, failure: { $exists: true } },
+                [{ $set: { failureHistory: { $concatArrays: [{ $ifNull: ['$failureHistory', []] }, ['$failure']] } } }, { $unset: 'failure' }],
+            );
+        }
+
         // Update the intent before initiating payment
         const updatedIntent = await paymentIntentRepository.updateBySessionId(sessionId, updateData);
 
