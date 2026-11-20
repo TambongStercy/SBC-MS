@@ -22,7 +22,14 @@ app.use(cors({
   methods: config.cors.methods,
   allowedHeaders: config.cors.allowedHeaders
 }));
-app.use(morgan('combined'));
+// Behind Cloudflare and nginx, req.ip is the proxy. Log the visitor's address as
+// Cloudflare reports it, next to the direct peer (a request that skipped Cloudflare
+// shows no cf= value). Used for logs only, never to grant or refuse anything.
+morgan.token('client-ip', (req) => {
+  const cf = req.headers['cf-connecting-ip'];
+  return `cf=${typeof cf === 'string' ? cf : '-'} peer=${req.socket.remoteAddress ?? '-'}`;
+});
+app.use(morgan(':client-ip - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'));
 
 // Before any proxy: admin paths need an allow-listed admin (see the middleware).
 app.use(adminAllowlist);

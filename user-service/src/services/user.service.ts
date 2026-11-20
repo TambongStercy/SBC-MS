@@ -9,7 +9,7 @@ import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
 import { maskEmail, maskPhone } from '../utils/mask-email';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
-import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled } from '../utils/otp.utils';
+import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled, otpFingerprint } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
 import config from '../config';
@@ -217,6 +217,9 @@ const PARTNER_RATES = { silver: 0.10, gold: 0.18 }; // Partner commission rates
 /** adminPermissions comes back as a Map from a document, a plain object from lean(). */
 export const toPlainPermissions = (p: unknown): Record<string, unknown> =>
     p instanceof Map ? Object.fromEntries(p) : ((p as Record<string, unknown>) || {});
+
+/** A valid bcrypt hash of a random string: compared against when the email is unknown, so the reply takes as long. */
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync(require('crypto').randomBytes(16).toString('hex'), 10);
 
 export class UserService {
     private subscriptionRepository = subscriptionRepository; // Inject repository
@@ -650,12 +653,14 @@ export class UserService {
 
         await userRepository.addOtp(userId, otpType, { code: otpCode, expiration, ...(tag ?? {}) });
 
-        // For debugging only - remove in production
-        log.info(`Generated OTP ${otpCode} for user ${user.email}, type: ${otpType}`);
+        // Never the code itself: a log reader could use it while it is valid. The fingerprint lets an investigator match it.
+        log.info(`Generated OTP fp=${otpFingerprint(otpCode)} for user ${user.email}, type: ${otpType}`);
 
         // Local/dev convenience: print the OTP prominently so it can be copied from
-        // the server console when no email/SMS provider is configured.
-        if (process.env.NODE_ENV !== 'production') {
+        // the server console when no email/SMS provider is configured. Only on a
+        // developer's machine: preprod runs with NODE_ENV=preprod, and its logs must
+        // not hold members' sign-in codes either.
+        if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
             console.log(`\n========================= OTP =========================\n  ${user.email}  ->  ${otpCode}\n=======================================================\n`);
         }
 
@@ -700,7 +705,7 @@ export class UserService {
 
         if (matchingOtp) {
             isValid = true;
-            log.info(`OTP ${providedCode} validated successfully for user ${user.email}, type: ${otpType}`);
+            log.info(`OTP fp=${otpFingerprint(providedCode)} validated successfully for user ${user.email}, type: ${otpType}`);
 
             // Clear OTPs first
             await userRepository.clearOtps(userId, otpType);
@@ -721,7 +726,7 @@ export class UserService {
             // --- End Token Generation --- 
 
         } else {
-            log.warn(`OTP validation failed for user ${user.email}, type: ${otpType}. Code: ${providedCode}`);
+            log.warn(`OTP validation failed for user ${user.email}, type: ${otpType}. Code fp=${otpFingerprint(providedCode)}`);
             // Optional: Implement attempt limiting logic here
         }
 
@@ -2182,24 +2187,14 @@ export class UserService {
 
         const user = await userRepository.findByEmail(email, true); // Need password
 
-        if (!user || !user.password) {
-            log.warn(`Admin login attempt failed: User not found or no password for email: ${email}`);
-            throw new Error('Invalid email or password');
-        }
-
-        // --- Role Check ---
-        // Staff roles sign in to the admin; each service still decides what a
-        // role may call (user-service admin routes stay ADMIN-only).
+        // Same answer, after the same bcrypt work, whether the email is unknown,
+        // the password is wrong or the account is not staff: the login must not
+        // tell an attacker which emails are admin accounts.
+        const isMatch = await bcrypt.compare(passwordAttempt, user?.password || DUMMY_BCRYPT_HASH);
         const STAFF_ROLES: string[] = ADMIN_CAPABLE_ROLES;
-        if (!STAFF_ROLES.includes(user.role)) {
-            log.warn(`Admin login attempt failed: User ${email} has no staff role.`);
-            throw new Error('Access Denied: Not an admin user');
-        }
-        // --- End Role Check ---
-
-        const isMatch = await bcrypt.compare(passwordAttempt, user.password);
-        if (!isMatch) {
-            log.warn(`Admin login attempt failed: Invalid password for admin: ${email}`);
+        if (!user || !user.password || !isMatch || !STAFF_ROLES.includes(user.role)) {
+            const why = !user || !user.password ? 'unknown email' : !isMatch ? 'wrong password' : 'not a staff role';
+            log.warn(`Admin login attempt failed for ${email}: ${why} (ip ${ipAddress || 'unknown'}).`);
             throw new Error('Invalid email or password');
         }
 
@@ -2255,7 +2250,8 @@ export class UserService {
         }
 
         const now = new Date();
-        const valid = (user.otps || []).some(otp => otpMatches(otp.code, otpCode) && otp.expiration > now);
+        // Only a sign-in code: a code sent to prove a new email or number (purpose set) never opens the admin.
+        const valid = (user.otps || []).some(otp => !otp.purpose && otpMatches(otp.code, otpCode) && otp.expiration > now);
         if (!valid) {
             log.warn(`Admin login code refused for ${user.email} (ip ${ipAddress || 'unknown'}).`);
             throw new Error('Invalid or expired code');

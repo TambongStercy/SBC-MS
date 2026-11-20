@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto, { createHmac } from 'crypto';
 import { pushWithdrawalResult } from './withdrawal-push';
 import { Types, Aggregate } from 'mongoose';
 import transactionRepository, { CreateTransactionInput } from '../database/repositories/transaction.repository';
@@ -1765,7 +1765,7 @@ class PaymentService {
             log.warn(`Skipping OTP notification for transaction ${transactionId} as net amount or payout currency was not available.`);
         }
 
-        log.info(`OTP (code: ${otpCode}) generated and sent for transaction ${transactionId}. Expires at ${otpExpiry.toISOString()}`);
+        log.info(`OTP (fp=${createHmac('sha256', process.env.SERVICE_SECRET || 'otp-fingerprint').update(String(otpCode).toLowerCase()).digest('hex').slice(0, 10)}) generated and sent for transaction ${transactionId}. Expires at ${otpExpiry.toISOString()}`);
         return { verificationCode: otpCode, verificationExpiry: otpExpiry };
     }
 
