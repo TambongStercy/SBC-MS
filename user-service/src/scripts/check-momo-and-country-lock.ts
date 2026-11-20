@@ -66,60 +66,7 @@ const main = async () => {
     const firstPut = await refusal(() => userService.updateUserProfile(newId, { momoNumber: '237699990000', momoOperator: 'ORANGE_CMR' } as any));
     check('PUT /me cannot set a first MoMo number either', firstPut?.code === 'MOMO_CHANGE_NEEDS_CODE');
 
-    // --- request ---
-    const noPass = await refusal(() => userService.requestMomoChange(id, { momoNumber: '699998877', momoOperator: 'ORANGE_CMR' }));
-    check('request without the password is refused, nothing sent', noPass?.statusCode === 400 && sent.length === 0, noPass?.message);
-    const badPass = await refusal(() => userService.requestMomoChange(id, { momoNumber: '699998877', momoOperator: 'ORANGE_CMR', password: 'nope' }));
-    check('request with a wrong password is refused, nothing sent', badPass?.statusCode === 400 && sent.length === 0);
-    const badOp = await refusal(() => userService.requestMomoChange(id, { momoNumber: '699998877', momoOperator: 'orange cm!', password: 'Secret123!' }));
-    check('a malformed operator is refused', badOp?.statusCode === 400);
-    const same = await refusal(() => userService.requestMomoChange(id, { momoNumber: '+237 677 00 11 22', momoOperator: 'MTN_MOMO_CMR', password: 'Secret123!' }));
-    check('requesting the current details is refused', same?.statusCode === 400, same?.message);
-
-    const res = await userService.requestMomoChange(id, { momoNumber: '6 99 99 88 77', momoOperator: 'orange_cmr', password: 'Secret123!' });
-    const mail = sent[sent.length - 1];
-    check('the code goes to the ACCOUNT email, never to the new number',
-        mail?.recipient === 'owner@gmail.com' && String(mail?.channel).toLowerCase() === 'email' && res.sentTo.includes('@'), mail?.recipient);
-    const code = lastCode();
-    const stored = (await fresh(id)).otps.find((o: any) => o.code === code);
-    check('the code is bound to changeMomo and to this number + operator', stored?.purpose === 'changeMomo' && stored?.target === '237699998877|ORANGE_CMR', stored?.target);
-    const login = await userService.validateOtp(id, 'otps', code);
-    check('the MoMo code does not sign in', login?.isValid === false);
-
-    // --- confirm ---
-    const signIn = await userService.generateAndStoreOtp(id, 'otps');
-    const viaSignIn = await refusal(() => userService.confirmMomoChange(id, { momoNumber: '699998877', momoOperator: 'ORANGE_CMR', code: signIn }));
-    check('a sign-in code does not confirm the change', viaSignIn?.statusCode === 400);
-    const otherNumber = await refusal(() => userService.confirmMomoChange(id, { momoNumber: '699990000', momoOperator: 'ORANGE_CMR', code }));
-    check('the code does not confirm another number', otherNumber?.statusCode === 400);
-    const otherOp = await refusal(() => userService.confirmMomoChange(id, { momoNumber: '699998877', momoOperator: 'MTN_MOMO_CMR', code }));
-    check('the code does not confirm another operator', otherOp?.statusCode === 400);
-    check('nothing changed before a valid confirm, no lock', (await fresh(id)).momoNumber === '237677001122' && !(await fresh(id)).withdrawalsLockedUntil);
-
-    const resend = await userService.requestMomoChange(id, { momoNumber: '699998877', momoOperator: 'ORANGE_CMR' });
-    check('resend without the password works while a code for the same details is live', !!resend.sentTo);
-    const code2 = lastCode();
-
-    const before = Date.now();
-    const done = await userService.confirmMomoChange(id, { momoNumber: '+237699998877', momoOperator: 'ORANGE_CMR', code: code2.toLowerCase() });
-    doc = await fresh(id);
-    const hours = doc.withdrawalsLockedUntil ? (new Date(doc.withdrawalsLockedUntil).getTime() - before) / 3600000 : 0;
-    check('a valid code (any case) changes the number and operator', doc.momoNumber === '237699998877' && doc.momoOperator === 'ORANGE_CMR');
-    check('replacing a number locks withdrawals for 48 h with reason momo_change',
-        doc.withdrawalLockReason === 'momo_change' && hours > 47.9 && hours <= 48.01 && done.withdrawalsLockedUntil !== null, `${hours.toFixed(2)} h`);
-    check('the alert goes to the account email', alerts.some(a => a.email === 'owner@gmail.com' && /Mobile Money/.test(a.subject)));
-    const replay = await refusal(() => userService.confirmMomoChange(id, { momoNumber: '699998877', momoOperator: 'ORANGE_CMR', code: code2 }));
-    check('the code works once', replay?.statusCode === 400);
-    const lockView = await userService.getWithdrawalLock(id);
-    check('payment-service sees the lock (GET withdrawal-lock)', lockView?.locked === true && lockView.reason === 'momo_change');
-
-    // --- first number: code, no lock ---
-    alerts.length = 0;
-    await userService.requestMomoChange(newId, { momoNumber: '699990000', momoOperator: 'ORANGE_CMR', password: 'Secret123!' });
-    await userService.confirmMomoChange(newId, { momoNumber: '699990000', momoOperator: 'ORANGE_CMR', code: lastCode() });
-    doc = await fresh(newId);
-    check('a first MoMo number is saved with the code, without a lock or alert',
-        doc.momoNumber === '237699990000' && !doc.withdrawalsLockedUntil && alerts.length === 0);
+    // The change itself (password + authenticator code) is asserted in check-member-authenticator.ts.
 
     // --- admin edit ---
     alerts.length = 0;

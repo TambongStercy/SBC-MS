@@ -39,6 +39,7 @@ export const ACCOUNT_CHANGE_LABELS: Record<string, string> = {
     changeCrypto: 'le portefeuille crypto qui reçoit vos retraits',
     changeEmail: 'l’adresse e-mail de votre compte',
     changePhone: 'le numéro de téléphone de votre compte',
+    setupAuthenticator: 'la sécurité de votre compte (application d’authentification)',
 };
 
 // Interface for creating a notification

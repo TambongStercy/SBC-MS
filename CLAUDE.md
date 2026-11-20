@@ -402,11 +402,10 @@ push), so a hijacker cannot silence it.
   `PUT /users/me` no longer changes `momoNumber`/`momoOperator`: unchanged
   details pass (any format), anything else answers 409
   `MOMO_CHANGE_NEEDS_CODE`. The change goes through
-  `POST /users/me/momo/request-change {momoNumber, momoOperator, password}`
-  (code sent to the account's owner on their OTP channel — email, or WhatsApp
-  mirrored to email when `WHATSAPP_OTP_ENABLED` — never to the new number;
-  bound to that number + operator), then
-  `/me/momo/confirm-change {…, code}`. Replacing a number locks withdrawals
+  `POST /users/me/momo/change {momoNumber, momoOperator, password, code}`:
+  the account password + a code from the member's **authenticator app** (or
+  a backup code), see "Member authenticator" below. The old e-mailed-code
+  routes (`request-change`/`confirm-change`) answer 410. Replacing a number locks withdrawals
   (reason `momo_change`) and alerts the account email; a first number needs
   the code but no lock. An admin replacing a member's number locks too.
   `utils/momo.ts`, `src/scripts/check-momo-and-country-lock.ts`. The member
@@ -416,11 +415,8 @@ push), so a hijacker cannot silence it.
 - **The crypto wallet locks too (same plan item).** `PUT /users/crypto/wallet`
   only accepts the wallet already saved (409 `CRYPTO_CHANGE_NEEDS_CODE`
   otherwise, a first wallet included). Setting or changing it:
-  `POST /users/crypto/wallet/request-change {cryptoWalletCurrency,
-  cryptoWalletAddress, password}`, then `/crypto/wallet/confirm-change {…, code}`
-  (purpose `changeCrypto`, target `CURRENCY|address`; code delivered like the
-  MoMo one). Both codes use notification-service's `verify-account-change`
-  template, which names what is changing (never the login-code e-mail).
+  `POST /users/crypto/wallet/change {cryptoWalletCurrency, cryptoWalletAddress,
+  password, code}` (authenticator code, like the MoMo change; old routes 410).
   Replacing a wallet locks
   withdrawals (reason `crypto_change`) and alerts the account email. Addresses
   are checked against the network's format (`utils/crypto-wallet.ts`): a TRON
@@ -432,6 +428,40 @@ push), so a hijacker cannot silence it.
   `payment-service/src/scripts/check-crypto-payout-wallet.ts`.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
+
+### Member authenticator (Security plan Phase 3, Sterling 2026-11-20)
+
+Rule: a member must set up an authenticator app (Google Authenticator,
+Microsoft Authenticator, 2FAS) before withdrawing or changing where money goes;
+its code replaces the e-mailed code for those actions.
+- **user-service** `services/member-auth.service.ts`, collection `memberauths`
+  (secret AES-256-GCM with `MEMBER_TOTP_ENC_KEY`, 32 bytes base64 in `.env`, one
+  per environment, never rotate; without it every setup/check answers 503).
+  Setup: `POST /users/me/authenticator/setup/request {password}` → code to the
+  account's own e-mail/WhatsApp (purpose `setupAuthenticator`) → `setup/start
+  {code}` → QR + secret → `setup/confirm {code}` → 10 backup codes shown once.
+  `GET /users/me/authenticator` = status. No subscription needed to set it up.
+- **Checks:** 6-digit app code, accepted once (`lastUsedStep`; a replay gets
+  "Ce code a déjà servi", not counted as a failure); backup code once each
+  (e-mail alert). 5 wrong codes in 24 h lock checks 15 min, then 1 h, then 24 h.
+  `AuthenticatorRequiredError` → 403 `AUTHENTICATOR_REQUIRED` (the app opens setup).
+- **payment-service** (`MEMBER_AUTHENTICATOR_REQUIRED`, default on;
+  `false` = back to the e-mailed withdrawal code): MoMo and crypto initiate call
+  `assertMemberAuthenticator` (fails closed); no withdrawal code is e-mailed
+  (a random never-sent placeholder fills `verificationCode`); `verifyWithdrawal`
+  checks the code through `POST /users/internal/:id/authenticator/verify` and
+  refuses a transaction that is not the caller's. Admin approval and
+  admin-initiated paths are unchanged. The old `/payments/crypto/payout` and
+  `/payments/crypto-payment` (paid any address from the request, no code) now
+  answer 410.
+- **Lost phone:** support checks ID + selfie, then
+  `scripts/reset-member-authenticator.ts <email|phone|id> --reason "<ticket>" --apply`:
+  removes it, locks withdrawals 72 h (reason `authenticator_reset`), e-mails the member.
+- Not done yet from the plan: setup lock 24–48 h, risky-setup review in
+  support, admin withdrawals with the admin's own code, change of e-mail/phone/
+  password with the app code.
+- Checks: `user-service/src/scripts/check-member-authenticator.ts`,
+  `payment-service/src/scripts/check-withdrawal-authenticator.ts`.
 
 ### Withdrawal investigation cheat-sheet (read before pinging Sterling)
 
