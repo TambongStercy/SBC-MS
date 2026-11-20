@@ -1020,9 +1020,9 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                 if (paymentStatus === 'SUCCEEDED') {
                     pageTitle = "Paiement Réussi";
                     descriptiveMessage = "Merci ! Votre paiement a été traité avec succès.";
-                } else if (paymentStatus === 'FAILED') {
-                    pageTitle = "Paiement Échoué";
-                    descriptiveMessage = "Un problème est survenu avec votre paiement. Veuillez vérifier les détails ou contacter le support.";
+                } else if (paymentStatus === 'FAILED' || paymentStatus === 'EXPIRED' || paymentStatus === 'CANCELED') {
+                    pageTitle = paymentStatus === 'EXPIRED' ? "Paiement Expiré" : (paymentStatus === 'CANCELED' ? "Paiement Annulé" : "Paiement Échoué");
+                    descriptiveMessage = (typeof failureText !== 'undefined' && failureText) ? failureText.reason : "Le paiement n'a pas abouti.";
                 } else if (paymentStatus === 'PROCESSING' || paymentStatus === 'PENDING_PROVIDER') {
                     pageTitle = "Paiement en Cours";
                     descriptiveMessage = paymentStatus === 'PROCESSING' 
@@ -1522,6 +1522,18 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                                                                                 Expiration dans: 30 minutes</p>
                                                                         </div>
                                                     </div>
+                                                    <% } else if (paymentStatus==='FAILED' || paymentStatus==='EXPIRED' || paymentStatus==='CANCELED' ) { %>
+                                                        <!-- Security plan Phase 10: why it failed and what to do next -->
+                                                        <div class="text-center animate-scale-in delay-500" id="failure-panel">
+                                                            <div class="status-message status-error">
+                                                                <div>
+                                                                    <div class="font-semibold">Que faire ?</div>
+                                                                    <div class="text-sm"><%= (typeof failureText !== 'undefined' && failureText) ? failureText.nextStep : "Vérifiez votre solde et votre numéro, puis réessayez." %></div>
+                                                                </div>
+                                                            </div>
+                                                            <p class="text-sm text-gray-600 mt-3">Pour réessayer, retournez dans l'application SBC et relancez le paiement.</p>
+                                                            <p class="text-xs text-gray-500 mt-2">Référence : <%= sessionId %></p>
+                                                        </div>
                                                     <% } %>
 
                                                         <!-- Footer -->

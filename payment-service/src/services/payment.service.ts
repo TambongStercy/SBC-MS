@@ -16,6 +16,7 @@ import https from 'https';
 // Force IPv4 for CinetPay — their IP whitelist only supports IPv4 addresses
 const ipv4Agent = new https.Agent({ family: 4 });
 import { IPaymentIntent, PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
+import PaymentIntentModel from '../database/models/PaymentIntent';
 import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
@@ -32,6 +33,8 @@ import { buildCinetPayPayer } from '../utils/cinetpay-payer';
 import { checkCallbackUrl, callbackAllowlistEnforced } from '../utils/callback-allowlist';
 import * as sandbox from './sandbox.service';
 import { failureFromError, failureFromProviderResult } from '../utils/payment-failure';
+import { checkPayinNumber, numberCheckMode } from '../utils/payin-number';
+import { memberFailureText } from '../utils/member-failure-text';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -170,6 +173,23 @@ const transactionServiceClient = {
     }
 };
 // End Placeholder
+
+/** Security plan Phase 10: reuse of open payments and the per-member limit. */
+const INTENT_REUSE_MS = 30 * 60 * 1000;
+const INTENT_WINDOW_MS = 10 * 60 * 1000;
+const MAX_NEW_INTENTS = 5;
+const SUBMIT_CLOSED_STATUSES: string[] = [PaymentStatus.SUCCEEDED, PaymentStatus.CONFIRMED, PaymentStatus.PROCESSING, PaymentStatus.PARTIALLY_PAID];
+
+/**
+ * Identifies "the same payment" (same member, amount, currency, type and the
+ * same metadata from the creating service), so a second tap reuses it.
+ */
+function intentFunnelKey(data: { userId: string; amount: number; currency: string; paymentType: string; metadata?: Record<string, any> }): string {
+    const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical)
+        : v && typeof v === 'object' && !(v instanceof Date) ? Object.keys(v).sort().filter(k => k !== 'funnelKey' && k !== 'reuseCount').reduce((o: any, k) => { o[k] = canonical(v[k]); return o; }, {})
+        : v;
+    return crypto.createHash('sha256').update(JSON.stringify([data.userId, data.amount, data.currency, data.paymentType, canonical(data.metadata || {})])).digest('hex').slice(0, 32);
+}
 
 class PaymentService {
     constructor() {
@@ -1800,7 +1820,7 @@ class PaymentService {
      * Create initial payment intent based on generic input.
      * FOR TESTING: Immediately marks the intent as SUCCEEDED.
      */
-    public async createPaymentIntent(data: GenericPaymentIntentInput): Promise<IPaymentIntent> {
+    public async createPaymentIntent(data: GenericPaymentIntentInput, opts: { reuseAndLimit?: boolean } = {}): Promise<IPaymentIntent> {
 
         // Validate required fields
         if (!data.userId || !data.amount || !data.currency || !data.paymentType) {
@@ -1828,13 +1848,35 @@ class PaymentService {
             throw new Error('Payment amount must be at least 0.01.');
         }
 
+        // Security plan Phase 10: a member who taps "Payer" again gets the same open
+        // payment back instead of a new one (60% of payments were never continued),
+        // and cannot open more than MAX_NEW_INTENTS in INTENT_WINDOW_MS. Admin tools skip both.
+        const funnelKey = intentFunnelKey(data);
+        if (opts.reuseAndLimit !== false) {
+            const since = new Date(Date.now() - INTENT_REUSE_MS);
+            const open = await PaymentIntentModel.findOne({
+                userId: data.userId, status: PaymentStatus.PENDING_USER_INPUT, gateway: PaymentGateway.NONE,
+                'metadata.funnelKey': funnelKey, createdAt: { $gte: since },
+            }).sort({ createdAt: -1 });
+            if (open) {
+                log.info(`Reusing open PaymentIntent ${open.sessionId} for user ${data.userId} (same payment, not continued yet).`);
+                await PaymentIntentModel.updateOne({ _id: open._id }, { $inc: { 'metadata.reuseCount': 1 } });
+                return open;
+            }
+            const recent = await PaymentIntentModel.countDocuments({ userId: data.userId, createdAt: { $gte: new Date(Date.now() - INTENT_WINDOW_MS) } });
+            if (recent >= MAX_NEW_INTENTS) {
+                log.warn(`Payment intent refused for user ${data.userId}: ${recent} created in the last ${INTENT_WINDOW_MS / 60000} min.`);
+                throw new AppError('Trop de tentatives de paiement. Patientez quelques minutes, puis réessayez.', 429);
+            }
+        }
+
         // Create the initial intent
         let paymentIntent = await paymentIntentRepository.create({
             userId: data.userId,
             amount: data.amount,
             currency: data.currency,
             paymentType: data.paymentType,
-            metadata: data.metadata, // Store provided metadata
+            metadata: { ...(data.metadata || {}), funnelKey }, // Store provided metadata (+ the key used to reuse it)
             status: PaymentStatus.PENDING_USER_INPUT, // Start as pending
             gateway: PaymentGateway.NONE // Initially no gateway
         });
@@ -2978,6 +3020,10 @@ class PaymentService {
                 timeout: 5000
             });
             log.info(`Successfully sent callback notification to ${originatingService} for ${sessionId}.`);
+            if (status === PaymentStatus.SUCCEEDED || status === PaymentStatus.CONFIRMED) {
+                // Security plan Phase 10 funnel: the creating service accepted the paid payment (credited).
+                await PaymentIntentModel.updateOne({ sessionId, 'metadata.creditedAt': { $exists: false } }, { $set: { 'metadata.creditedAt': new Date() } }).catch(() => undefined);
+            }
         } catch (error: any) {
             log.error(`Failed to send callback notification to ${originatingService} for PaymentIntent ${sessionId}:`, {
                 url: callbackUrl,
@@ -3005,6 +3051,13 @@ class PaymentService {
 
         if (!paymentIntent) {
             throw new Error('Payment intent not found');
+        }
+
+        // A paid (or being-paid) payment is never sent to a provider again: the
+        // route is public and used to re-initiate any status, SUCCEEDED included.
+        if (SUBMIT_CLOSED_STATUSES.includes(paymentIntent.status)) {
+            log.warn(`Submit refused for PaymentIntent ${sessionId}: status ${paymentIntent.status}.`);
+            throw new AppError('Ce paiement est déjà effectué ou en cours de traitement.', 409);
         }
 
         if (!paymentIntent.amount || !paymentIntent.currency) {
@@ -3240,6 +3293,24 @@ class PaymentService {
             // Add phone and operator to data if they exist (operator might be null if country has only 1)
             if (details.operator) updateData.operator = details.operator;
 
+            // Security plan Phase 10: a number no operator of the country can have.
+            const mode = numberCheckMode();
+            if (mode !== 'off') {
+                const check = checkPayinNumber(details.countryCode, updateData.phoneNumber);
+                if (!check.ok) {
+                    log.warn(`Payin ${sessionId}: number fails the ${details.countryCode} format (${mode}); national length ${check.national?.length}.`);
+                    if (mode === 'enforce') {
+                        // Nothing reaches the provider and the payment stays open, so the
+                        // member corrects the number on the same payment.
+                        await PaymentIntentModel.updateOne({ sessionId }, { $set: { 'metadata.numberCheck': { ok: false, refused: true, expected: check.expected, at: new Date() } }, $inc: { 'metadata.numberRefusals': 1 } }).catch(() => undefined);
+                        const refusal: any = new AppError(`Numéro invalide pour ce pays : ${check.expected}.`, 400);
+                        refusal.memberText = memberFailureText({ group: 'member', code: 'number_format' });
+                        throw refusal;
+                    }
+                    await PaymentIntentModel.updateOne({ sessionId }, { $set: { 'metadata.numberCheck': { ok: false, refused: false, expected: check.expected, at: new Date() } } }).catch(() => undefined);
+                }
+            }
+
         } else if (selectedGateway === PaymentGateway.CINETPAY) {
             // CinetPay might require phone/email later for card payments, but not for this initial API call
             // We specifically *don't* set phone/operator here, letting them remain undefined in updateData
@@ -3292,9 +3363,15 @@ class PaymentService {
             // If payment initiation fails, update the status to ERROR, with the
             // reason (the gateway's own catch records it first when it can).
             await paymentIntentRepository.updateBySessionId(sessionId, { status: PaymentStatus.ERROR });
+            let failure: any = null;
             if (!(error as any)?.failureRecorded) {
-                await paymentIntentRepository.recordFailure(sessionId, failureFromError(error, { step: 'initiate', gateway: updatedIntent.gateway }));
+                failure = failureFromError(error, { step: 'initiate', gateway: updatedIntent.gateway });
+                await paymentIntentRepository.recordFailure(sessionId, failure);
+            } else {
+                failure = (await paymentIntentRepository.findBySessionId(sessionId))?.failure ?? null;
             }
+            // Security plan Phase 10: the reason and next step in French for the page.
+            if (error && typeof error === 'object') (error as any).memberText = memberFailureText(failure);
             throw error; // Re-throw the original error for the controller
         }
     }

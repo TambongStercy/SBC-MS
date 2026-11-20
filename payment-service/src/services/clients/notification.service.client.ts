@@ -110,6 +110,21 @@ class NotificationServiceClient {
         }
     }
 
+    /**
+     * A plain e-mail to a team address (Security plan Phase 10 payment alerts).
+     * notification-service needs a userId: the all-zero id marks a system send.
+     * Never throws.
+     */
+    async sendSystemEmail(recipient: string, subject: string, body: string): Promise<boolean> {
+        return this.request('post', '/notifications/internal/create', {
+            userId: '000000000000000000000000',
+            type: NotificationType.SYSTEM,
+            channel: DeliveryChannel.EMAIL,
+            recipient,
+            data: { subject, body },
+        });
+    }
+
     /** A push to the user's phones (notification-service /push/internal/send). Never throws. */
     async sendPush(payload: { userId: string; category: 'money'; title: string; body: string; url?: string; tag?: string }): Promise<boolean> {
         return this.request('post', '/notifications/push/internal/send', payload);
