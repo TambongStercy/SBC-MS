@@ -3,7 +3,8 @@ import { DependencyError } from '../../utils/errors';
 
 /** payment-service internal support API (CONTRACT §2.2, built on feature/support-money). */
 
-export interface Payin { sessionId: string; gateway: string; amount: number; currency: string; status: string; purpose?: string; createdAt: string; gatewayRef?: string }
+export interface PayinFailure { group: 'sbc_code' | 'provider_api' | 'member' | 'unknown'; code: string; message: string | null; providerCode: string | null; step: string; at: string }
+export interface Payin { sessionId: string; gateway: string; amount: number; currency: string; status: string; purpose?: string; createdAt: string; gatewayRef?: string; failure?: PayinFailure | null; earlierFailures?: number }
 export interface Withdrawal { transactionId: string; amount: number; currency: string; status: string; businessStatus: string; method?: string; createdAt: string; updatedAt?: string }
 export interface RecheckResult {
     result: 'confirmed' | 'pending' | 'not_found' | 'failed' | 'provider_unavailable';
