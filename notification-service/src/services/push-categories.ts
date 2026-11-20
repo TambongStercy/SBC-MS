@@ -17,6 +17,8 @@ export const PUSH_CATEGORIES = [
     { key: 'tombola', label: 'Tombola', holdAtNight: false, cta: 'Voir' },
     { key: 'ads', label: 'Ads Network', holdAtNight: false, cta: 'Ouvrir Ads Network' },
     { key: 'subscription', label: 'Abonnement', holdAtNight: false, cta: 'Renouveler' },
+    // SBC Support: replies to the member's tickets, activation/withdrawal follow-ups. No amounts in the text.
+    { key: 'support', label: 'Support SBC : vos demandes', holdAtNight: false, cta: 'Voir ma demande' },
     { key: 'announcements', label: 'Annonces SBC', holdAtNight: true, cta: 'Découvrir' },
 ] as const;
 

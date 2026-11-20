@@ -108,6 +108,15 @@ module.exports = {
         NODE_ENV: 'preprod',
         PORT: 6011
       }
+    },
+    {
+      name: 'support-preprod',
+      cwd: './support-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'preprod',
+        PORT: 6012
+      }
     }
   ]
 };

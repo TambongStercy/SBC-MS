@@ -7,6 +7,7 @@ import config from './config';
 import logger from './utils/logger';
 import { errorHandler } from './api/middleware/error.middleware';
 import { adminAllowlist } from './api/middleware/admin-allowlist.middleware';
+import { activitySignals, startSignalsFlush } from './api/middleware/activity-signals.middleware';
 
 // Initialize logger
 const log = logger.getLogger('Server');
@@ -33,6 +34,10 @@ app.use(morgan(':client-ip - :remote-user [:date[clf]] ":method :url HTTP/:http-
 // Before any proxy: admin paths need an allow-listed admin (see the middleware).
 app.use(adminAllowlist);
 
+// Security plan Phase 1: per-member country/device/activity counts (off unless ACTIVITY_SIGNALS_ENABLED=true).
+app.use(activitySignals);
+startSignalsFlush();
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
@@ -43,7 +48,8 @@ app.get('/health', (req, res) => {
       notificationService: config.services.notificationServiceUrl,
       paymentService: config.services.paymentServiceUrl,
       productService: config.services.productServiceUrl,
-      chatService: config.services.chatServiceUrl
+      chatService: config.services.chatServiceUrl,
+      supportService: config.services.supportServiceUrl
     }
   });
 });
@@ -313,6 +319,19 @@ app.use('/api/tickets', proxy(config.services.eventServiceUrl, {
   parseReqBody: false, // event posters upload as multipart
   proxyReqPathResolver: (req) => {
     log.debug(`Proxying ${req.method} ${req.originalUrl} to event service`);
+    return req.originalUrl;
+  }
+}));
+
+// SBC Support: agent desk (/api/support/desk/*, its own session cookies, CSRF
+// header and TOTP; deliberately not in admin-routes.ts), member help
+// (/api/support/me/*) and internal routes. Path kept; cookies and the
+// x-csrf-token / x-reauth-token headers pass through untouched; multipart
+// attachments stream.
+app.use('/api/support', proxy(config.services.supportServiceUrl, {
+  parseReqBody: false,
+  proxyReqPathResolver: (req) => {
+    log.debug(`Proxying ${req.method} ${req.originalUrl} to support service`);
     return req.originalUrl;
   }
 }));

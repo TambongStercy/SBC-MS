@@ -194,6 +194,57 @@ Votre code ci-dessous :
 _Équipe SBC_`,
       whatsappCode: `{{code}}`
     },
+    // A change of the account's contact or payout details (MoMo, crypto, e-mail,
+    // phone). `changeLabel` comes from ACCOUNT_CHANGE_LABELS (notification.service).
+    'verify-account-change': {
+      subject: '{{code}} : code SBC pour changer {{changeLabel}}',
+      body: createBeautifulTemplate(
+        'Confirmation d’un changement',
+        `
+          <div style="text-align: center;">
+              <div class="security-icon">🛡️</div>
+          </div>
+
+          <h2 style="color: #115CF6; text-align: center; margin-bottom: 20px; font-size: 26px; font-weight: 600;">
+              Confirmation d’un changement
+          </h2>
+
+          <p style="font-size: 16px; color: #334155; margin-bottom: 25px;">
+              Une demande a été faite sur votre compte Sniper Business Center pour changer <strong>{{changeLabel}}</strong>.
+              Ce code confirme ce changement :
+          </p>
+
+          <div class="code-box">
+              <div class="code" id="otp-code" data-testid="otp-code">{{code}}</div>
+              <div style="display: none;">Code: {{code}}</div>
+              <p style="margin: 15px 0 0 0; color: #6b7280; font-size: 14px;">
+                  Ce code expire dans <strong>{{expireMinutes}} minutes</strong>
+              </p>
+          </div>
+
+          <div class="warning-box">
+              <p style="margin: 0; color: #ea580c; font-size: 15px;">
+                  <strong>⚠️ Ce n’est pas un code de connexion.</strong> Ne le donnez à personne, même à quelqu’un qui dit être du support SBC.
+              </p>
+          </div>
+
+          <p style="font-size: 16px; color: #64748b; margin: 25px 0;">
+              Si vous n’avez rien demandé, quelqu’un connaît peut-être votre mot de passe : changez-le tout de suite et contactez le support.
+          </p>
+      `,
+        'Votre sécurité est notre priorité absolue.'
+      ),
+      plainText: `🛡️ *Changement sur votre compte SBC*
+
+Une demande a été faite pour changer {{changeLabel}}.
+
+⏰ Ce code expire dans *{{expireMinutes}} minutes*.
+
+⚠️ Ce n’est pas un code de connexion : ne le donnez à personne. Si vous n’avez rien demandé, changez votre mot de passe et contactez le support.
+
+_Équipe SBC_`,
+      whatsappCode: `{{code}}`
+    },
     'verify-registration': {
       subject: '{{code}} is your SBC registration code',
       body: createBeautifulTemplate(

@@ -397,9 +397,215 @@ push), so a hijacker cannot silence it.
   stays `pending_admin_approval` and can be approved once the lock ends.
 - Not locked: admin direct payouts (`/withdrawals/admin/direct`,
   `/payouts/initiate`), which pay out of SBC's provider balance, not a
-  member's. MoMo number changes do not lock (not part of Rufus's rule).
+  member's.
+- **MoMo number changes lock too (Security plan Phase 0, Rufus 2026-11-19).**
+  `PUT /users/me` no longer changes `momoNumber`/`momoOperator`: unchanged
+  details pass (any format), anything else answers 409
+  `MOMO_CHANGE_NEEDS_CODE`. The change goes through
+  `POST /users/me/momo/change {momoNumber, momoOperator, password, code}`:
+  the account password + a code from the member's **authenticator app** (or
+  a backup code), see "Member authenticator" below. The old e-mailed-code
+  routes (`request-change`/`confirm-change`) answer 410. Replacing a number locks withdrawals
+  (reason `momo_change`) and alerts the account email; a first number needs
+  the code but no lock. An admin replacing a member's number locks too.
+  `utils/momo.ts`, `src/scripts/check-momo-and-country-lock.ts`. The member
+  app's `MomoChangeSheet` (SBC-WEB-UI) drives it.
+- **The country is not the member's to change** (same plan item): `PUT
+  /users/me` ignores `country`; support or the admin edit changes it.
+- **The crypto wallet locks too (same plan item).** `PUT /users/crypto/wallet`
+  only accepts the wallet already saved (409 `CRYPTO_CHANGE_NEEDS_CODE`
+  otherwise, a first wallet included). Setting or changing it:
+  `POST /users/crypto/wallet/change {cryptoWalletCurrency, cryptoWalletAddress,
+  password, code}` (authenticator code, like the MoMo change; old routes 410).
+  Replacing a wallet locks
+  withdrawals (reason `crypto_change`) and alerts the account email. Addresses
+  are checked against the network's format (`utils/crypto-wallet.ts`): a TRON
+  address on USDTBSC is refused before any code. payment-service's
+  `processCryptoWithdrawalPayout` pays only the address recorded on the
+  transaction at request time (`metadata.cryptoAddress`), and fails the
+  withdrawal if the wallet changed since. Checks:
+  `user-service/src/scripts/check-crypto-wallet-lock.ts`,
+  `payment-service/src/scripts/check-crypto-payout-wallet.ts`.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
+
+### Withdrawal reservations, wallet ledger, webhook rules (support phase 2, 2026-11)
+
+- **Reservation:** a withdrawal holds its gross amount from the request (`users.reservedBalance`,
+  USD: `reservedUsdBalance`, rows in user-service `balancereservations`). Available money =
+  `balance - debt - reservedBalance`. Every debit except a withdrawal's own settlement is
+  refused beyond it (spend, transfer, conversion, admin adjust, internal withdrawal). Success
+  converts (balance and reserved drop once, ledger ref `withdrawal:<txId>`); a confirmed
+  failure, rejection, cancellation or approval expiry releases. Nothing releases on a timeout.
+- **Ledger:** every balance change is a `walletmovements` row (unique `{reference, direction}`).
+  Opening balances: `user-service/src/scripts/snapshot-opening-balances.ts` (dry run, `--apply`).
+- **Status changes** go through `payment-service/src/services/withdrawal-lifecycle.ts`
+  (one conditional write; money moves only for the call that made the transition).
+- **MoneyFusion payout webhooks are hints.** A "completed" applies only with concordant
+  amount + number (`MONEYFUSION_PAYOUT_STRICT_MATCH=true`, the default; `false` = the tokenPay
+  match is enough, as before). A "cancelled" never fails a withdrawal: it opens a review case
+  and the money stays reserved. So **the old webhook-simulation pattern (rule 7 above) no
+  longer works for MoneyFusion**: use Mark Completed / Mark Failed or the support
+  `regularize` route. A provider-confirmed success still completes a FAILED withdrawal (debit
+  once, divergence case).
+- **MoneyFusion payin webhooks are hints too:** the status answer decides, and a
+  "paid" applies only if its `Montant` ≥ the amount sent (`metadata.mfPayinAmount`,
+  1 F tolerance) and its session matches; otherwise review + case. **Check one
+  real MoneyFusion payin before prod:** the Phase 10 notes call `Montant` "net of
+  its fee"; if MoneyFusion's status answer really reports a net amount, every
+  real payin would go to review. Sandbox payins skip this check.
+- **Deploy order:** user-service first (wallet routes `/api/users/internal/wallet/*`), then
+  payment-service **immediately after, back to back**. Against an older user-service,
+  payment-service refuses withdrawals with a 503 ("mise à jour en cours") — nothing is paid
+  without a reservation. The other mix is the dangerous one: a new user-service guards every
+  debit (`balance - debt - reserved`), and the OLD payment-service's FeexPay webhook handler
+  marks a payout FAILED when its debit is refused — a paid payout recorded as failed. Keep
+  the window between the two deploys as short as possible; `WITHDRAWALS_ENABLED=false` stops
+  new payouts but not the webhooks of payouts already sent, so it does not close this window.
+- **Required:** `NOWPAYMENTS_IPN_SECRET` in payment-service `.env` (every NOWPayments
+  webhook without a valid HMAC is refused with 401, and crypto payins only complete through
+  them). `SUPPORT_SERVICE_URL` in both services (cases are only logged without it).
+- **Prod MongoDB must be ≥ 5.0** for the partial unique indexes
+  (`paymentintents.uniq_gateway_ref_since_20261118`, `transactions.uniq_user_idempotency_key`,
+  `walletconversions.one_open_conversion_per_user`); check with `db.version()` before deploying.
+- Kill switches: `LEDGER_CHECK_DISABLED`, `FINANCE_RECONCILIATION_DISABLED`.
+- Assertions: `user-service/src/scripts/check-wallet-reservations.ts`,
+  `payment-service/src/scripts/check-support-money.ts` (test DBs only).
+
+### Payment conversion (Security plan Phase 10, part 1, 2026-11-20)
+
+- **Fewer empty payments** (`createPaymentIntent`): a second tap for the same
+  payment (same member, amount, currency, type and metadata: `metadata.funnelKey`)
+  reuses the open one (PENDING_USER_INPUT, no gateway, < 30 min); at most 5 new
+  payments per member per 10 min (429). Admin manual intents pass
+  `{ reuseAndLimit: false }`.
+- **`submitPaymentDetails` refuses SUCCEEDED/CONFIRMED/PROCESSING/PARTIALLY_PAID**
+  (409): the public submit route used to re-initiate any status, a paid one included.
+- **Funnel stamps:** `metadata.pageOpenedAt`/`pageOpens` (payment page render),
+  `metadata.creditedAt` (creating service answered 2xx to a paid callback).
+- **Reconciler:** every 5 min, each waiting payment re-checked every 15 min
+  (`PAYIN_RECONCILE_EVERY_MIN`); after 72 h (`PAYIN_EXPIRE_AFTER_HOURS`) a payment
+  whose provider answered at least once becomes EXPIRED with failure
+  `member/no_final_answer_72h`. Never-answered ones keep being checked until 7
+  days. A late provider success still credits it (handlers skip only
+  SUCCEEDED/FAILED).
+- **Admin "Paiements" (`/paiements`, module payments):** `GET
+  /api/payments/admin/conversion/summary?from&to` (funnel, provider, country,
+  product, country×provider, daily, failure groups, top codes, stuck > 24 h,
+  median time to pay; computed from paymentintents with the `{createdAt}` index,
+  cached 10 min) and `/conversion/failures` (cursor list, `format=csv`).
+- The payment page's polling read `result.data`, which the status route never
+  sends, so it never saw a final status; fixed (`public/js/payment.js`).
+- **Part 2 (2026-11-20):**
+  - **French reason + next step for the member** (`utils/member-failure-text.ts`,
+    by `failure.code`, else by group; the provider's own text is never shown).
+    The payment page shows it for FAILED/EXPIRED/CANCELED and when an ERROR is
+    reset for retry; the submit route answers `{message, reason, nextStep}` with
+    the error's own status code (a paid payment now gets 409, not 500).
+  - **MoMo number check** (`utils/payin-number.ts`, FeexPay countries only: BJ
+    `01`+8 digits or old 8, TG 8 digits 7x/9x, CG 9 digits starting 0).
+    `PAYIN_NUMBER_CHECK=log` (default) only records `metadata.numberCheck`;
+    `enforce` refuses with 400 before the provider and leaves the payment open,
+    so the member corrects the number on the same payment; `off`. Switch to
+    enforce only after checking the logged misses against real successes.
+  - **Team alerts** (`jobs/payment-alerts.job.ts`, every 5 min, collection
+    `paymentalerts`): provider success rate in the last hour below half its
+    7-day rate; "SBC code" failures spike (bad deploy); "provider API" spike per
+    provider (outage); per-country spike; payments created 2–24 h ago still
+    waiting above `PAYMENT_ALERT_STUCK` (100) per provider. One open alert per
+    key, closes by itself. E-mailed once to `PAYMENT_ALERT_EMAILS` (empty = no
+    e-mail); shown on the admin page (`GET /conversion/alerts`). Tunables:
+    `PAYMENT_ALERT_MIN_ATTEMPTS`, `_SPIKE_MIN`, `_SPIKE_FACTOR`,
+    `PAYMENT_ALERTS_ENABLED=false` to stop it.
+  - **Abandoned payments are archived, never deleted** (Sterling;
+    `jobs/payin-archive.job.ts`): PENDING_USER_INPUT with no provider, older than
+    7 days, are copied whole to `paymentintents_archive` (same `_id`) then removed
+    from `paymentintents`; still counted in the funnel (`$unionWith`, Mongo ≥ 4.4,
+    server has 7.0). Off unless `PAYIN_ARCHIVE_ENABLED=true` (daily 04:10
+    Douala); dry run first: `scripts/archive-abandoned-payins.ts`. An archived
+    payment's link shows "Paiement expiré".
+  - Dashboard: members above 20 attempts in a day (for Phase 4).
+  - **« Contacter le support »** on a failed/expired/cancelled/archived payment
+    page opens `<SUPPORT_HELP_URL>/demandes/nouvelle?paiement=<sessionId>` (member
+    app « Aide », the form pre-fills the reference). Hidden while
+    `SUPPORT_HELP_URL` is empty: set it when SBC Support goes live. The support
+    desk's member page shows each payment's recorded failure (support branches).
+  - A retry on the same payment moves the previous `failure` to `failureHistory`
+    (kept), so each attempt keeps its own reason (#432).
+- Not done (plan items): offering another provider (each country has ONE
+  provider today, BF aside; needs Rufus's call and other provider accounts),
+  web/app split (no signal on payment requests), DR Congo and NOWPayments
+  routes (provider investigations), support case on paid-not-credited (support
+  service not merged).
+- Checks: `payment-service/src/scripts/check-payment-conversion.ts`,
+  `check-payment-conversion-2.ts`.
+
+### Signals: country, device, activity (Security plan Phase 1, 2026-11-20)
+
+- **nginx (preprod done 2026-11-20, prod not yet):** `nginx/sbc-cloudflare.conf`
+  (http level, `$sbc_from_cloudflare` from Cloudflare's IP list) + in the SBC 443
+  blocks `if ($sbc_from_cloudflare = 0) { return 403; }`: the origin IP is
+  public through the other sites on the server. `/api/` gets
+  `X-SBC-Geo $http_cf_ipcountry` (overwrites the client's) and `X-SBC-ASN
+  $http_x_cf_asn` (only meaningful once a Cloudflare transform rule sets
+  `X-CF-ASN` = `ip.src.asnum`). Keep the range list in step with
+  https://www.cloudflare.com/ips (the vhost was missing 173.245.48.0/20).
+- **Gateway** `activity-signals.middleware.ts` (off unless
+  `ACTIVITY_SIGNALS_ENABLED=true`): counts each authenticated request in memory
+  per member/Douala day/country (sources web/app/api from `X-SBC-Client`,
+  device `X-SBC-Device`, /24 range, ASN), no DB or await on the request,
+  flushes every 30 s / 500 keys to `POST /users/internal/activity/batch`; a
+  failed flush is dropped. No Redis needed: counts are `$inc`-merged.
+- **user-service** `activity-signals.service.ts`: stores only for members whose
+  `consents.privacy.version` ≥ `SIGNALS_POLICY_VERSION` (default `2026-12`, the
+  policy still to be published, so nothing is stored yet); `user_geo_days`
+  (one doc per member/day/country, lists capped at 5, TTL 180 days);
+  `users.lastActiveAt`, `lastLoginAt` (sign-ins recorded in `verifyOtp`),
+  `geo.lastCountry`, nightly `geo.usualCountry`/`usualShare` (≥ 15 distinct active days in
+  30, 03:30 Douala). In the data export; erased on account deletion.
+- **Web app:** `utils/deviceSignals.ts` wraps `fetch` for same-origin `/api/`
+  calls only (a cross-origin custom header would trigger a CORS preflight).
+- **To switch on:** Rufus approves `docs/security-plan/privacy-signals-draft.md`
+  → publish it and bump `PRIVACY_POLICY_VERSION` to `2026-12` (backend + app) →
+  `ACTIVITY_SIGNALS_ENABLED=true` in gateway `.env`.
+- Not done: failed sign-in attempts, GeoLite2 fallback (needs a MaxMind key),
+  mobile-app install ID.
+- Checks: `gateway-service/src/scripts/check-activity-signals.ts`,
+  `user-service/src/scripts/check-activity-signals.ts`.
+
+### Member authenticator (Security plan Phase 3, Sterling 2026-11-20)
+
+Rule: a member must set up an authenticator app (Google Authenticator,
+Microsoft Authenticator, 2FAS) before withdrawing or changing where money goes;
+its code replaces the e-mailed code for those actions.
+- **user-service** `services/member-auth.service.ts`, collection `memberauths`
+  (secret AES-256-GCM with `MEMBER_TOTP_ENC_KEY`, 32 bytes base64 in `.env`, one
+  per environment, never rotate; without it every setup/check answers 503).
+  Setup: `POST /users/me/authenticator/setup/request {password}` → code to the
+  account's own e-mail/WhatsApp (purpose `setupAuthenticator`) → `setup/start
+  {code}` → QR + secret → `setup/confirm {code}` → 10 backup codes shown once.
+  `GET /users/me/authenticator` = status. No subscription needed to set it up.
+- **Checks:** 6-digit app code, accepted once (`lastUsedStep`; a replay gets
+  "Ce code a déjà servi", not counted as a failure); backup code once each
+  (e-mail alert). 5 wrong codes in 24 h lock checks 15 min, then 1 h, then 24 h.
+  `AuthenticatorRequiredError` → 403 `AUTHENTICATOR_REQUIRED` (the app opens setup).
+- **payment-service** (`MEMBER_AUTHENTICATOR_REQUIRED`, default on;
+  `false` = back to the e-mailed withdrawal code): MoMo and crypto initiate call
+  `assertMemberAuthenticator` (fails closed); no withdrawal code is e-mailed
+  (a random never-sent placeholder fills `verificationCode`); `verifyWithdrawal`
+  checks the code through `POST /users/internal/:id/authenticator/verify` and
+  refuses a transaction that is not the caller's. Admin approval and
+  admin-initiated paths are unchanged. The old `/payments/crypto/payout` and
+  `/payments/crypto-payment` (paid any address from the request, no code) now
+  answer 410.
+- **Lost phone:** support checks ID + selfie, then
+  `scripts/reset-member-authenticator.ts <email|phone|id> --reason "<ticket>" --apply`:
+  removes it, locks withdrawals 72 h (reason `authenticator_reset`), e-mails the member.
+- Not done yet from the plan: setup lock 24–48 h, risky-setup review in
+  support, admin withdrawals with the admin's own code, change of e-mail/phone/
+  password with the app code.
+- Checks: `user-service/src/scripts/check-member-authenticator.ts`,
+  `payment-service/src/scripts/check-withdrawal-authenticator.ts`.
 
 ### Withdrawal investigation cheat-sheet (read before pinging Sterling)
 
@@ -947,6 +1153,16 @@ due first (`jobs/relance-journey-order.ts`); in database order the default
 backlog used his whole share. `src/tests/relance-sender.test.ts` does not load
 (pre-existing `reading 'prototype'` error), so its tests have not been running.
 
+**A paid filleul leaves every journey at once (2026-11-17).** A new filleul can
+sit in relance des nouveaux AND a running campaign of the same parrain (4,837
+did on 2026-11-17). `exit-user` used to close one journey (`findOne`); the
+other stayed open until the sender saw the payment days later and pushed
+« X vient de payer » again, with no commission behind it (Le Futuriste: 57 such
+late pushes in a week). `exitPaidReferral` (`services/relance-paid-exit.service.ts`)
+closes active and paused journeys together and pushes once per parrain, never
+to one already told. Both `exit-user` and the sender's paid check use it.
+`src/tests/relance-paid-exit.test.ts`.
+
 **Data facts that mislead:** `relancemessages` holds the admin's **7 day
 templates**, not sent messages — sends live in `relancetargets.messagesDelivered`.
 Relance pack payments are PaymentIntents whose `metadata.callbackPath` contains
@@ -1255,6 +1471,98 @@ hand-started process (it holds port 3009) and stop it, make sure
 `sbclove-service/.env` has the same `JWT_SECRET` as `user-service/.env`, and run
 `npm install` there if `node_modules` is missing (see the section above).
 
+### SBC Support (support-service, 2026-11-17)
+
+Agent desk + member « Aide » + internal case/view-task intake. Contract:
+`docs/support/CONTRACT.md` (routes, roles, settings, env).
+- **Ports / PM2:** 3012 `support-service` (prod, DB `sbc_support`), 6012
+  `support-preprod` (DB `sbc_support_preprod`). Health `/health` (200 only when
+  Mongo and Redis answer; dependencies listed, never fatal).
+- **Gateway:** `/api/support/*` → `SUPPORT_SERVICE_URL` (path kept). It is marked
+  `public` in `admin-routes.ts`: the desk has its own agents, TOTP, cookies and
+  CSRF, and must never go through `ADMIN_ALLOWLIST`.
+- **Front:** `support-frontend/dist` on `support.` / `preprod-support.`
+  (`nginx/support-sniper`, `nginx/preprod-support-sniper`); `REBUILD_SUPPORT`
+  in the deploy scripts.
+- **Env (support-service/.env, see `.env.example`):** required
+  `SUPPORT_JWT_SECRET` (≠ `JWT_SECRET`), `TOTP_ENC_KEY` (`openssl rand -base64 32`;
+  never rotate without re-enrolling every agent), `SERVICE_SECRET`, `JWT_SECRET`
+  (same as user-service), `MONGODB_URI`, `SUPPORT_PUBLIC_URL`; then the four
+  service URLs, `TURNSTILE_SECRET`, `DEEPSEEK_API_KEY`, `R2_*` +
+  `R2_PRIVATE_BUCKET` (default `sbc-support-private`). It refuses to start
+  without the required ones. Without the R2 keys (or with the bucket missing) every
+  attachment upload answers 503; locally, `R2_ENDPOINT` points at a MinIO instead.
+- **First deploy:** the usual new-service traps apply (section above): the
+  deploy script picks the service up only on the 2nd run, run `npm install` in
+  `support-service/` by hand, set `SUPPORT_SERVICE_URL` in `gateway-service/.env`
+  and `pm2 reload gateway-service --update-env`. Then DNS (Cloudflare, proxied)
+  for `support` / `preprod-support`, the vhosts + certificate, a Cloudflare rate
+  rule on `/api/support/desk/auth/*`, the Turnstile site key/secret, the R2
+  bucket. Check `curl localhost:3012/health` and `https://support.…/api/support/health`.
+- **First admin:** `cd support-service && node dist/scripts/create-support-admin.js
+  --email <email> --name "<name>"` prints a one-time activation link (48 h) to
+  stdout only: hand it over directly, never paste it in a chat log. The agent
+  sets a password (≥ 12 chars, not a common one) and enrols TOTP at first sign-in.
+  Lost phone: Administration → Agents → new activation link (wipes password,
+  TOTP and backup codes).
+- **Help articles (assistant):** the assistant answers only from published
+  articles. `node dist/scripts/seed-kb.js` lists the 19 starter articles
+  (`src/data/kb-starter.ts`), `--apply` adds the missing ones as drafts,
+  `--publish` publishes the seeded drafts nobody has edited. It never
+  overwrites an existing slug. Have SBC review them in Contenus first. Article
+  text must hold no price, fee or money deadline (the AI's safety check drops
+  such answers), and members' own words go in the tags: search ranks an article
+  by how many of the question's topic words it covers.
+  - How-to questions about money or the account ("comment faire un retrait",
+    "j'ai oublié mon mot de passe") get the article word for word, never the AI.
+  - Personal problems ("pas arrivé", "bloqué", an amount) keep the secure route.
+  - DeepSeek (`DEEPSEEK_API_KEY`) is called only when the member asks again and an
+    article covers the question.
+- **Live updates (LiveKit):** new messages/status changes reach the agent app and the
+  member « Aide » without a refresh. The service sends a data message (ticket id + kind,
+  never text) to `support-desk` and `support-member-<userId>`; the apps reload through
+  the API. Listen-only tokens from `GET /desk/realtime/token` and `/me/realtime/token`.
+  Needs a LiveKit server + `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`; the
+  host must also be in the `connect-src` of `nginx/support-sniper` (and preprod) — the
+  vhosts list `livekit.sniperbuisnesscenter.com`, change it if LiveKit lives elsewhere.
+  Without it both apps poll (5 s ticket, 15 s lists). Local: a `livekit/livekit-server`
+  container (`--dev`-style key) on `ws://localhost:7890`.
+- **Session replay (OpenReplay, self-hosted):** the member app records every session
+  (names, emails, phones visible; passwords and codes never recorded) and sends the session id + link when the member opens a
+  ticket. The desk shows « Revoir la session » only for tickets that have one; the link
+  comes from `POST /desk/tickets/:id/replay`, audited (`ticket.replay.opened`). Links
+  not on `OPENREPLAY_DASHBOARD_URL` are dropped. Needs its own server (not the prod box):
+  see `docs/support/OPENREPLAY.md`.
+- **Requests without an account:** `POST /api/support/public/tickets` (member app
+  `/signaler-un-probleme`, linked from the sign-in page) for people who cannot sign in.
+  Turnstile + hidden field + 3/h and 10/day per IP. The person then chats like a member
+  (same WhatsApp-style page) with the request's key (`x-support-guest-key`, kept on the
+  device; reply emails carry the link `…/signaler-un-probleme/suivi/<id>#k=<key>`). The
+  contact details are unverified: agents must not disclose account details on such a ticket.
+  Emails with no member (agents, public requests) carry `userId` `000000000000000000000000`:
+  notification-service refuses an email without a userId, which silently dropped every
+  agent email (activation, lockout, alerts) until 2026-11-18.
+- **Analytique (desk, support administrator):** `GET /desk/analytics` computes the KPIs
+  (requests in/handled, median and p90 first response and resolution, SLA breaches, backlog
+  and its oldest, reopened, recurring categories, assistant settled without an agent, cases,
+  approvals, agent load) against the previous period, daily series, and plain-sentence
+  insights. Technical errors come from the member app (`POST /me/client-errors`,
+  `clienterror*` collections), each type open / handling / resolved (`errors.manage`); a
+  resolved type that recurs is a regression.
+- **Phone alerts (ntfy):** every new request (member, assistant, public form) is pushed to
+  `NTFY_URL`/`NTFY_TOPIC` (`services/ntfy.service.ts`, JSON publish, `NTFY_TOKEN` for a
+  protected topic): number, category, priority (urgent→5 … low→2), name, title, start of
+  the message, click → the desk ticket. No phone or email in it. Off without the two vars.
+- **Audit:** `auditlogs` is append-only and hash-chained;
+  `node dist/scripts/verify-audit-chain.js` exits 1 on any altered or missing
+  row. Give the service's Mongo user no update/remove right on it when users
+  are introduced.
+- **Money:** support never moves money. Activation, regularisation and
+  re-checks are calls to payment-service (§2.2) after an approval by a
+  different agent; kill switches live in the support `settings` collection.
+- **Tests:** `npm test` (Jest + supertest) uses `sbc_support_test` and Redis
+  DB 15 only, mocks every outbound call.
+
 ### CinetPay per-country accounts
 
 CinetPay's new platform (which we use, at `api.cinetpay.co` with OAuth) issues
@@ -1368,6 +1676,30 @@ provider, so don't "fix" those entries). CG is routed to FeexPay, not MF.
 
 **Before adding or changing any MF slug, curl that endpoint and match it
 literally.** A wrong slug fails every payout for that operator silently.
+
+### MoneyFusion payins are sent in francs, for every country (2026-11-19)
+
+MoneyFusion's payin `totalPrice` is always in **XOF francs** (XAF 1:1). Its
+hosted checkout converts it for the payer's country with its own rate
+(`GET https://pay.moneyfusion.net/api/v2/payment-methods` → `currency`,
+`exchangeRateFromXOF`; on 2026-11-19 RDC 500 F/USD (it divides), Guinée 21 GNF
+per F, Ghana 0.03 GHS per F, Cameroun 1.08). Read from their checkout bundle
+(`convertCurrency`). We used to convert to the local currency first
+(`MF_PAYIN_CURRENCY`), so MoneyFusion converted twice:
+- **RDC:** ~$3.84 sent, refused with "Montant doit etre supérieur a 200 F":
+  ~5,900 failures June → November, **no RDC MoneyFusion payin ever succeeded**.
+- **Guinée:** ~32,000 (meant as GNF) sent, read as francs: payers were asked
+  ~700,000 GNF for a 2,150 F pack. Only 3 ever paid (28 Aug, 13–14 Oct;
+  sessions ZTNUr6xkT3Cv, FqtodPFJcDf5, Kbw-mjUby3KZ), each ~31,000 F instead
+  of 2,150: refund is Rufus's call.
+- **Ghana / Centrafrique:** routed to MoneyFusion but refused by
+  `validatePaymentDetails` (GHS, GH, CF missing) before reaching it.
+Now `submitPaymentDetails` sends the intent's XAF amount to MoneyFusion with no
+rate lookup, `initiateMoneyFusionPayment` refuses anything not XAF/XOF, and the
+webhook books `paidAmount` (MoneyFusion's `Montant`, net of its fee) in XAF.
+`MF_PAYIN_CURRENCY` is informational only. **Payouts are a separate question**:
+branch `fix/non-cfa-payout-conversion` is still on hold.
+`src/scripts/check-moneyfusion-payin-amount.ts`.
 
 ### MoneyFusion IP allow-list (since their 2026-11-03/04 update)
 
@@ -1562,6 +1894,41 @@ Related: FeexPay's status API returned 502 for hours on 2026-09-05 during an MTN
 Mobile Money incident (`INTERNAL_PROCESSING_ERROR`). During a provider outage,
 manually settling anyone on SMS evidence risks crediting a payment the operator
 later reverses.
+
+### Security plan, Step A (2026-11-19, branch feature/security-step-a)
+
+The "SBC Security & Country Plan" (12 phases, P0–P11) starts with these:
+- **MoMo lock and country lock:** see "Withdrawals are locked 48 h…" above.
+- **Why a payment did not finish (P10):** `paymentintents.failure` `{group,
+  code, gateway, providerCode, providerMessage, step, httpStatus, requestId,
+  at}`. The group is decided once when recorded (`utils/payment-failure.ts`):
+  `sbc_code`, `provider_api`, `member`, `unknown`. It is recorded at every
+  initiation failure and in `handlePaymentCompletion` for every provider
+  FAILED/EXPIRED/CANCELED. An unknown provider text lands in `unknown` with
+  its `providerCode` kept (CinetPay 2010, FeexPay "ECHEC"): add a rule to the
+  `RULES` table once its meaning is known.
+  `src/scripts/check-payment-failure-reasons.ts`.
+- **FeexPay status-check errors no longer set ERROR.** `checkFeexpayTransactionStatus`
+  (and its by-session twin) used to set the payment to ERROR whenever FeexPay's
+  status API failed, which took it out of the payin reconciler for good, and could
+  overwrite a SUCCEEDED when completion threw afterwards. The status is left as it
+  was; the error goes to `metadata.feexpayStatusCheckError`.
+- **MoneyFusion payin status host.** `www.pay.moneyfusion.net` (their documented
+  host) fails the TLS handshake; `pay.moneyfusion.net` answers the same
+  `/paiementNotif/<token>` route (`MONEYFUSION_STATUS_URL`). The client returned
+  null on the failure and the reconciler counted it as an answer, so MoneyFusion
+  payins were never actually reconciled. A transport failure now throws (not
+  counted). MoneyFusion keeps an abandoned checkout `pending` forever.
+  Read-only audit: `src/scripts/audit-stuck-moneyfusion-payins.ts` (≤ 5 calls/s,
+  CSV, flags members who paid again later: crediting those would pay twice).
+- **Redis for hot counters:** `utils/redis.ts` in user, gateway and payment
+  services (identical but for the service name). Off while `REDIS_URL` is unset;
+  down or slower than 150 ms returns the caller's fallback (fail open), every
+  key `sbc:<service>:…` with a TTL. No caller yet. `check-redis-fail-open.ts`.
+- **Indexes:** `scripts/security-plan/indexes.mongosh.js` (dry run unless
+  `APPLY=true`, never drops; reports the redundant `referrals` indexes:
+  `referrer_1`, `archived_1`, to remove from the schema first).
+- **Load test:** `scripts/security-plan/k6/` (preprod only, README).
 
 ### Master deploys need ONE click (post-PR #73)
 

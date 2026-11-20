@@ -22,6 +22,7 @@ ALL_SERVICES=(
   "sbclove-service"
   "advertising-service"
   "event-service"
+  "support-service"
 )
 
 ROOT_DIR=$(pwd)

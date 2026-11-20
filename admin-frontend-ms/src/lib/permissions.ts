@@ -106,7 +106,7 @@ const PATH_RULES: { pattern: RegExp; module: AdminModule }[] = [
   { pattern: /^\/(users|userpage)(\/|$)/, module: 'members' },
   { pattern: /^\/partners(\/|$)/, module: 'partners' },
   { pattern: /^\/(transactions|account-transactions|user-analytics)(\/|$)/, module: 'finance' },
-  { pattern: /^\/(fix-[^/]+|manual-payment-recovery)(\/|$)/, module: 'payments' },
+  { pattern: /^\/(fix-[^/]+|manual-payment-recovery|paiements)(\/|$)/, module: 'payments' },
   { pattern: /^\/withdrawals(\/|$)/, module: 'withdrawals' },
   { pattern: /^\/products(\/|$)/, module: 'boutique' },
   { pattern: /^\/tombola(\/|$)/, module: 'tombola' },
