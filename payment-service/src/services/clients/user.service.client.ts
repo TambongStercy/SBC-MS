@@ -44,7 +44,7 @@ export interface WithdrawalLock {
     locked: boolean;
     /** ISO date, only when locked. */
     until?: string;
-    reason?: 'email_change' | 'phone_change';
+    reason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset';
 }
 
 interface WithdrawalLimitCheckResponse {
@@ -381,6 +381,40 @@ class UserServiceClient {
             throw new AppError('Unexpected withdrawal-lock response from user service.', 502);
         }
         return response.data;
+    }
+
+    /** Whether the member has set up their authenticator app (Security plan Phase 3). Throws when user-service cannot answer. */
+    async isAuthenticatorEnabled(userId: string): Promise<boolean> {
+        const response = await this.request<{ success: boolean; data: { enabled: boolean } }>('get', `/users/internal/${userId}/authenticator`);
+        if (typeof response?.data?.enabled !== 'boolean') {
+            throw new AppError('Unexpected authenticator response from user service.', 502);
+        }
+        return response.data.enabled;
+    }
+
+    /**
+     * Checks the member's authenticator (or backup) code for a withdrawal.
+     * Resolves when accepted; otherwise throws user-service's own refusal
+     * (400 wrong / already used, 429 locked, 403 AUTHENTICATOR_REQUIRED) with
+     * its message and code, or 503 when it cannot be reached (fail closed).
+     */
+    async verifyAuthenticatorCode(userId: string, code: string): Promise<void> {
+        const url = `${this.baseUrl}/users/internal/${userId}/authenticator/verify`;
+        try {
+            await axios.post(url, { code, action: 'withdrawal' }, {
+                headers: { Authorization: `Bearer ${this.serviceSecret}`, 'x-service-name': 'payment-service' },
+                timeout: 10000,
+            });
+        } catch (error: any) {
+            const status = error.response?.status;
+            if (status && status < 500) {
+                const refusal = new AppError(error.response?.data?.message || 'Code incorrect.', status);
+                if (error.response?.data?.code) (refusal as any).code = error.response.data.code;
+                throw refusal;
+            }
+            log.error(`Authenticator check failed for user ${userId}: ${error.message}`);
+            throw new AppError('La vérification du code est momentanément indisponible. Réessayez dans quelques minutes.', 503);
+        }
     }
 
     async checkWithdrawalLimits(userId: string, amount: number, currency: 'USD' | 'XAF' = 'XAF'): Promise<WithdrawalLimitCheckResponse> {

@@ -7,7 +7,7 @@ import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
-import { maskEmail } from '../utils/mask-email';
+import { maskEmail, maskPhone } from '../utils/mask-email';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
 import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled, otpFingerprint } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
@@ -38,7 +38,10 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError, OtpThrottledError } from '../utils/errors';
+import { AppError, AuthenticatorRequiredError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
+import { memberAuthService } from './member-auth.service';
+import { addressTail, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
+import { isSameMomo, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
 import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsForCountry } from '../utils/country-filter';
@@ -814,16 +817,21 @@ export class UserService {
 
         if (updateData.name !== undefined) allowedFields.name = updateData.name;
         if (updateData.region !== undefined) allowedFields.region = updateData.region;
-        if (updateData.country !== undefined) {
-            allowedFields.country = normalizeCountryName(updateData.country);
-            if (updateData.country !== allowedFields.country) {
-                log.info(`Country normalized during profile update: ${updateData.country} -> ${allowedFields.country}`);
-            }
-        }
+        // The country is not the member's to change (Security plan Phase 0):
+        // it decides payment routes, prices and later the country subdomain.
+        // Support changes it. The profile page still resends it on every save,
+        // so it is ignored here rather than refused.
         if (updateData.city !== undefined) allowedFields.city = updateData.city;
         if (updateData.phoneNumber !== undefined) allowedFields.phoneNumber = updateData.phoneNumber;
-        if (updateData.momoNumber !== undefined) allowedFields.momoNumber = updateData.momoNumber;
-        if (updateData.momoOperator !== undefined) allowedFields.momoOperator = updateData.momoOperator;
+        // The MoMo number receives withdrawals. Changing it needs the password and
+        // a code sent to the account email (requestMomoChange / confirmMomoChange).
+        // The page resends the current details on every save: those pass silently.
+        if (updateData.momoNumber !== undefined || updateData.momoOperator !== undefined) {
+            const current = await userRepository.findById(userId);
+            if (!current || !isSameMomo(current, updateData, normalizeCountryName(current.country))) {
+                throw new MomoChangeNeedsCodeError();
+            }
+        }
         if (updateData.whatsappGroupLink !== undefined) allowedFields.whatsappGroupLink = updateData.whatsappGroupLink;
         if (updateData.avatar !== undefined) allowedFields.avatar = updateData.avatar;
         if (updateData.avatarId !== undefined) allowedFields.avatarId = updateData.avatarId;
@@ -1837,33 +1845,74 @@ export class UserService {
     }
 
     /**
-     * Update user's crypto wallet information
-     * @param userId User ID
-     * @param walletAddress Crypto wallet address
-     * @param currency Crypto currency
-     * @returns Success status
+     * The old one-step save (PUT /users/crypto/wallet). It now only accepts the
+     * wallet the member already has: setting or changing a wallet goes through
+     * requestCryptoWalletChange / confirmCryptoWalletChange (password + code
+     * sent to the account email, 48 h withdrawal lock when replacing one).
      */
     async updateUserCryptoWallet(userId: string | Types.ObjectId, walletAddress: string, currency: string): Promise<{
         success: boolean;
         message?: string;
     }> {
-        try {
-            const user = await userRepository.findById(userId);
-            if (!user) {
-                return { success: false, message: 'User not found' };
-            }
-
-            await userRepository.updateById(userId, {
-                cryptoWalletAddress: walletAddress,
-                cryptoWalletCurrency: currency
-            });
-
-            log.info(`Crypto wallet updated for user ${userId}: ${currency} - ${walletAddress.substring(0, 10)}...`);
-            return { success: true };
-        } catch (error: any) {
-            log.error(`Error updating crypto wallet for user ${userId}:`, error);
-            return { success: false, message: 'Error updating crypto wallet' };
+        const user = await userRepository.findById(userId);
+        if (!user) {
+            return { success: false, message: 'User not found' };
         }
+        if (isSameCryptoWallet(user, walletAddress, currency)) {
+            return { success: true };
+        }
+        throw new CryptoWalletChangeNeedsCodeError();
+    }
+
+    /**
+     * Sets or changes the wallet that receives crypto withdrawals (Security plan
+     * Phase 0 + 3): the account password and a code from the member's
+     * authenticator app (or a backup code). No authenticator yet → 403
+     * AUTHENTICATOR_REQUIRED, the app opens the setup. Replacing a wallet locks
+     * withdrawals and alerts the account e-mail; a first wallet locks nothing.
+     */
+    async changeCryptoWallet(
+        userId: string | Types.ObjectId,
+        input: { cryptoWalletAddress?: unknown; cryptoWalletCurrency?: unknown; password?: unknown; code?: unknown },
+    ): Promise<{ cryptoWalletAddress: string; cryptoWalletCurrency: string; withdrawalsLockedUntil: string | null }> {
+        const currency = normalizeCryptoCurrency(input.cryptoWalletCurrency);
+        if (!currency) {
+            throw new AppError('Choisissez la cryptomonnaie de votre portefeuille.', 400);
+        }
+        const address = normalizeCryptoAddress(input.cryptoWalletAddress, currency);
+        if (!address) {
+            throw new AppError(`Cette adresse n’est pas une adresse ${currency} valide. Vérifiez-la : une erreur ferait perdre l’argent.`, 400);
+        }
+        const user = await UserModel.findById(userId).select('+password');
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        if (isSameCryptoWallet(user, address, currency)) {
+            throw new AppError('C’est déjà votre portefeuille crypto.', 400);
+        }
+        if (!(await memberAuthService.isEnabled(user._id))) {
+            throw new AuthenticatorRequiredError();
+        }
+        const password = typeof input.password === 'string' ? input.password : '';
+        if (!password || !user.password || !(await bcrypt.compare(password, user.password))) {
+            throw new AppError('Mot de passe incorrect.', 400);
+        }
+        await memberAuthService.verifyCode(user._id, input.code, 'crypto_change');
+
+        const hadWallet = !!user.cryptoWalletAddress;
+        const lock = hadWallet ? withdrawalLockFields('crypto_change') : null;
+        await userRepository.updateById(user._id, {
+            cryptoWalletAddress: address,
+            cryptoWalletCurrency: currency,
+            ...(lock ?? {}),
+        });
+        if (lock) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'crypto_change', newValue: address });
+            log.warn(`Crypto wallet of user ${userId} changed (now ${currency}, ending ${addressTail(address)}): withdrawals locked until ${lock.withdrawalsLockedUntil.toISOString()}`);
+        } else {
+            log.info(`Crypto wallet of user ${userId} set (${currency}, ending ${addressTail(address)})`);
+        }
+        return { cryptoWalletAddress: address, cryptoWalletCurrency: currency, withdrawalsLockedUntil: lock ? lock.withdrawalsLockedUntil.toISOString() : null };
     }
 
     /**
@@ -2975,17 +3024,23 @@ export class UserService {
         // member's own change does: the October 2026 drain went through an
         // admin account. Forms resend unchanged values, so compare first.
         let contactChange: { reason: WithdrawalLockReason; newValue: string; previousEmail?: string } | null = null;
-        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined) {
+        if (allowedAdminUpdates.email !== undefined || allowedAdminUpdates.phoneNumber !== undefined
+            || allowedAdminUpdates.momoNumber !== undefined || allowedAdminUpdates.momoOperator !== undefined) {
             const current = await userRepository.findById(userId);
             if (current) {
                 const emailChanged = allowedAdminUpdates.email !== undefined
                     && String(allowedAdminUpdates.email).trim().toLowerCase() !== (current.email || '').toLowerCase();
                 const phoneChanged = allowedAdminUpdates.phoneNumber !== undefined
                     && !isSamePhoneNumber(current.phoneNumber, allowedAdminUpdates.phoneNumber);
+                // Replacing an existing MoMo number locks too (Security plan Phase 0).
+                const momoChanged = !!current.momoNumber
+                    && !isSameMomo(current, allowedAdminUpdates, normalizeCountryName(current.country));
                 if (emailChanged) {
                     contactChange = { reason: 'email_change', newValue: String(allowedAdminUpdates.email), previousEmail: current.email };
                 } else if (phoneChanged) {
                     contactChange = { reason: 'phone_change', newValue: String(allowedAdminUpdates.phoneNumber), previousEmail: current.email };
+                } else if (momoChanged) {
+                    contactChange = { reason: 'momo_change', newValue: String(allowedAdminUpdates.momoNumber || current.momoNumber), previousEmail: current.email };
                 }
             }
         }
@@ -3005,7 +3060,7 @@ export class UserService {
             const updatedUser = await userRepository.updateById(userId, allowedAdminUpdates);
             log.info(`Admin successfully updated user ${userId}`);
             if (updatedUser && contactChange) {
-                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
+                log.warn(`Admin changed the ${contactChange.reason === 'email_change' ? 'email' : contactChange.reason === 'momo_change' ? 'MoMo details' : 'phone'} of user ${userId}: withdrawals locked until ${allowedAdminUpdates.withdrawalsLockedUntil?.toISOString()}`);
                 alertContactChange({ userId, ...contactChange });
             }
             return updatedUser; // Return updated user
@@ -4017,6 +4072,25 @@ export class UserService {
         }
     }
 
+    /** Whether a code can reach the account's owner (e-mail, or WhatsApp when WhatsApp codes are on). */
+    canReachOwnerForCode(user: IUser): boolean {
+        return !!user.email || (whatsappOtpEnabled() && !!user.phoneNumber);
+    }
+
+    /**
+     * Sends the code that confirms a MoMo or crypto wallet change to the
+     * account's owner, on the channel they chose for their codes (e-mail or
+     * WhatsApp, WhatsApp mirrored to e-mail as for sign-in codes). Returns
+     * where it went, masked, for the confirmation screen.
+     */
+    async sendChangeCodeToOwner(user: IUser, code: string, purpose: 'changeMomo' | 'changeCrypto' | 'setupAuthenticator'): Promise<string> {
+        const { channel, recipient } = this.getOtpDeliveryInfo(user);
+        await this.sendAccountAccessOtp(user, code, { purpose });
+        if (channel !== DeliveryChannel.WHATSAPP) return maskEmail(recipient);
+        const whatsapp = `WhatsApp ${maskPhone(recipient)}`;
+        return user.email ? `${whatsapp} et ${maskEmail(user.email)}` : whatsapp;
+    }
+
     /**
      * Sends a sign-in OTP on the user's preferred channel, mirroring it to their
      * email whenever that channel is WhatsApp.
@@ -4439,6 +4513,59 @@ export class UserService {
 
         // Optional: Send confirmation to the *old* phone number?
         // await notificationService.sendPhoneChangeConfirmation(user.id, user.phoneNumber /* old phone */, normalizedPhoneNumber, user.name);
+    }
+
+    /**
+     * Sets or changes the Mobile Money number that receives withdrawals
+     * (Security plan Phase 0 + 3): the account password and a code from the
+     * member's authenticator app (or a backup code). No authenticator yet → 403
+     * AUTHENTICATOR_REQUIRED. Replacing a number locks withdrawals for
+     * WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE hours and alerts the account
+     * e-mail; a first number locks nothing.
+     */
+    async changeMomo(
+        userId: string | Types.ObjectId,
+        input: { momoNumber?: unknown; momoOperator?: unknown; password?: unknown; code?: unknown },
+    ): Promise<{ momoNumber: string; momoOperator: string; withdrawalsLockedUntil: string | null }> {
+        const operator = normalizeMomoOperator(input.momoOperator);
+        if (!MOMO_OPERATOR_PATTERN.test(operator)) {
+            throw new AppError('Choisissez votre opérateur Mobile Money.', 400);
+        }
+        const user = await UserModel.findById(userId).select('+password');
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        const country = normalizeCountryName(user.country);
+        const number = normalizeMomoNumber(input.momoNumber, country);
+        if (!number) {
+            throw new AppError('Numéro Mobile Money invalide.', 400);
+        }
+        if (user.momoNumber && user.momoOperator && isSameMomo(user, { momoNumber: number, momoOperator: operator }, country)) {
+            throw new AppError('C’est déjà votre numéro Mobile Money.', 400);
+        }
+        if (!(await memberAuthService.isEnabled(user._id))) {
+            throw new AuthenticatorRequiredError();
+        }
+        const password = typeof input.password === 'string' ? input.password : '';
+        if (!password || !user.password || !(await bcrypt.compare(password, user.password))) {
+            throw new AppError('Mot de passe incorrect.', 400);
+        }
+        await memberAuthService.verifyCode(user._id, input.code, 'momo_change');
+
+        const hadNumber = !!user.momoNumber;
+        const lock = hadNumber ? withdrawalLockFields('momo_change') : null;
+        await userRepository.updateById(user._id, {
+            momoNumber: number,
+            momoOperator: operator,
+            ...(lock ?? {}),
+        });
+        if (lock) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'momo_change', newValue: number });
+            log.warn(`MoMo details of user ${userId} changed (now ending ${number.slice(-3)}, ${operator}): withdrawals locked until ${lock.withdrawalsLockedUntil.toISOString()}`);
+        } else {
+            log.info(`MoMo details of user ${userId} set (ending ${number.slice(-3)}, ${operator})`);
+        }
+        return { momoNumber: number, momoOperator: operator, withdrawalsLockedUntil: lock ? lock.withdrawalsLockedUntil.toISOString() : null };
     }
 
     /** Whether withdrawals are blocked after an email/phone change (utils/withdrawal-lock.ts). */

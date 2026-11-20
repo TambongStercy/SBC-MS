@@ -10,7 +10,7 @@ import CampaignModel from '../../database/models/relance-campaign.model';
 import { emailRelanceService } from '../../services/email.relance.service';
 import { EMAIL_PACKS, SMS_PACKS, ALL_PACKS, findPack, findSellablePack, isCameroon } from '../../config/relance-packs';
 import { userServiceClient } from '../../services/clients/user.service.client';
-import { pushFilleulPaid } from '../../services/relance-alerts.service';
+import { exitPaidReferral } from '../../services/relance-paid-exit.service';
 import { creditRelancePack } from '../../services/relance-credit.service';
 import { buyPackWithBalance } from '../../services/relance-balance-purchase.service';
 import { adminOverview, adminParrains, ownerMatch, windowMatch } from '../../services/relance-admin.service';
@@ -667,31 +667,9 @@ class RelanceController {
                 return;
             }
 
-            // Find active target for this user
-            const target = await RelanceTargetModel.findOne({
-                referralUserId: userId,
-                status: TargetStatus.ACTIVE
-            });
-
-            if (target) {
-                target.status = TargetStatus.COMPLETED;
-                target.exitReason = ExitReason.PAID;
-                target.exitedLoopAt = new Date();
-                await target.save();
-                pushFilleulPaid(String(target.referrerUserId), String(target.referralUserId));
-
-                // Update campaign conversion counter
-                if (target.campaignId) {
-                    await CampaignModel.findByIdAndUpdate(target.campaignId, {
-                        $inc: { targetsConverted: 1 }
-                    });
-                    log.info(`User ${userId} converted in campaign ${target.campaignId}`);
-                } else {
-                    log.info(`User ${userId} converted in default relance`);
-                }
-
-                log.info(`User ${userId} exited relance loop (paid subscription)`);
-            }
+            // Every journey this filleul is in (relance des nouveaux and any
+            // campaign), with one push per parrain.
+            await exitPaidReferral(userId);
 
             res.status(200).json({
                 success: true,

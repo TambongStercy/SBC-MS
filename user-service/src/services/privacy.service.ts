@@ -5,6 +5,8 @@ import SubscriptionModel from '../database/models/subscription.model';
 import ReferralModel from '../database/models/referral.model';
 import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import logger from '../utils/logger';
+import { UserGeoDayModel } from '../database/models/user-geo-day.model';
+import { forgetConsent } from './activity-signals.service';
 
 const log = logger.getLogger('PrivacyService');
 const httpError = (status: number, message: string) => Object.assign(new Error(message), { status });
@@ -24,6 +26,7 @@ export async function recordConsents(userId: string, input: { privacy?: unknown;
     const at = { acceptedAt: new Date(), version: PRIVACY_POLICY_VERSION, ...(ip ? { ip } : {}) };
     await UserModel.updateOne({ _id: userId }, { $set: { 'consents.privacy': at, 'consents.dataTransfer': at } });
     log.info(`Consents ${PRIVACY_POLICY_VERSION} recorded for user ${userId}`);
+    forgetConsent(userId); // signals start (or stop) at the next gateway batch
     const user = await UserModel.findById(userId).select('consents').lean() as any;
     return { consents: user?.consents ?? null };
 }
@@ -55,6 +58,9 @@ export async function exportUserData(userId: string) {
             endDate: new Date(s.endDate).getUTCFullYear() >= 9000 ? null : s.endDate,
         })),
         referrals: { direct, indirect },
+        // Security plan Phase 1: what we keep about where and how the account is used (180 days).
+        activity: (await UserGeoDayModel.find({ userId: new Types.ObjectId(userId) })
+            .select('day country requests logins sources devices ipRanges asns -_id').sort({ day: -1 }).lean()),
         note: 'Votre historique de paiements et de retraits est dans la page Portefeuille de l\'application.',
     };
 }
@@ -74,6 +80,8 @@ export async function deleteOwnAccount(userId: string, password: string) {
         $set: { deleted: true, deletedAt: new Date(), deletionReason: 'member_request', shareContactInfo: false },
         $unset: { token: '' },
     });
+    await UserGeoDayModel.deleteMany({ userId: new Types.ObjectId(userId) });
+    await UserModel.updateOne({ _id: userId }, { $unset: { geo: '', lastActiveAt: '', lastLoginAt: '' } });
     log.info(`User ${userId} deleted their own account (member request)`);
     return { deleted: true };
 }

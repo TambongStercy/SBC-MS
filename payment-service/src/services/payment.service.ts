@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto';
+import crypto, { createHmac } from 'crypto';
 import { pushWithdrawalResult } from './withdrawal-push';
 import { Types, Aggregate } from 'mongoose';
 import transactionRepository, { CreateTransactionInput } from '../database/repositories/transaction.repository';
@@ -16,6 +16,7 @@ import https from 'https';
 // Force IPv4 for CinetPay — their IP whitelist only supports IPv4 addresses
 const ipv4Agent = new https.Agent({ family: 4 });
 import { IPaymentIntent, PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
+import PaymentIntentModel from '../database/models/PaymentIntent';
 import config from '../config'; // Import central config
 import { AppError } from '../utils/errors'; // Corrected AppError import path
 import { PaginationOptions } from '../types/pagination'; // Corrected Import Path
@@ -31,6 +32,9 @@ import { ssoWebhookService } from './sso-webhook.service';
 import { buildCinetPayPayer } from '../utils/cinetpay-payer';
 import { checkCallbackUrl, callbackAllowlistEnforced } from '../utils/callback-allowlist';
 import * as sandbox from './sandbox.service';
+import { failureFromError, failureFromProviderResult } from '../utils/payment-failure';
+import { checkPayinNumber, numberCheckMode } from '../utils/payin-number';
+import { memberFailureText } from '../utils/member-failure-text';
 
 const host = 'https://sniperbuisnesscenter.com';
 
@@ -169,6 +173,23 @@ const transactionServiceClient = {
     }
 };
 // End Placeholder
+
+/** Security plan Phase 10: reuse of open payments and the per-member limit. */
+const INTENT_REUSE_MS = 30 * 60 * 1000;
+const INTENT_WINDOW_MS = 10 * 60 * 1000;
+const MAX_NEW_INTENTS = 5;
+const SUBMIT_CLOSED_STATUSES: string[] = [PaymentStatus.SUCCEEDED, PaymentStatus.CONFIRMED, PaymentStatus.PROCESSING, PaymentStatus.PARTIALLY_PAID];
+
+/**
+ * Identifies "the same payment" (same member, amount, currency, type and the
+ * same metadata from the creating service), so a second tap reuses it.
+ */
+function intentFunnelKey(data: { userId: string; amount: number; currency: string; paymentType: string; metadata?: Record<string, any> }): string {
+    const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical)
+        : v && typeof v === 'object' && !(v instanceof Date) ? Object.keys(v).sort().filter(k => k !== 'funnelKey' && k !== 'reuseCount').reduce((o: any, k) => { o[k] = canonical(v[k]); return o; }, {})
+        : v;
+    return crypto.createHash('sha256').update(JSON.stringify([data.userId, data.amount, data.currency, data.paymentType, canonical(data.metadata || {})])).digest('hex').slice(0, 32);
+}
 
 class PaymentService {
     constructor() {
@@ -480,6 +501,30 @@ class PaymentService {
      * every path that starts or releases a payout from a member's balance.
      * Fails closed: if user-service cannot answer, nothing is paid.
      */
+    /**
+     * Security plan Phase 3 (Sterling, 2026-11-20): a member withdraws only once
+     * their authenticator app is set up, and confirms each withdrawal with its
+     * code instead of an e-mailed one. MEMBER_AUTHENTICATOR_REQUIRED=false goes
+     * back to the e-mailed code. Fails closed when user-service cannot answer.
+     * Admin paths (approval, admin-initiated) do not call it.
+     */
+    public async assertMemberAuthenticator(userId: string | Types.ObjectId): Promise<void> {
+        if (!config.memberAuthenticatorRequired) return;
+        let enabled: boolean;
+        try {
+            enabled = await userServiceClient.isAuthenticatorEnabled(userId.toString());
+        } catch (error: any) {
+            log.error(`Authenticator check failed for user ${userId}: ${error.message}`);
+            throw new AppError('Les retraits sont momentanément indisponibles. Veuillez réessayer dans quelques minutes.', 503);
+        }
+        if (!enabled) {
+            log.warn(`Withdrawal refused for user ${userId}: no authenticator app set up.`);
+            const refusal = new AppError('Pour retirer, configurez d’abord l’application d’authentification (Google Authenticator, Microsoft Authenticator ou 2FAS) depuis votre profil.', 403);
+            (refusal as any).code = 'AUTHENTICATOR_REQUIRED';
+            throw refusal;
+        }
+    }
+
     public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {
         let lock;
         try {
@@ -493,6 +538,9 @@ class PaymentService {
         const until = new Date(lock.until);
         const what = lock.reason === 'email_change' ? "de l'adresse e-mail"
             : lock.reason === 'phone_change' ? 'du numéro de téléphone'
+            : lock.reason === 'momo_change' ? 'du numéro Mobile Money'
+            : lock.reason === 'crypto_change' ? 'du portefeuille crypto'
+            : lock.reason === 'authenticator_reset' ? 'de l’application d’authentification'
             : "de l'adresse e-mail ou du numéro de téléphone";
         log.warn(`Withdrawal refused for user ${userId}: locked until ${lock.until} after ${lock.reason ?? 'contact change'} (${audience})`);
 
@@ -531,6 +579,7 @@ class PaymentService {
         // --- End Global Withdrawal Control Check ---
 
         await this.assertWithdrawalsNotLocked(userId);
+        await this.assertMemberAuthenticator(userId);
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -570,7 +619,9 @@ class PaymentService {
                 log.info(`Re-sending OTP for existing PENDING_OTP_VERIFICATION withdrawal (Tx ID: ${existingActiveWithdrawal.transactionId}).`);
                 const { verificationExpiry } = await this.sendWithdrawalOTP(existingActiveWithdrawal.transactionId);
                 otpExpiresAt = verificationExpiry; // Use the new expiry from re-send
-                message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) awaiting OTP verification. Please complete or cancel it before initiating a new one. An OTP has been re-sent to your registered contact for this existing request.`;
+                message = config.memberAuthenticatorRequired
+                    ? `Vous avez déjà une demande de retrait en attente (ID : ${existingActiveWithdrawal.transactionId}). Confirmez-la avec le code de votre application d’authentification, ou annulez-la avant d’en faire une nouvelle.`
+                    : `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) awaiting OTP verification. Please complete or cancel it before initiating a new one. An OTP has been re-sent to your registered contact for this existing request.`;
             } else if (existingActiveWithdrawal.status === TransactionStatus.PENDING || existingActiveWithdrawal.status === TransactionStatus.PROCESSING) {
                 message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) that is currently being processed. Please be patient and wait for it to complete before initiating a new withdrawal. Processing typically takes a few minutes.`;
             } else {
@@ -795,7 +846,7 @@ class PaymentService {
                 total: netAmountDesired, // Display the NET amount the user requested (in target payout currency)
                 status: updatedTransaction.status,
                 expiresAt: updatedTransaction.verificationExpiry,
-                message: "Withdrawal initiation successful. Please check your registered contact for an OTP."
+                message: config.memberAuthenticatorRequired ? "Confirmez le retrait avec le code de votre application d’authentification." : "Withdrawal initiation successful. Please check your registered contact for an OTP."
             };
         } catch (error: any) {
             log.error(`Error initiating withdrawal for user ${userId}: ${error.message}`, error);
@@ -811,7 +862,7 @@ class PaymentService {
      * Now operates directly on the Transaction model.
      * Removed balance debit here.
      */
-    async verifyWithdrawal(transactionId: string, verificationCode: string) {
+    async verifyWithdrawal(transactionId: string, verificationCode: string, requesterId?: string) {
         log.info(`Verifying withdrawal transaction ${transactionId}`);
 
         try {
@@ -830,6 +881,11 @@ class PaymentService {
 
             if (transaction.type !== TransactionType.WITHDRAWAL) {
                 throw new AppError('Transaction is not a withdrawal type.', 400);
+            }
+
+            if (requesterId && transaction.userId.toString() !== requesterId.toString()) {
+                log.warn(`User ${requesterId} tried to confirm withdrawal ${transactionId} of user ${transaction.userId}.`);
+                throw new AppError('Withdrawal transaction not found.', 404);
             }
 
             if (transaction.status !== TransactionStatus.PENDING_OTP_VERIFICATION) {
@@ -851,7 +907,11 @@ class PaymentService {
                 throw new AppError('Verification code expired. Please re-initiate withdrawal.', 400);
             }
 
-            if (transaction.verificationCode !== verificationCode) {
+            if (config.memberAuthenticatorRequired) {
+                // The code comes from the member's authenticator app (or is a backup
+                // code); user-service checks it, once, with its own lockouts.
+                await userServiceClient.verifyAuthenticatorCode(transaction.userId.toString(), String(verificationCode));
+            } else if (transaction.verificationCode !== verificationCode) {
                 // Invalid OTP
                 throw new AppError('Invalid verification code.', 400);
             }
@@ -1608,6 +1668,16 @@ class PaymentService {
             throw new AppError('Transaction not found.', 404);
         }
 
+        if (config.memberAuthenticatorRequired) {
+            // Confirmed with the authenticator app: no code is sent. The stored code is
+            // random and never shown (the expiry still bounds the pending request).
+            const placeholder = crypto.randomBytes(16).toString('hex');
+            const expiry = new Date(Date.now() + 10 * 60 * 1000);
+            await transactionRepository.update(transaction._id, { verificationCode: placeholder, verificationExpiry: expiry });
+            log.info(`Withdrawal ${transactionId} awaits the member's authenticator code (until ${expiry.toISOString()}).`);
+            return { verificationCode: placeholder, verificationExpiry: expiry };
+        }
+
         // Generate OTP
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
         const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
@@ -1750,7 +1820,7 @@ class PaymentService {
      * Create initial payment intent based on generic input.
      * FOR TESTING: Immediately marks the intent as SUCCEEDED.
      */
-    public async createPaymentIntent(data: GenericPaymentIntentInput): Promise<IPaymentIntent> {
+    public async createPaymentIntent(data: GenericPaymentIntentInput, opts: { reuseAndLimit?: boolean } = {}): Promise<IPaymentIntent> {
 
         // Validate required fields
         if (!data.userId || !data.amount || !data.currency || !data.paymentType) {
@@ -1778,13 +1848,35 @@ class PaymentService {
             throw new Error('Payment amount must be at least 0.01.');
         }
 
+        // Security plan Phase 10: a member who taps "Payer" again gets the same open
+        // payment back instead of a new one (60% of payments were never continued),
+        // and cannot open more than MAX_NEW_INTENTS in INTENT_WINDOW_MS. Admin tools skip both.
+        const funnelKey = intentFunnelKey(data);
+        if (opts.reuseAndLimit !== false) {
+            const since = new Date(Date.now() - INTENT_REUSE_MS);
+            const open = await PaymentIntentModel.findOne({
+                userId: data.userId, status: PaymentStatus.PENDING_USER_INPUT, gateway: PaymentGateway.NONE,
+                'metadata.funnelKey': funnelKey, createdAt: { $gte: since },
+            }).sort({ createdAt: -1 });
+            if (open) {
+                log.info(`Reusing open PaymentIntent ${open.sessionId} for user ${data.userId} (same payment, not continued yet).`);
+                await PaymentIntentModel.updateOne({ _id: open._id }, { $inc: { 'metadata.reuseCount': 1 } });
+                return open;
+            }
+            const recent = await PaymentIntentModel.countDocuments({ userId: data.userId, createdAt: { $gte: new Date(Date.now() - INTENT_WINDOW_MS) } });
+            if (recent >= MAX_NEW_INTENTS) {
+                log.warn(`Payment intent refused for user ${data.userId}: ${recent} created in the last ${INTENT_WINDOW_MS / 60000} min.`);
+                throw new AppError('Trop de tentatives de paiement. Patientez quelques minutes, puis réessayez.', 429);
+            }
+        }
+
         // Create the initial intent
         let paymentIntent = await paymentIntentRepository.create({
             userId: data.userId,
             amount: data.amount,
             currency: data.currency,
             paymentType: data.paymentType,
-            metadata: data.metadata, // Store provided metadata
+            metadata: { ...(data.metadata || {}), funnelKey }, // Store provided metadata (+ the key used to reuse it)
             status: PaymentStatus.PENDING_USER_INPUT, // Start as pending
             gateway: PaymentGateway.NONE // Initially no gateway
         });
@@ -2106,6 +2198,12 @@ class PaymentService {
         ipAddress?: string,
         deviceInfo?: string
     ) {
+        // Closed 2026-11-20 (Security plan Phase 3): this paid any address sent in the
+        // request, with no code, bypassing the saved-wallet lock. No app calls it;
+        // crypto withdrawals go through initiateCryptoWithdrawalWithOTP + verifyWithdrawal.
+        log.warn(`Refused deprecated crypto payout for user ${userId} (${netAmountDesired} ${cryptoCurrency}).`);
+        throw new AppError('Cette demande n’est plus acceptée : faites votre retrait crypto depuis le portefeuille de l’application.', 410);
+        // eslint-disable-next-line no-unreachable
         try {
             log.info(`Creating crypto payout for user ${userId}: ${netAmountDesired} ${cryptoCurrency} to ${cryptoAddress}`);
 
@@ -2224,6 +2322,7 @@ class PaymentService {
         // --- End Global Withdrawal Control Check ---
 
         await this.assertWithdrawalsNotLocked(userId);
+        await this.assertMemberAuthenticator(userId);
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -2336,8 +2435,11 @@ class PaymentService {
 
         log.info(`Crypto withdrawal: ${usdAmount} USD + ${cryptoFeeInUSD.toFixed(2)} USD fee = ${grossAmountToDebitInUSD.toFixed(2)} USD total debit`);
 
-        // Generate OTP
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate OTP (with the authenticator required, a random placeholder that is never sent:
+        // the member confirms with their app's code, see verifyWithdrawal)
+        const verificationCode = config.memberAuthenticatorRequired
+            ? crypto.randomBytes(16).toString('hex')
+            : Math.floor(100000 + Math.random() * 900000).toString();
         const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
         // Create transaction in PENDING_OTP_VERIFICATION status
@@ -2371,8 +2473,8 @@ class PaymentService {
         // Send OTP notification via email or SMS
         const userName = userDetails.name || 'User';
 
-        // Prefer email, fallback to SMS if no email available
-        if (userDetails.email || userDetails.phoneNumber) {
+        // Prefer email, fallback to SMS if no email available (not when the app confirms it)
+        if (!config.memberAuthenticatorRequired && (userDetails.email || userDetails.phoneNumber)) {
             try {
                 const otpRequest = {
                     userId: userId.toString(),
@@ -2402,7 +2504,9 @@ class PaymentService {
             total: totalRequiredBalanceInUSD,
             status: transaction.status,
             expiresAt: verificationExpiry,
-            message: 'Crypto withdrawal OTP sent to your registered contact. Please verify to complete the withdrawal.'
+            message: config.memberAuthenticatorRequired
+                ? 'Confirmez le retrait avec le code de votre application d’authentification.'
+                : 'Crypto withdrawal OTP sent to your registered contact. Please verify to complete the withdrawal.'
         };
     }
 
@@ -2758,6 +2862,16 @@ class PaymentService {
      */
     public async handlePaymentCompletion(paymentIntent: IPaymentIntent): Promise<void> {
         log.info(`Handling payment completion for PaymentIntent ${paymentIntent.sessionId}, Status: ${paymentIntent.status}`);
+        // Every provider's final "failed/expired" answer comes through here:
+        // record why, from the provider data that came with it.
+        if ([PaymentStatus.FAILED, PaymentStatus.EXPIRED, PaymentStatus.CANCELED].includes(paymentIntent.status) && !paymentIntent.failure) {
+            const last = (paymentIntent.webhookHistory || []).slice(-1)[0];
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromProviderResult({
+                gateway: paymentIntent.gateway,
+                status: paymentIntent.status,
+                providerData: last?.providerData ?? paymentIntent.gatewayRawResponse,
+            }));
+        }
         try {
             // Notify originating service (do this regardless of commission outcome).
             // For SSO payments tied to a feature subscription (e.g. VISIBILITE_MAX),
@@ -2906,6 +3020,10 @@ class PaymentService {
                 timeout: 5000
             });
             log.info(`Successfully sent callback notification to ${originatingService} for ${sessionId}.`);
+            if (status === PaymentStatus.SUCCEEDED || status === PaymentStatus.CONFIRMED) {
+                // Security plan Phase 10 funnel: the creating service accepted the paid payment (credited).
+                await PaymentIntentModel.updateOne({ sessionId, 'metadata.creditedAt': { $exists: false } }, { $set: { 'metadata.creditedAt': new Date() } }).catch(() => undefined);
+            }
         } catch (error: any) {
             log.error(`Failed to send callback notification to ${originatingService} for PaymentIntent ${sessionId}:`, {
                 url: callbackUrl,
@@ -2933,6 +3051,13 @@ class PaymentService {
 
         if (!paymentIntent) {
             throw new Error('Payment intent not found');
+        }
+
+        // A paid (or being-paid) payment is never sent to a provider again: the
+        // route is public and used to re-initiate any status, SUCCEEDED included.
+        if (SUBMIT_CLOSED_STATUSES.includes(paymentIntent.status)) {
+            log.warn(`Submit refused for PaymentIntent ${sessionId}: status ${paymentIntent.status}.`);
+            throw new AppError('Ce paiement est déjà effectué ou en cours de traitement.', 409);
         }
 
         if (!paymentIntent.amount || !paymentIntent.currency) {
@@ -3056,7 +3181,19 @@ class PaymentService {
 
         // --- Currency Conversion --- 
         let finalAmount = paymentIntent.amount;
-        const finalCurrency = details.paymentCurrency;
+        let finalCurrency = details.paymentCurrency;
+
+        // MoneyFusion takes the amount in francs and converts it on its own
+        // checkout (see MF_PAYIN_CURRENCY). Converting here as well made it
+        // convert twice: RDC refused, Guinée asked ~14x the price.
+        const paymentMethodForGateway = paymentIntent.metadata?.paymentMethod;
+        const isMoneyFusionFiat = !this.isCryptoCurrency(finalCurrency)
+            && !!details.countryCode
+            && this.selectGateway(details.countryCode, finalCurrency, false, paymentMethodForGateway, details.operator) === PaymentGateway.MONEYFUSION;
+        if (isMoneyFusionFiat && ['XAF', 'XOF'].includes(String(paymentIntent.currency).toUpperCase())) {
+            log.info(`Payin ${sessionId}: MoneyFusion (${details.countryCode}) gets ${paymentIntent.amount} ${paymentIntent.currency}; its checkout converts to ${details.paymentCurrency}`);
+            finalCurrency = paymentIntent.currency;
+        }
 
         if (paymentIntent.currency !== finalCurrency) {
             if (this.isCryptoCurrency(finalCurrency)) {
@@ -3156,6 +3293,24 @@ class PaymentService {
             // Add phone and operator to data if they exist (operator might be null if country has only 1)
             if (details.operator) updateData.operator = details.operator;
 
+            // Security plan Phase 10: a number no operator of the country can have.
+            const mode = numberCheckMode();
+            if (mode !== 'off') {
+                const check = checkPayinNumber(details.countryCode, updateData.phoneNumber);
+                if (!check.ok) {
+                    log.warn(`Payin ${sessionId}: number fails the ${details.countryCode} format (${mode}); national length ${check.national?.length}.`);
+                    if (mode === 'enforce') {
+                        // Nothing reaches the provider and the payment stays open, so the
+                        // member corrects the number on the same payment.
+                        await PaymentIntentModel.updateOne({ sessionId }, { $set: { 'metadata.numberCheck': { ok: false, refused: true, expected: check.expected, at: new Date() } }, $inc: { 'metadata.numberRefusals': 1 } }).catch(() => undefined);
+                        const refusal: any = new AppError(`Numéro invalide pour ce pays : ${check.expected}.`, 400);
+                        refusal.memberText = memberFailureText({ group: 'member', code: 'number_format' });
+                        throw refusal;
+                    }
+                    await PaymentIntentModel.updateOne({ sessionId }, { $set: { 'metadata.numberCheck': { ok: false, refused: false, expected: check.expected, at: new Date() } } }).catch(() => undefined);
+                }
+            }
+
         } else if (selectedGateway === PaymentGateway.CINETPAY) {
             // CinetPay might require phone/email later for card payments, but not for this initial API call
             // We specifically *don't* set phone/operator here, letting them remain undefined in updateData
@@ -3166,6 +3321,16 @@ class PaymentService {
             // NOWPayments doesn't require phone number or operator for crypto payments
             // Crypto payments are done via wallet addresses
             log.info(`Crypto payment selected with ${finalCurrency}, no phone number required`);
+        }
+
+        // A new attempt on the same payment (retry after an error): the previous
+        // attempt's reason moves to failureHistory (kept), so this attempt's own
+        // reason can be recorded (the completion handler records it only once).
+        if (paymentIntent.failure) {
+            await PaymentIntentModel.updateOne(
+                { sessionId, failure: { $exists: true } },
+                [{ $set: { failureHistory: { $concatArrays: [{ $ifNull: ['$failureHistory', []] }, ['$failure']] } } }, { $unset: 'failure' }],
+            );
         }
 
         // Update the intent before initiating payment
@@ -3205,8 +3370,18 @@ class PaymentService {
             return finalPaymentIntent;
         } catch (error) {
             log.error(`Error during payment initiation for session ${sessionId}:`, error);
-            // If payment initiation fails, update the status to ERROR
+            // If payment initiation fails, update the status to ERROR, with the
+            // reason (the gateway's own catch records it first when it can).
             await paymentIntentRepository.updateBySessionId(sessionId, { status: PaymentStatus.ERROR });
+            let failure: any = null;
+            if (!(error as any)?.failureRecorded) {
+                failure = failureFromError(error, { step: 'initiate', gateway: updatedIntent.gateway });
+                await paymentIntentRepository.recordFailure(sessionId, failure);
+            } else {
+                failure = (await paymentIntentRepository.findBySessionId(sessionId))?.failure ?? null;
+            }
+            // Security plan Phase 10: the reason and next step in French for the page.
+            if (error && typeof error === 'object') (error as any).memberText = memberFailureText(failure);
             throw error; // Re-throw the original error for the controller
         }
     }
@@ -3630,8 +3805,10 @@ class PaymentService {
             } else {
                 log.error(`FeexPay request setup error: ${error.message}`);
             }
-            // Don't set status to ERROR here; let submitPaymentDetails handle it
-            throw new Error('Failed to initiate FeexPay payment');
+            // Don't set status to ERROR here; let submitPaymentDetails handle it.
+            // The reason is recorded here, while the provider's answer is at hand.
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.FEEXPAY }));
+            throw Object.assign(new Error('Failed to initiate FeexPay payment'), { failureRecorded: true });
         }
     }
 
@@ -3711,25 +3888,16 @@ class PaymentService {
                 throw new Error('Aucun numéro de téléphone n\'est associé à ce compte. Veuillez ajouter un numéro à votre profil avant de payer.');
             }
 
-            // MoneyFusion declares one currency per country (see MF_PAYIN_CURRENCY in
-            // moneyfusion.service.ts). For CFA countries (XAF/XOF) this matches what
-            // we already send. For RDC (USD) and Guinée-Conakry (GNF) we must convert
-            // — otherwise MF takes our XAF figure literally and the customer is asked
-            // to pay an inflated amount in their local currency. Strict conversion so
-            // we never silently fall back to an unconverted amount on a money path.
-            let mfAmount = amount;
-            let mfCurrency = currency;
+            // MoneyFusion's totalPrice is in XOF francs (XAF 1:1) for every
+            // country; its checkout converts to the payer's currency itself (see
+            // MF_PAYIN_CURRENCY). Never send a converted amount.
             const countryCode = paymentIntent.countryCode;
-            const expectedMfCurrency = getMoneyFusionPayinCurrency(countryCode || '');
-
-            if (expectedMfCurrency && expectedMfCurrency.toUpperCase() !== currency.toUpperCase()) {
-                log.info(`MoneyFusion expects ${expectedMfCurrency} for country ${countryCode} — converting ${amount} ${currency}`);
-                mfAmount = await currencyService.convertStrict(amount, currency, expectedMfCurrency);
-                mfCurrency = expectedMfCurrency;
-                log.info(`Converted: ${amount} ${currency} -> ${mfAmount} ${mfCurrency} for MoneyFusion (country ${countryCode})`);
-            } else if (!expectedMfCurrency && countryCode) {
-                log.warn(`No MoneyFusion currency mapping for country ${countryCode}; sending ${amount} ${currency} as-is`);
+            if (!['XAF', 'XOF'].includes(String(currency).toUpperCase())) {
+                throw new Error(`MoneyFusion payin must be in XAF/XOF, got ${amount} ${currency}`);
             }
+            const mfAmount = amount;
+            const mfCurrency = String(currency).toUpperCase();
+            const mfLocalCurrency = getMoneyFusionPayinCurrency(countryCode || '');
 
             const webhookUrl = `${config.selfBaseUrl}/api/payments/webhooks/moneyfusion`;
             const returnUrl = `${config.paymentServiceBaseUrl}/payment/status/${paymentIntent.sessionId}`;
@@ -3744,7 +3912,7 @@ class PaymentService {
             });
 
             if (!result.success || !result.token) {
-                throw new Error(result.message || 'MoneyFusion payment initiation failed');
+                throw Object.assign(new Error(result.message || 'MoneyFusion payment initiation failed'), { providerRefusal: true });
             }
 
             const updateData: UpdatePaymentIntentInput = {
@@ -3760,6 +3928,8 @@ class PaymentService {
                     mfPayinCurrency: mfCurrency,
                     mfPayinAmount: mfAmount,
                     mfPayinCountry: countryCode,
+                    // What MoneyFusion's checkout shows the payer (it converts itself).
+                    mfLocalCurrency,
                     originalAmount: amount,
                     originalCurrency: currency,
                 },
@@ -3775,6 +3945,8 @@ class PaymentService {
                 status: PaymentStatus.FAILED,
                 gatewayRawResponse: { error: error.message } as any,
             });
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.MONEYFUSION }));
+            error.failureRecorded = true;
             throw error;
         }
     }
@@ -3821,11 +3993,9 @@ class PaymentService {
             return;
         }
 
-        // MoneyFusion reports Montant in the currency MF expected for the payin
-        // country (see MF_PAYIN_CURRENCY) — USD for RDC, GNF for Guinée-Conakry,
-        // XAF/XOF elsewhere. We recorded the expected currency on the intent's
-        // metadata when initiating; use it here so paidCurrency reflects reality
-        // and downstream code can distinguish raw paidAmount from our XAF books.
+        // Montant is in the unit we sent totalPrice in, recorded on the intent at
+        // initiation: XAF/XOF since 2026-11-19 (older RDC/Guinée intents recorded
+        // USD/GNF).
         const paidCurrency = paymentIntent.metadata?.mfPayinCurrency || paymentIntent.currency;
 
         const updated = await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
@@ -4321,7 +4491,10 @@ class PaymentService {
                 return updatedIntent;
             } else {
                 log.error(`CinetPay payment initiation failed: ${JSON.stringify(response.data)}`);
-                throw new Error(`Failed to initiate CinetPay payment: ${response.data?.status || 'Unknown error'}`);
+                throw Object.assign(new Error(`Failed to initiate CinetPay payment: ${response.data?.status || 'Unknown error'}`), {
+                    providerRefusal: true,
+                    response: { status: response.status, data: response.data },
+                });
             }
         } catch (error: any) {
             if (error.response) {
@@ -4331,7 +4504,8 @@ class PaymentService {
             } else {
                 log.error(`CinetPay setup error: ${error.message}`);
             }
-            throw new Error('Failed to initiate CinetPay payment');
+            await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.CINETPAY }));
+            throw Object.assign(new Error('Failed to initiate CinetPay payment'), { failureRecorded: true });
         }
     }
 
@@ -4561,6 +4735,8 @@ class PaymentService {
                     }
                 });
                 log.info(`Updated payment intent ${paymentIntent.sessionId} status to ERROR after NOWPayments failure`);
+                await paymentIntentRepository.recordFailure(paymentIntent.sessionId, failureFromError(error, { step: 'initiate', gateway: PaymentGateway.NOWPAYMENTS }));
+                error.failureRecorded = true;
             } catch (updateError: any) {
                 log.error(`Failed to update payment intent status after NOWPayments error:`, updateError);
             }
@@ -6365,14 +6541,15 @@ class PaymentService {
             return updatedIntent || paymentIntent; // Return the updated intent or original if no status change
         } catch (error: any) {
             log.error(`Error checking FeexPay status for ${gatewayPaymentId}:`, error.response?.data || error.message);
-            // If API call fails, update status to ERROR and log the error for debugging
+            // Keep the status as it was. An unreachable status API says nothing
+            // about the payment, and this catch also sees errors thrown after a
+            // SUCCEEDED was written (handlePaymentCompletion). Setting ERROR here
+            // took FeexPay payments out of the payin reconciler for good.
+            // One key only: a full metadata write from this stale copy would undo
+            // what completion stamped (splitApplied…).
             await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-                status: PaymentStatus.ERROR,
-                metadata: {
-                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
-                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
-                }
-            });
+                'metadata.feexpayStatusCheckError': error.response?.data || error.message,
+            } as any);
             throw new AppError('Failed to retrieve or update FeexPay transaction status.', error.response?.status || 500);
         }
     }
@@ -6483,14 +6660,15 @@ class PaymentService {
             return updatedIntent || paymentIntent; // Return the updated intent or original if no status change
         } catch (error: any) {
             log.error(`Error checking FeexPay status for ${feexpayReference} (session ${sessionId}):`, error.response?.data || error.message);
-            // If API call fails, update status to ERROR and log the error for debugging
+            // Keep the status as it was. An unreachable status API says nothing
+            // about the payment, and this catch also sees errors thrown after a
+            // SUCCEEDED was written (handlePaymentCompletion). Setting ERROR here
+            // took FeexPay payments out of the payin reconciler for good.
+            // One key only: a full metadata write from this stale copy would undo
+            // what completion stamped (splitApplied…).
             await paymentIntentRepository.updateBySessionId(paymentIntent.sessionId, {
-                status: PaymentStatus.ERROR,
-                metadata: {
-                    ...(paymentIntent.metadata || {}), // Preserve existing metadata
-                    feexpayStatusCheckError: error.response?.data || error.message // Add specific error info
-                }
-            });
+                'metadata.feexpayStatusCheckError': error.response?.data || error.message,
+            } as any);
             throw new AppError('Failed to retrieve or update FeexPay transaction status. Please try again later.', error.response?.status || 500);
         }
     }
@@ -7287,6 +7465,19 @@ class PaymentService {
 
             if (!cryptoWalletAddress || !cryptoWalletCurrency) {
                 throw new Error('User crypto wallet not configured');
+            }
+            // Pay only the wallet the member asked to be paid on. A wallet changed
+            // since the request (Security plan Phase 0: changes need a code and
+            // lock withdrawals) must not receive a withdrawal approved later.
+            const requestedAddress = transaction.metadata?.cryptoAddress;
+            const requestedCurrency = transaction.metadata?.cryptoCurrency;
+            const comparable = (a: string) => /^(0x|bc1|ltc1)/i.test(a.trim()) ? a.trim().toLowerCase() : a.trim();
+            if (requestedAddress && (
+                comparable(String(requestedAddress)) !== comparable(String(cryptoWalletAddress))
+                || (requestedCurrency && String(requestedCurrency).toUpperCase() !== String(cryptoWalletCurrency).toUpperCase())
+            )) {
+                log.warn(`Crypto payout refused for ${transaction.transactionId}: the wallet changed since the request`);
+                throw new Error('Crypto wallet changed since the withdrawal request');
             }
 
             // Initiate crypto payout via NOWPayments

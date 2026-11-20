@@ -1,3 +1,4 @@
+import config from '../../config';
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import paymentService from '../../services/payment.service';
@@ -166,7 +167,7 @@ export class TransactionController {
         } catch (error: any) {
             log.error(`Error in initiateDeposit: ${error.message}`, error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({
                 success: false,
@@ -224,7 +225,7 @@ export class TransactionController {
         } catch (error: any) {
             log.error(`Error in processDepositCallback: ${error.message}`, error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({
                 success: false,
@@ -285,6 +286,8 @@ export class TransactionController {
             }
 
             log.info(`${withdrawalType} withdrawal result: ${JSON.stringify(withdrawalResult)}`);
+            // Tells the app which code confirms it (Security plan Phase 3): the authenticator app, or the e-mailed code.
+            (withdrawalResult as any).confirmWith = config.memberAuthenticatorRequired ? 'authenticator' : 'otp';
 
             // If a message about existing pending withdrawal is returned, include it
             if (withdrawalResult.message) {
@@ -315,7 +318,7 @@ export class TransactionController {
         } catch (error: any) {
             log.error(`Error in initiateWithdrawal: ${error.message}`, error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({
                 success: false,
@@ -374,7 +377,7 @@ export class TransactionController {
         } catch (error: any) {
             log.error(`Error in estimateWithdrawal: ${error.message}`, error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({
                 success: false,
@@ -404,7 +407,7 @@ export class TransactionController {
             }
 
             // Verify and process the withdrawal using transactionId
-            const result = await paymentService.verifyWithdrawal(transactionId, verificationCode);
+            const result = await paymentService.verifyWithdrawal(transactionId, verificationCode, userId);
 
             if (!result.success) {
                 // The service will throw AppError for specific failures now.
@@ -423,7 +426,7 @@ export class TransactionController {
         } catch (error: any) {
             log.error(`Error in verifyWithdrawal: ${error.message}`, error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({
                 success: false,
@@ -656,7 +659,7 @@ export class TransactionController {
             if (sendFilterError(res, error)) return res;
             log.error('Error in adminListAccountTransactions:', error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({ success: false, message: 'Failed to retrieve account transactions' });
         }
@@ -774,7 +777,7 @@ export class TransactionController {
             if (sendFilterError(res, error)) return res;
             log.error('Error in adminGetUserAnalytics:', error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({ success: false, message: 'Failed to retrieve user analytics' });
         }
@@ -809,7 +812,7 @@ export class TransactionController {
         } catch (error: any) {
             log.error(`Error in cancelWithdrawal for transaction ${req.params.transactionId}: ${error.message}`, error);
             if (error instanceof AppError) {
-                return res.status(error.statusCode).json({ success: false, message: error.message });
+                return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             }
             return res.status(500).json({
                 success: false,
