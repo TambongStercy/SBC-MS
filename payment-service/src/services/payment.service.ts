@@ -494,6 +494,7 @@ class PaymentService {
         const what = lock.reason === 'email_change' ? "de l'adresse e-mail"
             : lock.reason === 'phone_change' ? 'du numéro de téléphone'
             : lock.reason === 'momo_change' ? 'du numéro Mobile Money'
+            : lock.reason === 'crypto_change' ? 'du portefeuille crypto'
             : "de l'adresse e-mail ou du numéro de téléphone";
         log.warn(`Withdrawal refused for user ${userId}: locked until ${lock.until} after ${lock.reason ?? 'contact change'} (${audience})`);
 
@@ -7317,6 +7318,19 @@ class PaymentService {
 
             if (!cryptoWalletAddress || !cryptoWalletCurrency) {
                 throw new Error('User crypto wallet not configured');
+            }
+            // Pay only the wallet the member asked to be paid on. A wallet changed
+            // since the request (Security plan Phase 0: changes need a code and
+            // lock withdrawals) must not receive a withdrawal approved later.
+            const requestedAddress = transaction.metadata?.cryptoAddress;
+            const requestedCurrency = transaction.metadata?.cryptoCurrency;
+            const comparable = (a: string) => /^(0x|bc1|ltc1)/i.test(a.trim()) ? a.trim().toLowerCase() : a.trim();
+            if (requestedAddress && (
+                comparable(String(requestedAddress)) !== comparable(String(cryptoWalletAddress))
+                || (requestedCurrency && String(requestedCurrency).toUpperCase() !== String(cryptoWalletCurrency).toUpperCase())
+            )) {
+                log.warn(`Crypto payout refused for ${transaction.transactionId}: the wallet changed since the request`);
+                throw new Error('Crypto wallet changed since the withdrawal request');
             }
 
             // Initiate crypto payout via NOWPayments

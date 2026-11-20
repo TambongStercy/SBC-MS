@@ -38,7 +38,8 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
+import { AppError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
+import { addressTail, cryptoChangeTarget, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
 import { isSameMomo, momoChangeTarget, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
@@ -1838,33 +1839,122 @@ export class UserService {
     }
 
     /**
-     * Update user's crypto wallet information
-     * @param userId User ID
-     * @param walletAddress Crypto wallet address
-     * @param currency Crypto currency
-     * @returns Success status
+     * The old one-step save (PUT /users/crypto/wallet). It now only accepts the
+     * wallet the member already has: setting or changing a wallet goes through
+     * requestCryptoWalletChange / confirmCryptoWalletChange (password + code
+     * sent to the account email, 48 h withdrawal lock when replacing one).
      */
     async updateUserCryptoWallet(userId: string | Types.ObjectId, walletAddress: string, currency: string): Promise<{
         success: boolean;
         message?: string;
     }> {
-        try {
-            const user = await userRepository.findById(userId);
-            if (!user) {
-                return { success: false, message: 'User not found' };
-            }
-
-            await userRepository.updateById(userId, {
-                cryptoWalletAddress: walletAddress,
-                cryptoWalletCurrency: currency
-            });
-
-            log.info(`Crypto wallet updated for user ${userId}: ${currency} - ${walletAddress.substring(0, 10)}...`);
-            return { success: true };
-        } catch (error: any) {
-            log.error(`Error updating crypto wallet for user ${userId}:`, error);
-            return { success: false, message: 'Error updating crypto wallet' };
+        const user = await userRepository.findById(userId);
+        if (!user) {
+            return { success: false, message: 'User not found' };
         }
+        if (isSameCryptoWallet(user, walletAddress, currency)) {
+            return { success: true };
+        }
+        throw new CryptoWalletChangeNeedsCodeError();
+    }
+
+    /**
+     * Step 1 of setting or changing the crypto wallet: the account password,
+     * then a code to the account email, bound to this currency + address.
+     * Without a password, resends a code while one is still live for the same
+     * wallet.
+     */
+    async requestCryptoWalletChange(
+        userId: string | Types.ObjectId,
+        input: { cryptoWalletAddress?: unknown; cryptoWalletCurrency?: unknown; password?: unknown },
+    ): Promise<{ sentTo: string }> {
+        const currency = normalizeCryptoCurrency(input.cryptoWalletCurrency);
+        if (!currency) {
+            throw new AppError('Choisissez la cryptomonnaie de votre portefeuille.', 400);
+        }
+        const address = normalizeCryptoAddress(input.cryptoWalletAddress, currency);
+        if (!address) {
+            throw new AppError(`Cette adresse n’est pas une adresse ${currency} valide. Vérifiez-la : une erreur ferait perdre l’argent.`, 400);
+        }
+        const user = await UserModel.findById(userId).select('+password');
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        if (isSameCryptoWallet(user, address, currency)) {
+            throw new AppError('C’est déjà votre portefeuille crypto.', 400);
+        }
+        if (!user.email) {
+            throw new AppError('Votre compte n’a pas d’adresse e-mail : contactez le support pour changer votre portefeuille crypto.', 400);
+        }
+        const target = cryptoChangeTarget(address, currency);
+        const password = typeof input.password === 'string' ? input.password : '';
+        const isResend = !password && (user.otps || []).some(o =>
+            o.purpose === 'changeCrypto' && o.target === target && new Date(o.expiration) > new Date());
+        if (!isResend && (!password || !user.password || !(await bcrypt.compare(password, user.password)))) {
+            throw new AppError(password ? 'Mot de passe incorrect.' : 'Votre code a expiré : recommencez le changement de portefeuille.', 400);
+        }
+
+        const otpCode = await this.generateAndStoreOtp(user._id, 'otps', 10, { purpose: 'changeCrypto', target });
+        await notificationService.sendOtp({
+            userId: user._id.toString(),
+            recipient: user.email,
+            channel: DeliveryChannel.EMAIL,
+            code: otpCode,
+            expireMinutes: 10,
+            isRegistration: false,
+            purpose: 'changeCrypto',
+            userName: user.name,
+            language: user.language?.[0] || 'fr',
+        });
+        log.info(`Crypto wallet change code sent to the account email of user ${userId} (${currency}, address ending ${addressTail(address)})`);
+        return { sentTo: maskEmail(user.email) };
+    }
+
+    /**
+     * Step 2: the code sent by requestCryptoWalletChange, for the same currency
+     * and address. Replacing an existing wallet locks withdrawals for
+     * WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE hours and alerts the account
+     * email; a first wallet only needs the code.
+     */
+    async confirmCryptoWalletChange(
+        userId: string | Types.ObjectId,
+        input: { cryptoWalletAddress?: unknown; cryptoWalletCurrency?: unknown; code?: unknown },
+    ): Promise<{ cryptoWalletAddress: string; cryptoWalletCurrency: string; withdrawalsLockedUntil: string | null }> {
+        const currency = normalizeCryptoCurrency(input.cryptoWalletCurrency);
+        const address = currency ? normalizeCryptoAddress(input.cryptoWalletAddress, currency) : null;
+        const code = typeof input.code === 'string' ? input.code.trim() : '';
+        if (!currency || !address || !code) {
+            throw new AppError('Cryptomonnaie, adresse et code sont requis.', 400);
+        }
+        const user = await userRepository.findById(userId);
+        if (!user || user.blocked || user.deleted) {
+            throw new AppError('User account is inactive or not found.', 403);
+        }
+        const target = cryptoChangeTarget(address, currency);
+        const now = new Date();
+        const matching = (user.otps || []).find(otp => otp.purpose === 'changeCrypto' && otp.target === target
+            && otpMatches(otp.code, code) && otp.expiration > now);
+        if (!matching) {
+            log.warn(`Invalid or expired crypto wallet change code for user ${userId}`);
+            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu par e-mail.', 400);
+        }
+        await userRepository.clearOtps(user._id, 'otps');
+
+        const hadWallet = !!user.cryptoWalletAddress;
+        const changed = !isSameCryptoWallet(user, address, currency);
+        const lock = hadWallet && changed ? withdrawalLockFields('crypto_change') : null;
+        await userRepository.updateById(user._id, {
+            cryptoWalletAddress: address,
+            cryptoWalletCurrency: currency,
+            ...(lock ?? {}),
+        });
+        if (lock) {
+            alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'crypto_change', newValue: address });
+            log.warn(`Crypto wallet of user ${userId} changed (now ${currency}, ending ${addressTail(address)}): withdrawals locked until ${lock.withdrawalsLockedUntil.toISOString()}`);
+        } else {
+            log.info(`Crypto wallet of user ${userId} set (${currency}, ending ${addressTail(address)})`);
+        }
+        return { cryptoWalletAddress: address, cryptoWalletCurrency: currency, withdrawalsLockedUntil: lock ? lock.withdrawalsLockedUntil.toISOString() : null };
     }
 
     /**

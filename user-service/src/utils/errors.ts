@@ -44,6 +44,15 @@ export class OtpThrottledError extends AppError {
  * (POST /users/me/momo/request-change, then /confirm-change); `code` lets the
  * app open it instead of showing an error.
  */
+export class CryptoWalletChangeNeedsCodeError extends AppError {
+    public code = 'CRYPTO_CHANGE_NEEDS_CODE';
+
+    constructor() {
+        super('Pour changer votre portefeuille crypto, confirmez avec votre mot de passe et le code envoyé par e-mail.', 409);
+        Object.setPrototypeOf(this, CryptoWalletChangeNeedsCodeError.prototype);
+    }
+}
+
 export class MomoChangeNeedsCodeError extends AppError {
     public code = 'MOMO_CHANGE_NEEDS_CODE';
 
