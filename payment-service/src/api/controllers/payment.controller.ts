@@ -21,6 +21,9 @@ import { Types } from 'mongoose';
 import { AdminFilters, dateMatch, readAdminFilters } from '../../utils/admin-filters';
 import { directOrMemberCountryMatch, memberIdsForCountry, sendFilterError } from '../../utils/country-members';
 import { memberObjectIdMatch, narrowRange } from '../../utils/admin-scope';
+import { memberFailureText } from '../../utils/member-failure-text';
+import { supportRequestUrl } from '../../utils/support-link';
+import { archiveCollection } from '../../jobs/payin-archive.job';
 
 const log = logger.getLogger('PaymentController');
 
@@ -69,6 +72,19 @@ export class PaymentController {
             paymentIntent = await paymentService.getPaymentIntentDetails(sessionId);
 
             if (!paymentIntent) {
+                // Security plan Phase 10: an abandoned payment moved to the archive after
+                // 7 days. Say it expired instead of "not found" (nothing was ever paid on it).
+                const archived = await archiveCollection().findOne({ sessionId }, { projection: { amount: 1, currency: 1 } }).catch(() => null);
+                if (archived) {
+                    return res.render('payment', {
+                        sessionId, amount: Number(archived.amount) || 0, currency: archived.currency || 'XAF',
+                        paymentStatus: PaymentStatus.EXPIRED, assetBasePath: '/api/payments/static', gateway: '', gatewayPaymentId: '',
+                        isCryptoPayment: false, cryptoBetaEnabled: false, operatorChoices: {},
+                        phoneNumber: undefined, countryCode: undefined, operator: undefined, errorMessage: undefined, cryptoAddress: undefined, payAmount: undefined, payCurrency: undefined, paymentType: undefined, subscriptionType: undefined, subscriptionPlan: undefined, paidAmount: undefined, paidCurrency: undefined, cryptoQrCodeBase64: undefined, cryptoUsdAmount: undefined, 
+                        supportUrl: supportRequestUrl(sessionId),
+                        failureText: { reason: 'Ce paiement a expiré : il n’a pas été utilisé pendant plus de 7 jours.', nextStep: 'Relancez le paiement depuis l’application SBC.' },
+                    });
+                }
                 log.warn(`Payment intent not found for session ID: ${sessionId}`);
                 // Render a generic error page or redirect
                 return res.status(404).render('error', { message: 'Payment session not found.' });
@@ -80,11 +96,12 @@ export class PaymentController {
                 paymentIntent = await paymentService.resetPaymentIntentStatus(sessionId);
                 // If reset successful, set a user-friendly error message to display on the form
                 if (paymentIntent && paymentIntent.status === PaymentStatus.PENDING_USER_INPUT) {
-                    errorMessage = 'An error occurred with your previous attempt. Please review your details and try again.';
+                    const t = memberFailureText(paymentIntent.failure);
+                    errorMessage = `La tentative précédente n'a pas abouti. ${t.reason} ${t.nextStep}`;
                 } else {
                     // If reset failed or not applicable, keep the original error status
                     log.error(`Failed to reset PaymentIntent ${sessionId} from ERROR status.`);
-                    errorMessage = 'An unrecoverable error occurred with your payment. Please contact support.';
+                    errorMessage = 'Ce paiement ne peut pas être repris. Contactez le support avec la référence ci-dessous.';
                 }
             }
 
@@ -166,6 +183,10 @@ export class PaymentController {
                 countryCode: paymentIntent && paymentIntent.countryCode === 'CRYPTO' ? undefined : (paymentIntent ? paymentIntent.countryCode : undefined),
                 operator: paymentIntent ? paymentIntent.operator : undefined,
                 errorMessage: errorMessage,
+                // Security plan Phase 10: why it failed and what to do, in French.
+                failureText: paymentIntent && [PaymentStatus.FAILED, PaymentStatus.EXPIRED, PaymentStatus.CANCELED].includes(paymentIntent.status)
+                    ? memberFailureText(paymentIntent.failure) : undefined,
+                supportUrl: supportRequestUrl(paymentIntent ? paymentIntent.sessionId : sessionId),
                 assetBasePath: '/api/payments/static', // Path to static assets
                 // NEW: Add gateway and gatewayPaymentId
                 gateway: paymentIntent ? (paymentIntent.gateway || '') : '',
@@ -192,6 +213,11 @@ export class PaymentController {
             };
 
             res.render('payment', viewData);
+            // Security plan Phase 10 funnel: the page was opened (first time + count), fire and forget.
+            void PaymentIntentModel.updateOne({ sessionId }, [{ $set: {
+                'metadata.pageOpenedAt': { $ifNull: ['$metadata.pageOpenedAt', '$$NOW'] },
+                'metadata.pageOpens': { $add: [{ $ifNull: ['$metadata.pageOpens', 0] }, 1] },
+            } }]).catch(() => undefined);
         } catch (error: any) {
             log.error(`Error rendering payment page for session ${sessionId}:`, error);
             res.status(500).render('error', { message: 'An internal server error occurred.', error: error.message });
@@ -409,7 +435,7 @@ export class PaymentController {
             });
         } catch (error: any) {
             log.error('Error creating payment intent:', error);
-            res.status(500).json({
+            res.status(error?.statusCode || 500).json({
                 success: false,
                 message: error.message || 'Failed to create payment intent'
             });
@@ -448,9 +474,13 @@ export class PaymentController {
             });
         } catch (error: any) {
             log.error('Error submitting payment details:', error);
-            res.status(500).json({
+            // Security plan Phase 10: the member sees the reason and the next step in French.
+            const memberText = error?.memberText;
+            res.status(error?.statusCode || 500).json({
                 success: false,
-                message: error.message || 'Failed to process payment details'
+                message: memberText ? `${memberText.reason} ${memberText.nextStep}` : (error.message || 'Failed to process payment details'),
+                reason: memberText?.reason,
+                nextStep: memberText?.nextStep,
             });
         }
     };
@@ -809,7 +839,7 @@ export class PaymentController {
             res.status(200).json(result);
         } catch (error: any) {
             log.error('Error creating crypto payout:', error);
-            res.status(error.statusCode || 500).json({
+            res.status(error?.statusCode || 500).json({
                 success: false,
                 message: error.message || 'Failed to create crypto payout'
             });
@@ -1647,9 +1677,9 @@ export class PaymentController {
 
         } catch (error: any) {
             log.error(`Error creating crypto payout: ${error.message}`, error);
-            res.status(500).json({
+            res.status(error?.statusCode || 500).json({
                 success: false,
-                message: 'Internal server error'
+                message: error?.statusCode ? error.message : 'Internal server error'
             });
         }
     };
@@ -1902,7 +1932,7 @@ export class PaymentController {
                     externalReference: reference,
                     providerVerification: { result: verified.result, providerStatus: verified.providerStatus, amount: verified.amount ?? null, at: new Date() },
                 }
-            });
+            }, { reuseAndLimit: false });
             await supportFinanceService.bindExternalRefs(provider, claimedRefs, paymentIntent.sessionId);
 
             let finalIntent = paymentIntent;

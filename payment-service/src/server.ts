@@ -10,6 +10,8 @@ import { paymentProcessor } from './jobs/paymentProcessor';
 import { transactionStatusChecker } from './jobs/transaction-status-checker.job';
 import { payinReconciler } from './jobs/payin-reconciler.job';
 import { financeReconciliationJob } from './jobs/finance-reconciliation.job';
+import { paymentAlertsJob } from './jobs/payment-alerts.job';
+import { payinArchiveJob } from './jobs/payin-archive.job';
 import { sandboxSweeper } from './jobs/sandbox-sweeper.job';
 import { warnIfMisconfigured } from './services/sandbox.service';
 import path from 'path';
@@ -141,6 +143,12 @@ async function startServer() {
         payinReconciler.start();
         // Daily withdrawal reconciliation: opens support cases, never frees money on a timeout.
         financeReconciliationJob.start();
+
+        // Security plan Phase 10: team alerts (provider drop, error spikes, stuck payments).
+        paymentAlertsJob.start();
+
+        // Security plan Phase 10: abandoned payments move to paymentintents_archive (off by default).
+        payinArchiveJob.start();
 
         // Payment sandbox (preprod only — refused outright in production)
         warnIfMisconfigured();

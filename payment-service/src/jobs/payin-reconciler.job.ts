@@ -42,13 +42,21 @@ const MINUTES = 60 * 1000;
  * How long to leave a payment alone before asking. The webhook usually arrives
  * within seconds; querying immediately would just race it.
  */
-const MIN_AGE_MS = Number(process.env.PAYIN_RECONCILE_MIN_AGE_MIN || 10) * MINUTES;
+const MIN_AGE_MS = Number(process.env.PAYIN_RECONCILE_MIN_AGE_MIN || 15) * MINUTES;
 /** How far back to look. Older than this, the provider has usually forgotten it. */
 const MAX_AGE_MS = Number(process.env.PAYIN_RECONCILE_MAX_AGE_DAYS || 7) * 24 * 60 * MINUTES;
 /** Intents per cycle. Bounded so a backlog is drained gradually, not in one burst. */
-const BATCH = Number(process.env.PAYIN_RECONCILE_BATCH || 40);
+const BATCH = Number(process.env.PAYIN_RECONCILE_BATCH || 150);
 /** Gap between provider calls, so we don't hammer them. */
-const SPACING_MS = Number(process.env.PAYIN_RECONCILE_SPACING_MS || 300);
+const SPACING_MS = Number(process.env.PAYIN_RECONCILE_SPACING_MS || 250); // ≤ 4 checks/s, under the plan's 5/s per provider
+/**
+ * Security plan Phase 10: re-ask the provider every 15 min, and expire a payment
+ * still waiting 72 h after creation once its provider has answered at least once
+ * (so we know it was really asked). A late provider success still credits it:
+ * the webhook handlers only skip SUCCEEDED/FAILED.
+ */
+const EVERY_MS = Number(process.env.PAYIN_RECONCILE_EVERY_MIN || 15) * MINUTES;
+const EXPIRE_AFTER_MS = Number(process.env.PAYIN_EXPIRE_AFTER_HOURS || 72) * 60 * MINUTES;
 
 /**
  * How long before asking about the same payment again, by how many times the
@@ -60,10 +68,9 @@ const SPACING_MS = Number(process.env.PAYIN_RECONCILE_SPACING_MS || 300);
  * older payment that IS recoverable. Backing off the ones that keep answering
  * the same way is what lets the queue rotate.
  */
-const backoffMs = (attempts: number): number =>
-    attempts < 3 ? 10 * MINUTES
-        : attempts < 10 ? 60 * MINUTES
-            : 6 * 60 * MINUTES;
+// Every 15 min (plan); after ~300 answered checks (beyond 72 h, only for payments whose
+// provider kept answering "pending" and were not expired), every 6 h until 7 days.
+const backoffMs = (attempts: number): number => (attempts < 300 ? EVERY_MS : 6 * 60 * MINUTES);
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -73,7 +80,7 @@ export class PayinReconciler {
 
     constructor() {
         this.cronJob = cron.schedule(
-            process.env.PAYIN_RECONCILE_CRON || '*/10 * * * *',
+            process.env.PAYIN_RECONCILE_CRON || '*/5 * * * *',
             async () => { await this.reconcile(); },
             { name: 'payin-reconciler' },
         );
@@ -123,7 +130,10 @@ export class PayinReconciler {
                 .limit(BATCH)
                 .select('sessionId gateway gatewayPaymentId status amount currency createdAt reconcileAttempts');
 
-            if (!stuck.length) return result;
+            if (!stuck.length) {
+                await this.expireStale(now);
+                return result;
+            }
 
             log.info(`Reconciling ${stuck.length} payment(s) the provider never told us about`);
 
@@ -160,6 +170,8 @@ export class PayinReconciler {
                 `Payin reconciliation: ${result.checked} checked, ${result.settled} settled as paid, `
                 + `${result.failed} confirmed failed, ${result.unresolved} still unknown`,
             );
+            const expired = await this.expireStale(now);
+            if (expired) log.info(`Payin reconciliation: ${expired} payment(s) expired after ${EXPIRE_AFTER_MS / 3600000} h without a final answer`);
         } catch (err) {
             log.error('Payin reconciliation cycle failed:', err);
         } finally {
@@ -167,6 +179,33 @@ export class PayinReconciler {
         }
 
         return result;
+    }
+
+    /**
+     * Expires payments still waiting after EXPIRE_AFTER_MS whose provider was
+     * actually asked (reconcileAttempts ≥ 1). Conditional update: a payment that
+     * moved meanwhile is left alone. Returns how many were expired.
+     */
+    public async expireStale(now: number): Promise<number> {
+        const waiting = [PaymentStatus.PENDING_PROVIDER, PaymentStatus.PROCESSING];
+        const stale = await PaymentIntentModel.find({
+            status: { $in: waiting },
+            gateway: { $in: RECONCILABLE },
+            createdAt: { $lt: new Date(now - EXPIRE_AFTER_MS) },
+            reconcileAttempts: { $gte: 1 },
+        }).limit(500).select('_id sessionId gateway');
+        let n = 0;
+        for (const intent of stale) {
+            const r = await PaymentIntentModel.updateOne(
+                { _id: intent._id, status: { $in: waiting } },
+                { $set: { status: PaymentStatus.EXPIRED, failure: {
+                    group: 'member', code: 'no_final_answer_72h', gateway: intent.gateway, step: 'status_check',
+                    providerMessage: 'Le fournisseur n’a jamais confirmé ce paiement en 72 h.', at: new Date(now),
+                } } },
+            );
+            n += r.modifiedCount;
+        }
+        return n;
     }
 
     /**

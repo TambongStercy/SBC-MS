@@ -1,3 +1,4 @@
+import { PaymentFailure } from '../../utils/payment-failure';
 import { Types } from 'mongoose';
 import { nanoid } from 'nanoid';
 import PaymentIntent from '../models/PaymentIntent';
@@ -230,6 +231,18 @@ class PaymentIntentRepository {
     /**
      * Update a payment intent by session ID
      */
+    /**
+     * Records why a payment did not finish. Never throws: a failed write here
+     * must not hide the payment's own error.
+     */
+    async recordFailure(sessionId: string, failure: PaymentFailure): Promise<void> {
+        try {
+            await this.model.updateOne({ sessionId }, { $set: { failure } });
+        } catch (error: any) {
+            log.error(`Could not record the failure reason of payment ${sessionId}: ${error.message}`);
+        }
+    }
+
     async updateBySessionId(sessionId: string, update: UpdatePaymentIntentInput): Promise<IPaymentIntent | null> {
         try {
             const paymentIntent = await this.model.findOneAndUpdate(

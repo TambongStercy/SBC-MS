@@ -21,3 +21,15 @@ export function maskEmail(email: string | null | undefined): string {
     const shown = local.length <= 2 ? local.slice(0, 1) : local.slice(0, 2);
     return `${shown}***@${domain}`;
 }
+
+/**
+ * Mask a phone number the same way: the dialling code and the last three
+ * digits, enough for the owner to recognise it.
+ *
+ *   237699898969 -> +237 •••• 969
+ */
+export function maskPhone(phone: string | null | undefined): string {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (digits.length < 7) return '•••';
+    return `+${digits.slice(0, 3)} •••• ${digits.slice(-3)}`;
+}

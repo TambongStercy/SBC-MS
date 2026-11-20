@@ -117,6 +117,28 @@ const PaymentIntentSchema: Schema = new Schema(
          * written — must not burn a payment's attempts and back it off into a
          * corner precisely when it most needs checking.
          */
+        /**
+         * Why the payment did not finish (Security plan Phase 10), grouped once
+         * when recorded: sbc_code, provider_api, member or unknown. See
+         * utils/payment-failure.ts. Its index {failure.group, createdAt} is built
+         * by scripts/security-plan/indexes.mongosh.js, at night, not at startup.
+         */
+        failure: {
+            type: new Schema({
+                group: { type: String, enum: ['sbc_code', 'provider_api', 'member', 'unknown'], required: true },
+                code: { type: String, required: true },
+                gateway: { type: String },
+                providerCode: { type: String },
+                providerMessage: { type: String },
+                step: { type: String, enum: ['initiate', 'provider_result', 'status_check', 'completion'], required: true },
+                httpStatus: { type: Number },
+                requestId: { type: String },
+                at: { type: Date, required: true },
+            }, { _id: false }),
+            required: false,
+        },
+        /** Reasons of earlier attempts on the same payment (a retry moves `failure` here). */
+        failureHistory: { type: [Schema.Types.Mixed], default: undefined },
         lastReconcileAt: { type: Date },
         reconcileAttempts: { type: Number, default: 0 },
     },
@@ -141,5 +163,8 @@ PaymentIntentSchema.index(
         partialFilterExpression: { gatewayPaymentId: { $type: 'string' }, createdAt: { $gte: REF_UNIQUE_SINCE } },
     },
 );
+// Security plan Phase 10: conversion dashboard ranges and the per-member limit.
+PaymentIntentSchema.index({ createdAt: -1 });
+PaymentIntentSchema.index({ userId: 1, createdAt: -1 });
 
 export default mongoose.model<IPaymentIntent>('PaymentIntent', PaymentIntentSchema); 

@@ -28,6 +28,20 @@ const pushCategoryForType = (type: string): PushCategory =>
 
 const log = logger.getLogger('NotificationService');
 
+/**
+ * Codes that confirm a change of the account's contact or payout details
+ * (user-service `OtpPurpose`). Their e-mail says what is being changed, so a
+ * member whose account is being taken over sees it ("code pour changer le
+ * numéro Mobile Money…") instead of an ordinary login code they might pass on.
+ */
+export const ACCOUNT_CHANGE_LABELS: Record<string, string> = {
+    changeMomo: 'le numéro Mobile Money qui reçoit vos retraits',
+    changeCrypto: 'le portefeuille crypto qui reçoit vos retraits',
+    changeEmail: 'l’adresse e-mail de votre compte',
+    changePhone: 'le numéro de téléphone de votre compte',
+    setupAuthenticator: 'la sécurité de votre compte (application d’authentification)',
+};
+
 // Interface for creating a notification
 interface CreateNotificationData {
     userId: string | Types.ObjectId;
@@ -584,12 +598,16 @@ class NotificationService {
         purpose?: string,
         language?: string, // Simple language codes like 'en', 'fr', 'es' are automatically converted
     ): Promise<INotification> {
-        const templateId = purpose === 'withdrawal_verification' ? 'withdrawal-verification' : isRegistration ? 'verify-registration' : 'verify-login';
+        const changeLabel = purpose ? ACCOUNT_CHANGE_LABELS[purpose] : undefined;
+        const templateId = purpose === 'withdrawal_verification' ? 'withdrawal-verification'
+            : changeLabel ? 'verify-account-change'
+            : isRegistration ? 'verify-registration' : 'verify-login';
 
         const variables: Record<string, any> = {
             code,
             expireMinutes: expireMinutes.toString(),
-            purpose
+            purpose,
+            ...(changeLabel ? { changeLabel } : {}),
         };
 
         if (userName) {

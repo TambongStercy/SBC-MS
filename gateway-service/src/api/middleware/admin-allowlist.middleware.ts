@@ -42,7 +42,7 @@ const base64UrlDecode = (part: string): Buffer =>
     Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 
 /** Verifies an HS256 JWT signed by user-service; returns its payload or null. */
-const verifyToken = (token: string, secret: string): Record<string, unknown> | null => {
+export const verifyToken = (token: string, secret: string): Record<string, unknown> | null => {
     const parts = token.split('.');
     if (parts.length !== 3 || !secret) return null;
     const [header, payload, signature] = parts;

@@ -60,7 +60,7 @@ interface IOtp extends Document {
     target?: string;
 }
 
-export type OtpPurpose = 'changeEmail' | 'changePhone';
+export type OtpPurpose = 'changeEmail' | 'changePhone' | 'changeMomo' | 'changeCrypto' | 'setupAuthenticator';
 
 // Interface defining the User document structure (FIELDS ONLY)
 export interface IUser extends Document {
@@ -126,7 +126,18 @@ export interface IUser extends Document {
      * number changes (see utils/withdrawal-lock.ts).
      */
     withdrawalsLockedUntil?: Date;
-    withdrawalLockReason?: 'email_change' | 'phone_change';
+    withdrawalLockReason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset';
+    /** Security plan Phase 1 (signals), only for members who accepted the policy announcing it. */
+    geo?: {
+        lastCountry?: string;
+        lastCountryAt?: Date;
+        /** Country with the most active days over 30 days (min. 15 distinct days), recomputed nightly. */
+        usualCountry?: string | null;
+        usualShare?: number | null;
+        usualComputedAt?: Date;
+    };
+    lastActiveAt?: Date;
+    lastLoginAt?: Date;
     ipAddress?: string;
     ipCity?: string;
     ipRegion?: string;
@@ -180,7 +191,7 @@ export interface IUser extends Document {
 const otpSchema = new Schema<IOtp>({
     code: { type: String, required: true },
     expiration: { type: Date, required: true },
-    purpose: { type: String, enum: ['changeEmail', 'changePhone'] },
+    purpose: { type: String, enum: ['changeEmail', 'changePhone', 'changeMomo', 'changeCrypto', 'setupAuthenticator'] },
     target: { type: String },
 }, { _id: false });
 
@@ -251,7 +262,16 @@ const UserSchema = new Schema<IUser>(
         otps: [otpSchema],
         otpSendLog: { type: [Date], default: undefined },
         withdrawalsLockedUntil: { type: Date },
-        withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change'] },
+        withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change', 'momo_change', 'crypto_change', 'authenticator_reset'] },
+        geo: {
+            lastCountry: { type: String },
+            lastCountryAt: { type: Date },
+            usualCountry: { type: String, default: undefined },
+            usualShare: { type: Number, default: undefined },
+            usualComputedAt: { type: Date },
+        },
+        lastActiveAt: { type: Date, index: true },
+        lastLoginAt: { type: Date },
         ipAddress: { type: String },
         ipCity: { type: String, index: true },
         ipRegion: { type: String },

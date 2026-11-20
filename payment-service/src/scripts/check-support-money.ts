@@ -11,6 +11,9 @@
  *   SUPPORT_USERS_TEST_DB=mongodb://127.0.0.1:27017/sbc_users_support_test \
  *     npx ts-node --transpile-only src/scripts/check-support-money.ts
  */
+// Withdrawals here are confirmed with the e-mailed code: this checks reservations; the
+// authenticator path has its own check (check-withdrawal-authenticator.ts).
+process.env.MEMBER_AUTHENTICATOR_REQUIRED = 'false';
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.PORT = process.env.PORT || '59993';
 process.env.HOST = process.env.HOST || '127.0.0.1';

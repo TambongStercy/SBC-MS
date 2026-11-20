@@ -10,8 +10,12 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name preprod.sniperbuisnesscenter.com;
+    # Security plan Phase 1: only Cloudflare may reach this site (the origin IP is public).
+    if ($sbc_from_cloudflare = 0) { return 403; }
+
 
     # Trust Cloudflare IPs for real IP restoration
+    set_real_ip_from 173.245.48.0/20;
     set_real_ip_from 103.21.244.0/22;
     set_real_ip_from 103.22.200.0/22;
     set_real_ip_from 103.31.4.0/22;
@@ -55,25 +59,28 @@ server {
     location ^~ /api/ {
         proxy_pass http://127.0.0.1:6000;
         proxy_set_header Host $host;
+        # Security plan Phase 1: what Cloudflare saw, overwriting anything the client sends.
+        proxy_set_header X-SBC-Geo $http_cf_ipcountry;
+        proxy_set_header X-SBC-ASN $http_x_cf_asn;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        client_max_body_size 25M;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
+        client_max_body_size 100M;
+        proxy_read_timeout 900s;
+        client_body_timeout 900s;
+        proxy_send_timeout 900s;
         proxy_connect_timeout 300s;
     }
 
-
-    # SBC Ads Network landing pages, served by advertising-service at the root.
+        # SBC Ads Network landing pages, served by advertising-service at the root.
     #
     # These exact URLs get pasted into diffuseurs' WhatsApp statuses:
     #   /s/<trackingCode>        a diffuseur's tracking link
     #   /a/<slug>                the campaign's own page
     #   /c/<trackingCode>/<act>  click-through, records then redirects
-    # Without these blocks they fall through to the React app and the tracking
-    # link is dead in every status already published.
+    # Without these they fall through to the React app and every tracking link
+    # in every already-published status is dead.
     location ^~ /s/ {
         proxy_pass http://127.0.0.1:6010;
         proxy_set_header Host $host;
@@ -92,6 +99,15 @@ server {
 
     location ^~ /c/ {
         proxy_pass http://127.0.0.1:6010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # SBC Event public landing pages (event-service EJS, OG preview cards)
+    location ^~ /e/ {
+        proxy_pass http://127.0.0.1:6011;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -139,6 +155,9 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name preprod-admin.sniperbuisnesscenter.com;
+    # Security plan Phase 1: only Cloudflare may reach this site (the origin IP is public).
+    if ($sbc_from_cloudflare = 0) { return 403; }
+
 
     # Trust Cloudflare IPs for real IP restoration
     set_real_ip_from 103.21.244.0/22;
