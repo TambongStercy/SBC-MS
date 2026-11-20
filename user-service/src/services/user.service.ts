@@ -1,4 +1,8 @@
 import { pushNewFilleul } from './push-notify';
+import { convertBalance } from './wallet-conversion.service';
+import { InsufficientAvailableBalanceError } from '../database/repositories/user.repository';
+import { openSupportCase } from './clients/support.service.client';
+import { walletLedger } from './wallet-ledger.service';
 import { PRIVACY_POLICY_VERSION } from '../config/privacy';
 import bcrypt from 'bcrypt';
 import { IUser, UserRole, OtpPurpose, ADMIN_CAPABLE_ROLES } from '../database/models/user.model';
@@ -979,38 +983,66 @@ export class UserService {
 
     /**
      * Updates a user's balance with debt settlement (XAF).
+     *
+     * Same arithmetic as before, now applied by compare-and-set on
+     * balance+debt (no lost update between two concurrent credits) and
+     * recorded in the wallet ledger. `movement.reference` makes a replay a
+     * no-op (e.g. `deposit:<txId>`).
      */
-    async updateBalance(userId: string | Types.ObjectId, amount: number): Promise<number | null> {
+    async updateBalance(
+        userId: string | Types.ObjectId,
+        amount: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<number | null> {
         try {
-            const user = await userRepository.findById(userId);
-            if (!user) return null;
+            const out = await walletLedger.applyComputed({
+                userId,
+                currency: 'XAF',
+                requestedAmount: amount,
+                reference: movement.reference,
+                source: movement.source || 'user-service.updateBalance',
+                description: movement.description,
+                compute: (user) => {
+                    // A debit only takes available money (balance - debt - reserved).
+                    if (amount < 0) {
+                        const available = (user.balance ?? 0) - Math.max(0, user.debt || 0) - (user.reservedBalance ?? 0);
+                        if (available < -amount) return null;
+                    }
+                    let remainingAmountXaf = amount;
+                    let currentDebt = Math.max(0, user.debt || 0);
+                    let currentXaf = user.balance ?? 0;
 
-            let remainingAmountXaf = amount;
-            let currentDebt = Math.max(0, user.debt || 0);
-            let currentXaf = user.balance;
+                    // Settle debt BEFORE applying credit
+                    if (remainingAmountXaf > 0 && currentDebt > 0) {
+                        const payXaf = Math.min(remainingAmountXaf, currentDebt);
+                        remainingAmountXaf -= payXaf;
+                        currentDebt -= payXaf;
+                    }
 
-            // Settle debt BEFORE applying credit
-            if (remainingAmountXaf > 0 && currentDebt > 0) {
-                const payXaf = Math.min(remainingAmountXaf, currentDebt);
-                remainingAmountXaf -= payXaf;
-                currentDebt -= payXaf;
+                    // Apply remaining XAF change to balance
+                    if (remainingAmountXaf !== 0) {
+                        currentXaf += remainingAmountXaf;
+                    }
+
+                    // Settle debt AFTER update if there is still positive XAF balance
+                    if (currentDebt > 0 && currentXaf > 0) {
+                        const settle = Math.min(currentDebt, currentXaf);
+                        currentDebt -= settle;
+                        currentXaf -= settle;
+                    }
+                    return {
+                        set: { balance: currentXaf, debt: currentDebt },
+                        balanceDelta: currentXaf - (user.balance ?? 0),
+                        debtDelta: currentDebt - (user.debt || 0),
+                    };
+                },
+            });
+            if (out.pendingConflict) {
+                throw new Error(`Balance movement ${out.reference} is pending review; refusing to apply it twice`);
             }
-
-            // Apply remaining XAF change to balance
-            if (remainingAmountXaf !== 0) {
-                currentXaf += remainingAmountXaf;
-            }
-
-            // Settle debt AFTER update if there is still positive XAF balance
-            if (currentDebt > 0 && currentXaf > 0) {
-                const settle = Math.min(currentDebt, currentXaf);
-                currentDebt -= settle;
-                currentXaf -= settle;
-            }
-
-            // Persist updates atomically as best-effort: set debt & balance
-            const updated = await userRepository.updateById(userId, { balance: currentXaf, debt: currentDebt });
-            return updated ? updated.balance : null;
+            if (out.guardFailed) throw new InsufficientAvailableBalanceError();
+            if (out.reversed) throw Object.assign(new Error(`Balance movement ${out.reference} was undone; use a new reference`), { statusCode: 409, code: 'MOVEMENT_UNDONE' });
+            return out.user ? out.user.balance : null;
         } catch (error) {
             log.error(`Error updating balance for user ${userId}`, error);
             throw error;
@@ -1021,40 +1053,59 @@ export class UserService {
      * Update user's USD balance with debt settlement. Debt is in XAF.
      * When adding USD, first convert to XAF at 500 XAF/USD to pay debt, then credit leftover USD.
      */
-    async updateUsdBalance(userId: string | Types.ObjectId, amount: number): Promise<number | null> {
+    async updateUsdBalance(
+        userId: string | Types.ObjectId,
+        amount: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<number | null> {
         try {
-            const user = await userRepository.findById(userId);
-            if (!user) return null;
+            const out = await walletLedger.applyComputed({
+                userId,
+                currency: 'USD',
+                requestedAmount: amount,
+                reference: movement.reference,
+                source: movement.source || 'user-service.updateUsdBalance',
+                description: movement.description,
+                compute: (user) => {
+                    if (amount < 0 && (user.usdBalance ?? 0) - (user.reservedUsdBalance ?? 0) < -amount) return null;
+                    let remainingAmountUsd = amount;
+                    let currentDebt = Math.max(0, user.debt || 0); // XAF
+                    let currentUsd = user.usdBalance ?? 0;
 
-            let remainingAmountUsd = amount;
-            let currentDebt = Math.max(0, user.debt || 0); // XAF
-            let currentUsd = user.usdBalance;
+                    // Settle debt BEFORE applying USD credit (convert USD->XAF at 500)
+                    if (remainingAmountUsd > 0 && currentDebt > 0) {
+                        const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(remainingAmountUsd); // 500 XAF per USD
+                        const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
+                        const usdUsed = Math.round((xafPaid / 500) * 100) / 100; // inverse of withdrawal rate
+                        remainingAmountUsd = Math.max(0, Math.round((remainingAmountUsd - usdUsed) * 100) / 100);
+                        currentDebt -= xafPaid;
+                    }
 
-            // Settle debt BEFORE applying USD credit (convert USD->XAF at 500)
-            if (remainingAmountUsd > 0 && currentDebt > 0) {
-                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(remainingAmountUsd); // 500 XAF per USD
-                const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
-                const usdUsed = Math.round((xafPaid / 500) * 100) / 100; // inverse of withdrawal rate
-                remainingAmountUsd = Math.max(0, Math.round((remainingAmountUsd - usdUsed) * 100) / 100);
-                currentDebt -= xafPaid;
+                    // Apply remaining USD change to balance
+                    if (remainingAmountUsd !== 0) {
+                        currentUsd = Math.round((currentUsd + remainingAmountUsd) * 100) / 100;
+                    }
+
+                    // Settle debt AFTER update using any remaining USD
+                    if (currentDebt > 0 && currentUsd > 0) {
+                        const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(currentUsd);
+                        const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
+                        const usdUsed = Math.round((xafPaid / 500) * 100) / 100;
+                        currentUsd = Math.max(0, Math.round((currentUsd - usdUsed) * 100) / 100);
+                        currentDebt -= xafPaid;
+                    }
+                    return {
+                        set: { usdBalance: currentUsd, debt: currentDebt },
+                        balanceDelta: currentUsd - (user.usdBalance ?? 0),
+                        debtDelta: currentDebt - (user.debt || 0),
+                    };
+                },
+            });
+            if (out.pendingConflict) {
+                throw new Error(`USD balance movement ${out.reference} is pending review; refusing to apply it twice`);
             }
-
-            // Apply remaining USD change to balance
-            if (remainingAmountUsd !== 0) {
-                currentUsd = Math.round((currentUsd + remainingAmountUsd) * 100) / 100;
-            }
-
-            // Settle debt AFTER update using any remaining USD
-            if (currentDebt > 0 && currentUsd > 0) {
-                const xafCoverableByUsd = CurrencyConverter.usdToXafWithdrawal(currentUsd);
-                const xafPaid = Math.min(currentDebt, xafCoverableByUsd);
-                const usdUsed = Math.round((xafPaid / 500) * 100) / 100;
-                currentUsd = Math.max(0, Math.round((currentUsd - usdUsed) * 100) / 100);
-                currentDebt -= xafPaid;
-            }
-
-            const updated = await userRepository.updateById(userId, { usdBalance: currentUsd, debt: currentDebt });
-            return updated ? updated.usdBalance : null;
+            if (out.guardFailed) throw new InsufficientAvailableBalanceError();
+            return out.user ? out.user.usdBalance : null;
         } catch (error) {
             log.error(`Error updating USD balance for user ${userId}`, error);
             throw error;
@@ -1089,7 +1140,7 @@ export class UserService {
                 return { success: false, message: 'User not found' };
             }
 
-            if (user.usdBalance < usdAmount) {
+            if (!(usdAmount > 0) || (user.usdBalance ?? 0) - (user.reservedUsdBalance ?? 0) < usdAmount) {
                 return { success: false, message: 'Insufficient USD balance' };
             }
 
@@ -1105,9 +1156,11 @@ export class UserService {
             const xafAmount = CurrencyConverter.usdToXafWithdrawal(usdAmount);
             const conversionRate = CURRENCY_CONVERSION_RATES.USD_TO_XAF_WITHDRAWAL;
 
-            // Update both balances
-            await userRepository.updateUsdBalance(userId, -usdAmount);
-            await userRepository.updateBalance(userId, xafAmount);
+            // One open conversion per member; guarded debit, then credit (retried by a job, never undone).
+            const conv = await convertBalance({ userId, from: 'USD', fromAmount: usdAmount, to: 'XAF', toAmount: xafAmount });
+            if (conv.outcome === 'insufficient') return { success: false, message: 'Insufficient USD balance' };
+            if (conv.outcome === 'busy') return { success: false, message: 'Une conversion est déjà en cours : réessayez dans quelques minutes.' };
+            if (conv.outcome === 'credit_pending') return { success: false, message: 'Conversion en cours de finalisation : le montant converti sera crédité automatiquement.' };
 
             // Create conversion transaction record
             try {
@@ -1156,7 +1209,7 @@ export class UserService {
                 return { success: false, message: 'User not found' };
             }
 
-            if (user.balance < xafAmount) {
+            if (!(xafAmount > 0) || (user.balance ?? 0) - Math.max(0, user.debt || 0) - (user.reservedBalance ?? 0) < xafAmount) {
                 return { success: false, message: 'Insufficient XAF balance' };
             }
 
@@ -1172,9 +1225,11 @@ export class UserService {
             const usdAmount = CurrencyConverter.xafToUsd(xafAmount);
             const conversionRate = CURRENCY_CONVERSION_RATES.XAF_TO_USD;
 
-            // Update both balances
-            await userRepository.updateBalance(userId, -xafAmount);
-            await userRepository.updateUsdBalance(userId, usdAmount);
+            // One open conversion per member; guarded debit, then credit (retried by a job, never undone).
+            const conv = await convertBalance({ userId, from: 'XAF', fromAmount: xafAmount, to: 'USD', toAmount: usdAmount });
+            if (conv.outcome === 'insufficient') return { success: false, message: 'Insufficient XAF balance' };
+            if (conv.outcome === 'busy') return { success: false, message: 'Une conversion est déjà en cours : réessayez dans quelques minutes.' };
+            if (conv.outcome === 'credit_pending') return { success: false, message: 'Conversion en cours de finalisation : le montant converti sera crédité automatiquement.' };
 
             // Create conversion transaction record
             try {
@@ -3128,7 +3183,27 @@ export class UserService {
                 }
                 updatedUser = await userRepository.updateActivationBalance(userId, amount);
             } else {
-                updatedUser = await userRepository.updateBalance(userId, amount);
+                // Main balance: a transaction is recorded in payment-service first
+                // (refused if payment-service cannot record it), then the balance
+                // moves once under the same ledger reference.
+                const reference = `admin-adjust:${new Types.ObjectId().toHexString()}`;
+                const recorded = await paymentService.recordAdjustmentTransaction({
+                    userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference, status: 'pending',
+                });
+                try {
+                    updatedUser = await userRepository.updateBalance(userId, amount, {
+                        reference, source: 'admin-adjust', description: `Ajustement admin: ${reason.trim()}`.slice(0, 500),
+                    });
+                } catch (moveError) {
+                    await paymentService.recordAdjustmentTransaction({
+                        userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference, status: 'failed',
+                    }).catch(() => undefined);
+                    throw moveError;
+                }
+                await paymentService.recordAdjustmentTransaction({
+                    userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference,
+                    status: updatedUser ? 'completed' : 'failed',
+                }).catch((e: any) => log.error(`Adjustment ${reference} applied but its transaction ${recorded.transactionId} could not be marked completed: ${e.message}`));
             }
 
             if (updatedUser) {

@@ -1,5 +1,6 @@
 import config from '../../config';
 import { Request, Response } from 'express';
+import { toMemberTransaction, toMemberTransactions } from '../../utils/member-transaction-view';
 import { Types } from 'mongoose';
 import paymentService from '../../services/payment.service';
 import { userServiceClient } from '../../services/clients/user.service.client';
@@ -69,7 +70,7 @@ export class TransactionController {
 
             return res.status(200).json({
                 success: true,
-                transactions: result.transactions,
+                transactions: toMemberTransactions(result.transactions),
                 pagination: {
                     total: result.total,
                     limit: options.limit,
@@ -112,7 +113,7 @@ export class TransactionController {
 
             return res.status(200).json({
                 success: true,
-                transaction
+                transaction: toMemberTransaction(transaction)
             });
         } catch (error) {
             log.error(`Error in getTransaction: ${error}`);
@@ -265,6 +266,17 @@ export class TransactionController {
             const ipAddress = req.ip || '';
             const deviceInfo = req.get('User-Agent') || '';
 
+            // Optional idempotency key (header `Idempotency-Key`, or body `idempotencyKey`):
+            // one key = one withdrawal request per member; a repeated tap returns the first.
+            const rawKey = req.get('Idempotency-Key') ?? req.body?.idempotencyKey;
+            let idempotencyKey: string | undefined;
+            if (rawKey !== undefined && rawKey !== null && rawKey !== '') {
+                if (typeof rawKey !== 'string' || !/^[A-Za-z0-9_.:-]{8,100}$/.test(rawKey)) {
+                    return res.status(400).json({ success: false, message: 'Invalid Idempotency-Key (8-100 characters: letters, digits, _ . : -).' });
+                }
+                idempotencyKey = rawKey;
+            }
+
             // Route to appropriate withdrawal method based on type
             let withdrawalResult;
             if (withdrawalType === 'crypto') {
@@ -272,7 +284,8 @@ export class TransactionController {
                     userId,
                     amount,
                     ipAddress,
-                    deviceInfo
+                    deviceInfo,
+                    idempotencyKey,
                 );
             } else {
                 
@@ -281,7 +294,8 @@ export class TransactionController {
                     userId,
                     amount,
                     ipAddress,
-                    deviceInfo
+                    deviceInfo,
+                    idempotencyKey,
                 );
             }
 
@@ -858,7 +872,7 @@ export class TransactionController {
 
             return res.status(200).json({
                 success: true,
-                transactions: result.transactions,
+                transactions: toMemberTransactions(result.transactions),
                 pagination: {
                     total: result.total,
                     limit: options.limit,
@@ -906,7 +920,7 @@ export class TransactionController {
             return res.status(200).json({
                 success: true,
                 data: {
-                    transactions: result.transactions,
+                    transactions: toMemberTransactions(result.transactions),
                     pagination: {
                         page: options.page,
                         limit: options.limit,

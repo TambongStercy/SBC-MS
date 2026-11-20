@@ -27,6 +27,9 @@ interface SubscriptionPlan {
 }
 
 // XAF pricing for traditional payments (Mobile Money, etc.)
+/** CLASSIQUE → CIBLE upgrade price (XAF). */
+const UPGRADE_PRICE_XAF = 3150;
+
 const AVAILABLE_PLANS_XAF: SubscriptionPlan[] = [
     {
         id: SubscriptionType.CLASSIQUE,
@@ -324,6 +327,21 @@ export class SubscriptionService {
     }
 
     /**
+     * Prices of the packs a manual activation can grant (payment-service checks a
+     * provider-confirmed amount against them). Same sources as the purchase flows:
+     * AVAILABLE_PLANS_*, the upgrade price, CRYPTO_SUBSCRIPTION_PRICING.
+     */
+    getPlanPrices(): Record<'CLASSIQUE' | 'CIBLE' | 'UPGRADE', { XAF: number; USD: number }> {
+        const xaf = (t: SubscriptionType) => AVAILABLE_PLANS_XAF.find((p) => p.id === t)!.price;
+        const usd = (t: SubscriptionType) => AVAILABLE_PLANS_CRYPTO_USD.find((p) => p.id === t)!.price;
+        return {
+            CLASSIQUE: { XAF: xaf(SubscriptionType.CLASSIQUE), USD: usd(SubscriptionType.CLASSIQUE) },
+            CIBLE: { XAF: xaf(SubscriptionType.CIBLE), USD: usd(SubscriptionType.CIBLE) },
+            UPGRADE: { XAF: UPGRADE_PRICE_XAF, USD: CRYPTO_SUBSCRIPTION_PRICING.upgrade.inscription },
+        };
+    }
+
+    /**
      * Get plan details for a specific subscription type and payment method
      */
     private getPlanDetails(planType: SubscriptionType, paymentMethod?: 'crypto' | 'traditional'): SubscriptionPlan | null {
@@ -458,7 +476,7 @@ export class SubscriptionService {
         }
 
         // 3. Use standard XAF pricing for PaymentIntent creation - payment service will handle crypto conversion
-        const upgradePrice = 3150; // Standard XAF amount (CIBLE 5300 − CLASSIQUE 2150)
+        const upgradePrice = UPGRADE_PRICE_XAF; // Standard XAF amount (CIBLE 5300 − CLASSIQUE 2150)
         const currency = 'XAF';
         this.log.info(`Using standard upgrade pricing: ${upgradePrice} ${currency} (payment service will handle crypto conversion if needed)`);
 

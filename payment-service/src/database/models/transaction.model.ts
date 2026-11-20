@@ -33,6 +33,9 @@ export enum TransactionType {
     // Advertising balance (WhatsApp status marketplace diffuseur earnings)
     ADVERTISING_EARNINGS = 'advertising_earnings',             // Campaign payout → Advertising balance
     ADVERTISING_TRANSFER_OUT = 'advertising_transfer_out',     // Advertising balance → Main balance
+
+    // Admin balance adjustment (record only: user-service moves the balance under the same reference)
+    ADMIN_ADJUSTMENT = 'admin_adjustment',
 }
 
 // Define Currency
@@ -107,6 +110,9 @@ export interface ITransaction extends Document {
     rejectedAt?: Date;             // When the withdrawal was rejected
     rejectionReason?: string;      // Reason for rejection
     adminNotes?: string;           // Additional notes from admin
+
+    /** Client-chosen key of a withdrawal request (unique per user): a repeated tap returns the first request. */
+    idempotencyKey?: string;
 }
 
 // Payment Provider Data Schema
@@ -237,6 +243,10 @@ const TransactionSchema = new Schema<ITransaction>(
         adminNotes: {
             type: String
         },
+        idempotencyKey: {
+            type: String,
+            maxlength: 100,
+        },
     },
     {
         timestamps: true,
@@ -263,6 +273,12 @@ TransactionSchema.pre('updateOne', softDeleteMiddleware);
 TransactionSchema.index({ userId: 1, type: 1, status: 1, createdAt: -1 });
 TransactionSchema.index({ userId: 1, createdAt: -1 });
 TransactionSchema.index({ status: 1, createdAt: -1 });
+// One withdrawal per {user, idempotencyKey}. Partial: only documents that carry a key
+// (none of the existing ones), so it builds on the existing collection without conflicts.
+TransactionSchema.index(
+    { userId: 1, idempotencyKey: 1 },
+    { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } }, name: 'uniq_user_idempotency_key' },
+);
 
 // Model Export
 const TransactionModel = model<ITransaction>('Transaction', TransactionSchema);

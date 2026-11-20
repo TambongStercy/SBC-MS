@@ -807,6 +807,30 @@ class NOWPaymentsService {
     /**
      * Verify webhook signature
      */
+    /**
+     * IPN signature check, mandatory on the public webhook routes (support phase 2:
+     * before, a request without the x-nowpayments-sig header skipped the check).
+     * NOWPayments signs HMAC-SHA512(ipnSecret, JSON with keys sorted); the raw body
+     * as received is accepted too. Refuses when the secret or the header is missing.
+     */
+    verifyIpnRequest(rawBody: Buffer | string | undefined, payload: any, signature: string | undefined): boolean {
+        const secret = config.nowpayments.ipnSecret;
+        if (!secret || !signature || typeof signature !== 'string' || !/^[0-9a-f]+$/i.test(signature)) return false;
+        const crypto = require('crypto');
+        const sortDeep = (v: any): any => Array.isArray(v)
+            ? v.map(sortDeep)
+            : v && typeof v === 'object'
+                ? Object.keys(v).sort().reduce((acc: any, k) => { acc[k] = sortDeep(v[k]); return acc; }, {})
+                : v;
+        const candidates = [JSON.stringify(sortDeep(payload))];
+        if (rawBody && rawBody.length) candidates.push(Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody);
+        const given = Buffer.from(signature.toLowerCase(), 'hex');
+        return candidates.some((body) => {
+            const expected = Buffer.from(crypto.createHmac('sha512', secret).update(body).digest('hex'), 'hex');
+            return expected.length === given.length && crypto.timingSafeEqual(expected, given);
+        });
+    }
+
     verifyWebhookSignature(payload: string, signature: string): boolean {
         try {
             const crypto = require('crypto');

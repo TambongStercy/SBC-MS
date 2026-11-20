@@ -13,6 +13,8 @@ import { leaderboardBonusScheduler } from './jobs/leaderboard-bonus-scheduler';
 import { canalDeVenteJob } from './jobs/canal-de-vente.job';
 import { subscriptionEndingScheduler } from './jobs/subscription-ending-scheduler';
 import { contactsWebhookJob } from './jobs/contacts-webhook.job';
+import { ledgerCheckJob } from './jobs/ledger-check.job';
+import { conversionRetryJob } from './jobs/conversion-retry.job';
 import { activitySignalsJob } from './jobs/activity-signals.job';
 
 // Create Express server
@@ -95,6 +97,8 @@ async function startServer() {
         canalDeVenteJob.start();
         subscriptionEndingScheduler.start();
         contactsWebhookJob.start();
+        ledgerCheckJob.start(); // nightly wallet ledger check (read-only, opens ledger_mismatch cases)
+        conversionRetryJob.start(); // finishes conversions whose credit leg did not land
         activitySignalsJob.start();
 
         // Build the first leaderboard snapshot now, so the first visitor after
@@ -118,6 +122,8 @@ async function startServer() {
             canalDeVenteJob.stop();
             subscriptionEndingScheduler.stop();
             contactsWebhookJob.stop();
+            ledgerCheckJob.stop();
+            conversionRetryJob.stop();
             activitySignalsJob.stop();
             process.exit(0);
         };

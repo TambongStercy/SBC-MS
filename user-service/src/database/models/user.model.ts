@@ -148,6 +148,14 @@ export interface IUser extends Document {
     referralCode?: string;
     balance: number;
     usdBalance: number;
+    /**
+     * Part of `balance` held by withdrawals in flight (XAF). Available to spend
+     * = balance - debt - reservedBalance. Only balancereservations moves it
+     * (services/balance-reservation.service.ts).
+     */
+    reservedBalance?: number;
+    /** Same for `usdBalance` (crypto withdrawals). */
+    reservedUsdBalance?: number;
     activationBalance: number; // Dedicated balance for activating referrals' accounts (BEAC compliance)
     // Diffuseur earnings from the WhatsApp status advertising marketplace. Kept
     // separate from `balance` per product decision, and NOT directly withdrawable:
@@ -274,6 +282,10 @@ const UserSchema = new Schema<IUser>(
         referralCode: { type: String, unique: true, sparse: true, index: true, lowercase: true },
         balance: { type: Number, default: 0, required: true },
         usdBalance: { type: Number, default: 0, required: true },
+        // Withdrawal reservations (see IUser). No default backfill is needed:
+        // every reader uses $ifNull / ?? 0.
+        reservedBalance: { type: Number, default: 0 },
+        reservedUsdBalance: { type: Number, default: 0 },
         activationBalance: { type: Number, default: 0, required: true }, // For sponsoring referral activations (BEAC compliance)
         advertisingBalance: { type: Number, default: 0, required: true, min: 0 },
         eventOrganizerBalance: { type: Number, default: 0, required: true, min: 0 }, // SBC Event organizer earnings. Mongoose default handles backfill.

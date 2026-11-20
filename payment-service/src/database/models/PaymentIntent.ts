@@ -149,6 +149,20 @@ const PaymentIntentSchema: Schema = new Schema(
 
 // Index for efficient querying by provider reference
 PaymentIntentSchema.index({ gateway: 1, gatewayPaymentId: 1 }, { sparse: true });
+// A provider reference belongs to one intent. Partial on purpose: the existing
+// collection holds duplicate references (all manual admin recoveries, 2025-08 →
+// 2026-02), so only intents created from the cutoff are covered, which lets the
+// index build on the existing documents. Older references are protected by the
+// explicit check + manualrefclaims in the manual activation paths.
+export const REF_UNIQUE_SINCE = new Date('2026-11-18T00:00:00.000Z');
+PaymentIntentSchema.index(
+    { gateway: 1, gatewayPaymentId: 1 },
+    {
+        unique: true,
+        name: 'uniq_gateway_ref_since_20261118',
+        partialFilterExpression: { gatewayPaymentId: { $type: 'string' }, createdAt: { $gte: REF_UNIQUE_SINCE } },
+    },
+);
 // Security plan Phase 10: conversion dashboard ranges and the per-member limit.
 PaymentIntentSchema.index({ createdAt: -1 });
 PaymentIntentSchema.index({ userId: 1, createdAt: -1 });

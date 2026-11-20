@@ -77,6 +77,8 @@ const main = async () => {
     // The MoneyFusion webhook books the paid amount in francs too.
     const gn = await PaymentIntentModel.findOne({ countryCode: 'GN' }).lean() as any;
     (paymentService as any).handlePaymentCompletion = async () => undefined;
+    // Support phase 2: the webhook is a hint; MoneyFusion's status answer decides (and must match).
+    (moneyFusionService as any).checkPaymentStatus = async () => ({ statut: 'paid', Montant: 2150, personal_Info: [{ sessionId: gn.sessionId }] });
     await paymentService.handleMoneyFusionPayinWebhook({ event: 'payin.session.completed', tokenPay: gn.gatewayPaymentId, Montant: 2150 });
     const gnAfter = await PaymentIntentModel.findById(gn._id).lean() as any;
     check('webhook books Guinée as 2150 XAF', gnAfter.status === 'SUCCEEDED' && gnAfter.paidAmount === 2150 && gnAfter.paidCurrency === 'XAF',

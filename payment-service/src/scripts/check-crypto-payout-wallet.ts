@@ -52,6 +52,15 @@ const main = async () => {
     (userServiceClient as any).getUserDetails = async () => ({ _id: 'u1', ...wallet });
     (nowPaymentsService as any).createPayout = async (p: any) => { payouts.push(p); return { id: `po_${payouts.length}` }; };
     (transactionRepository as any).update = async (_id: any, u: any) => { updates.push(u); return u; };
+    // Support phase 2: status changes go through withdrawal-lifecycle (one conditional write)
+    // and the payout reference is written with named keys; record them instead of a database.
+    const TransactionModel = (await import('../database/models/transaction.model')).default;
+    (TransactionModel as any).updateOne = async (_f: any, u: any) => { updates.push(u.$set ?? u); return { modifiedCount: 1 }; };
+    (TransactionModel as any).findOneAndUpdate = (_f: any, u: any) => {
+        updates.push(u.$set ?? u);
+        return { lean: () => ({ exec: async () => ({ transactionId: 'TX1', metadata: {}, ...(u.$set ?? {}) }) }) };
+    };
+    (userServiceClient as any).releaseWithdrawalFunds = async () => 'released';
     const pay = async (t: any) => { try { await (paymentService as any).processCryptoWithdrawalPayout(t); return null; } catch (e: any) { return e; } };
 
     let err = await pay(tx({ cryptoAddress: REQUESTED.toLowerCase(), cryptoCurrency: 'USDTBSC' }));
@@ -59,7 +68,7 @@ const main = async () => {
 
     wallet = { cryptoWalletAddress: OTHER, cryptoWalletCurrency: 'USDTBSC' };
     err = await pay(tx({ cryptoAddress: REQUESTED, cryptoCurrency: 'USDTBSC' }));
-    check('wallet changed since the request: no payout, transaction failed', !!err && payouts.length === 1 && updates[updates.length - 1]?.status === 'failed', err?.message);
+    check('wallet changed since the request: no payout, transaction failed', !!err && payouts.length === 1 && updates.slice(-3).some(u => u?.status === 'failed'), err?.message);
 
     wallet = { cryptoWalletAddress: REQUESTED, cryptoWalletCurrency: 'BNBBSC' };
     err = await pay(tx({ cryptoAddress: REQUESTED, cryptoCurrency: 'USDTBSC' }));

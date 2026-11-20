@@ -7,11 +7,14 @@ import withdrawalRoutes from './withdrawal.routes';
 import withdrawalApprovalRoutes from './withdrawal-approval.routes';
 import adminRoutes from './admin.routes';
 import recoveryRoutes from './recovery.routes';
+import supportRoutes from './support.routes';
 
 const router = Router();
 
 router.use('/transactions', transactionRoutes);
 router.use('/payments', paymentRoutes);
+// SBC Support (contract §2.2), before /internal so its own auth and logging apply.
+router.use('/internal/support', supportRoutes);
 router.use('/internal', internalRoutes);
 router.use('/payouts', payoutRoutes);
 router.use('/withdrawals', withdrawalRoutes);
