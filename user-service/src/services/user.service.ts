@@ -38,9 +38,10 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
-import { addressTail, cryptoChangeTarget, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
-import { isSameMomo, momoChangeTarget, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
+import { AppError, AuthenticatorRequiredError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
+import { memberAuthService } from './member-auth.service';
+import { addressTail, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
+import { isSameMomo, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
 import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsForCountry } from '../utils/country-filter';
@@ -1859,15 +1860,16 @@ export class UserService {
     }
 
     /**
-     * Step 1 of setting or changing the crypto wallet: the account password,
-     * then a code to the account email, bound to this currency + address.
-     * Without a password, resends a code while one is still live for the same
-     * wallet.
+     * Sets or changes the wallet that receives crypto withdrawals (Security plan
+     * Phase 0 + 3): the account password and a code from the member's
+     * authenticator app (or a backup code). No authenticator yet → 403
+     * AUTHENTICATOR_REQUIRED, the app opens the setup. Replacing a wallet locks
+     * withdrawals and alerts the account e-mail; a first wallet locks nothing.
      */
-    async requestCryptoWalletChange(
+    async changeCryptoWallet(
         userId: string | Types.ObjectId,
-        input: { cryptoWalletAddress?: unknown; cryptoWalletCurrency?: unknown; password?: unknown },
-    ): Promise<{ sentTo: string }> {
+        input: { cryptoWalletAddress?: unknown; cryptoWalletCurrency?: unknown; password?: unknown; code?: unknown },
+    ): Promise<{ cryptoWalletAddress: string; cryptoWalletCurrency: string; withdrawalsLockedUntil: string | null }> {
         const currency = normalizeCryptoCurrency(input.cryptoWalletCurrency);
         if (!currency) {
             throw new AppError('Choisissez la cryptomonnaie de votre portefeuille.', 400);
@@ -1883,56 +1885,17 @@ export class UserService {
         if (isSameCryptoWallet(user, address, currency)) {
             throw new AppError('C’est déjà votre portefeuille crypto.', 400);
         }
-        if (!this.canReachOwnerForCode(user)) {
-            throw new AppError('Votre compte n’a ni adresse e-mail ni WhatsApp pour recevoir le code : contactez le support pour changer votre portefeuille crypto.', 400);
+        if (!(await memberAuthService.isEnabled(user._id))) {
+            throw new AuthenticatorRequiredError();
         }
-        const target = cryptoChangeTarget(address, currency);
         const password = typeof input.password === 'string' ? input.password : '';
-        const isResend = !password && (user.otps || []).some(o =>
-            o.purpose === 'changeCrypto' && o.target === target && new Date(o.expiration) > new Date());
-        if (!isResend && (!password || !user.password || !(await bcrypt.compare(password, user.password)))) {
-            throw new AppError(password ? 'Mot de passe incorrect.' : 'Votre code a expiré : recommencez le changement de portefeuille.', 400);
+        if (!password || !user.password || !(await bcrypt.compare(password, user.password))) {
+            throw new AppError('Mot de passe incorrect.', 400);
         }
-
-        const otpCode = await this.generateAndStoreOtp(user._id, 'otps', 10, { purpose: 'changeCrypto', target });
-        const sentTo = await this.sendChangeCodeToOwner(user, otpCode, 'changeCrypto');
-        log.info(`Crypto wallet change code sent to the account owner (${sentTo}) for user ${userId} (${currency}, address ending ${addressTail(address)})`);
-        return { sentTo };
-    }
-
-    /**
-     * Step 2: the code sent by requestCryptoWalletChange, for the same currency
-     * and address. Replacing an existing wallet locks withdrawals for
-     * WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE hours and alerts the account
-     * email; a first wallet only needs the code.
-     */
-    async confirmCryptoWalletChange(
-        userId: string | Types.ObjectId,
-        input: { cryptoWalletAddress?: unknown; cryptoWalletCurrency?: unknown; code?: unknown },
-    ): Promise<{ cryptoWalletAddress: string; cryptoWalletCurrency: string; withdrawalsLockedUntil: string | null }> {
-        const currency = normalizeCryptoCurrency(input.cryptoWalletCurrency);
-        const address = currency ? normalizeCryptoAddress(input.cryptoWalletAddress, currency) : null;
-        const code = typeof input.code === 'string' ? input.code.trim() : '';
-        if (!currency || !address || !code) {
-            throw new AppError('Cryptomonnaie, adresse et code sont requis.', 400);
-        }
-        const user = await userRepository.findById(userId);
-        if (!user || user.blocked || user.deleted) {
-            throw new AppError('User account is inactive or not found.', 403);
-        }
-        const target = cryptoChangeTarget(address, currency);
-        const now = new Date();
-        const matching = (user.otps || []).find(otp => otp.purpose === 'changeCrypto' && otp.target === target
-            && otpMatches(otp.code, code) && otp.expiration > now);
-        if (!matching) {
-            log.warn(`Invalid or expired crypto wallet change code for user ${userId}`);
-            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu.', 400);
-        }
-        await userRepository.clearOtps(user._id, 'otps');
+        await memberAuthService.verifyCode(user._id, input.code, 'crypto_change');
 
         const hadWallet = !!user.cryptoWalletAddress;
-        const changed = !isSameCryptoWallet(user, address, currency);
-        const lock = hadWallet && changed ? withdrawalLockFields('crypto_change') : null;
+        const lock = hadWallet ? withdrawalLockFields('crypto_change') : null;
         await userRepository.updateById(user._id, {
             cryptoWalletAddress: address,
             cryptoWalletCurrency: currency,
@@ -4114,7 +4077,7 @@ export class UserService {
     }
 
     /** Whether a code can reach the account's owner (e-mail, or WhatsApp when WhatsApp codes are on). */
-    private canReachOwnerForCode(user: IUser): boolean {
+    canReachOwnerForCode(user: IUser): boolean {
         return !!user.email || (whatsappOtpEnabled() && !!user.phoneNumber);
     }
 
@@ -4124,7 +4087,7 @@ export class UserService {
      * WhatsApp, WhatsApp mirrored to e-mail as for sign-in codes). Returns
      * where it went, masked, for the confirmation screen.
      */
-    private async sendChangeCodeToOwner(user: IUser, code: string, purpose: 'changeMomo' | 'changeCrypto'): Promise<string> {
+    async sendChangeCodeToOwner(user: IUser, code: string, purpose: 'changeMomo' | 'changeCrypto' | 'setupAuthenticator'): Promise<string> {
         const { channel, recipient } = this.getOtpDeliveryInfo(user);
         await this.sendAccountAccessOtp(user, code, { purpose });
         if (channel !== DeliveryChannel.WHATSAPP) return maskEmail(recipient);
@@ -4557,17 +4520,17 @@ export class UserService {
     }
 
     /**
-     * Step 1 of a Mobile Money change (Security plan Phase 0): the account
-     * password, then a code to the account email. The code proves control of
-     * the account, so it never goes to the new number (whoever holds that number
-     * is the one we cannot trust yet). It is bound to this number + operator.
-     * A resend without the password is allowed while a code for the same
-     * details is live, like the email change.
+     * Sets or changes the Mobile Money number that receives withdrawals
+     * (Security plan Phase 0 + 3): the account password and a code from the
+     * member's authenticator app (or a backup code). No authenticator yet → 403
+     * AUTHENTICATOR_REQUIRED. Replacing a number locks withdrawals for
+     * WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE hours and alerts the account
+     * e-mail; a first number locks nothing.
      */
-    async requestMomoChange(
+    async changeMomo(
         userId: string | Types.ObjectId,
-        input: { momoNumber?: unknown; momoOperator?: unknown; password?: unknown },
-    ): Promise<{ sentTo: string }> {
+        input: { momoNumber?: unknown; momoOperator?: unknown; password?: unknown; code?: unknown },
+    ): Promise<{ momoNumber: string; momoOperator: string; withdrawalsLockedUntil: string | null }> {
         const operator = normalizeMomoOperator(input.momoOperator);
         if (!MOMO_OPERATOR_PATTERN.test(operator)) {
             throw new AppError('Choisissez votre opérateur Mobile Money.', 400);
@@ -4584,57 +4547,17 @@ export class UserService {
         if (user.momoNumber && user.momoOperator && isSameMomo(user, { momoNumber: number, momoOperator: operator }, country)) {
             throw new AppError('C’est déjà votre numéro Mobile Money.', 400);
         }
-        if (!this.canReachOwnerForCode(user)) {
-            throw new AppError('Votre compte n’a ni adresse e-mail ni WhatsApp pour recevoir le code : contactez le support pour changer votre numéro Mobile Money.', 400);
+        if (!(await memberAuthService.isEnabled(user._id))) {
+            throw new AuthenticatorRequiredError();
         }
-        const target = momoChangeTarget(number, operator);
         const password = typeof input.password === 'string' ? input.password : '';
-        const isResend = !password && (user.otps || []).some(o =>
-            o.purpose === 'changeMomo' && o.target === target && new Date(o.expiration) > new Date());
-        if (!isResend && (!password || !user.password || !(await bcrypt.compare(password, user.password)))) {
-            throw new AppError(password ? 'Mot de passe incorrect.' : 'Votre code a expiré : recommencez le changement de numéro.', 400);
+        if (!password || !user.password || !(await bcrypt.compare(password, user.password))) {
+            throw new AppError('Mot de passe incorrect.', 400);
         }
-
-        const otpCode = await this.generateAndStoreOtp(user._id, 'otps', 10, { purpose: 'changeMomo', target });
-        const sentTo = await this.sendChangeCodeToOwner(user, otpCode, 'changeMomo');
-        log.info(`MoMo change code sent to the account owner (${sentTo}) for user ${userId} (number ending ${number.slice(-3)}, ${operator})`);
-        return { sentTo };
-    }
-
-    /**
-     * Step 2: the code sent by requestMomoChange, for the same number and
-     * operator. Replacing an existing number locks withdrawals for
-     * WITHDRAWAL_LOCK_HOURS_AFTER_CONTACT_CHANGE hours and alerts the account
-     * email; a first number (none before) only needs the code.
-     */
-    async confirmMomoChange(
-        userId: string | Types.ObjectId,
-        input: { momoNumber?: unknown; momoOperator?: unknown; code?: unknown },
-    ): Promise<{ momoNumber: string; momoOperator: string; withdrawalsLockedUntil: string | null }> {
-        const operator = normalizeMomoOperator(input.momoOperator);
-        const code = typeof input.code === 'string' ? input.code.trim() : '';
-        const user = await userRepository.findById(userId);
-        if (!user || user.blocked || user.deleted) {
-            throw new AppError('User account is inactive or not found.', 403);
-        }
-        const country = normalizeCountryName(user.country);
-        const number = normalizeMomoNumber(input.momoNumber, country);
-        if (!number || !MOMO_OPERATOR_PATTERN.test(operator) || !code) {
-            throw new AppError('Numéro, opérateur et code sont requis.', 400);
-        }
-        const target = momoChangeTarget(number, operator);
-        const now = new Date();
-        const matching = (user.otps || []).find(otp => otp.purpose === 'changeMomo' && otp.target === target
-            && otpMatches(otp.code, code) && otp.expiration > now);
-        if (!matching) {
-            log.warn(`Invalid or expired MoMo change code for user ${userId}`);
-            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu.', 400);
-        }
-        await userRepository.clearOtps(user._id, 'otps');
+        await memberAuthService.verifyCode(user._id, input.code, 'momo_change');
 
         const hadNumber = !!user.momoNumber;
-        const changed = !isSameMomo(user, { momoNumber: number, momoOperator: operator }, country);
-        const lock = hadNumber && changed ? withdrawalLockFields('momo_change') : null;
+        const lock = hadNumber ? withdrawalLockFields('momo_change') : null;
         await userRepository.updateById(user._id, {
             momoNumber: number,
             momoOperator: operator,

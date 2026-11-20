@@ -96,6 +96,8 @@ interface IConfig {
     };
     selfBaseUrl: string; // Base URL of this service for webhooks
     withdrawalsEnabled: boolean; // Global withdrawal control switch
+    /** Security plan Phase 3: a member withdrawal needs their authenticator app (default on; MEMBER_AUTHENTICATOR_REQUIRED=false goes back to the e-mailed code). */
+    memberAuthenticatorRequired: boolean;
     // Preprod payment sandbox — fake provider responses driven by magic values.
     // Refused at runtime when nodeEnv === 'production' (see services/sandbox.service.ts).
     sandboxEnabled: boolean;
@@ -194,6 +196,7 @@ const config: IConfig = {
     },
     selfBaseUrl: process.env.SELF_BASE_URL || 'http://localhost:3003',
     withdrawalsEnabled: process.env.WITHDRAWALS_ENABLED === 'true', // Global withdrawal control - default false
+    memberAuthenticatorRequired: process.env.MEMBER_AUTHENTICATOR_REQUIRED !== 'false',
     sandboxEnabled: process.env.PAYMENT_SANDBOX_ENABLED === 'true', // Default off; never honored in production
 };
 

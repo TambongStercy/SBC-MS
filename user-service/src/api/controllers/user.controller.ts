@@ -9,6 +9,7 @@ import { ContactSearchFilters, UserSex } from '../../types/contact.types';
 import { isValidObjectId, Types } from 'mongoose';
 import { NextFunction, Request as ExpressRequest } from 'express';
 import { AppError, OtpThrottledError } from '../../utils/errors';
+import { memberAuthService } from '../../services/member-auth.service';
 import { normalizePhoneNumber } from '../../utils/phone.utils';
 import UserModel, { UserRole } from '../../database/models/user.model';
 import { authorize } from '../middleware/rbac.middleware';
@@ -2468,95 +2469,104 @@ export class UserController {
         }
     }
 
-    /**
-     * @route POST /users/me/momo/request-change { momoNumber, momoOperator, password }
-     * Sends a code to the account email for this MoMo number + operator.
-     */
-    async requestMomoChange(req: AuthenticatedRequest, res: Response): Promise<void> {
+    /** Runs a member action and answers with the service's result; AppError → its status, message and code. */
+    private async memberAction(req: AuthenticatedRequest, res: Response, failMessage: string, run: (userId: string) => Promise<unknown>): Promise<void> {
         const userId = req.user?.userId;
         if (!userId) {
             res.status(401).json({ success: false, message: 'Authentication required.' });
             return;
         }
         try {
-            const data = await this.userService.requestMomoChange(userId, req.body || {});
-            res.status(200).json({ success: true, data, message: `Un code a été envoyé à ${data.sentTo}.` });
-        } catch (error: any) {
-            if (error instanceof AppError) {
-                res.status(error.statusCode).json({ success: false, message: error.message });
-                return;
-            }
-            log.error(`[Controller] MoMo change request failed for user ${userId}:`, error);
-            res.status(500).json({ success: false, message: 'Le code n’a pas pu être envoyé. Réessayez.' });
-        }
-    }
-
-    /**
-     * @route POST /users/me/momo/confirm-change { momoNumber, momoOperator, code }
-     * Applies the change; replacing a number locks withdrawals (48 h by default).
-     */
-    async confirmMomoChange(req: AuthenticatedRequest, res: Response): Promise<void> {
-        const userId = req.user?.userId;
-        if (!userId) {
-            res.status(401).json({ success: false, message: 'Authentication required.' });
-            return;
-        }
-        try {
-            const data = await this.userService.confirmMomoChange(userId, req.body || {});
+            const data = await run(userId);
             res.status(200).json({ success: true, data });
         } catch (error: any) {
             if (error instanceof AppError) {
-                res.status(error.statusCode).json({ success: false, message: error.message });
+                res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
                 return;
             }
-            log.error(`[Controller] MoMo change confirm failed for user ${userId}:`, error);
-            res.status(500).json({ success: false, message: 'Le changement n’a pas pu être enregistré. Réessayez.' });
+            log.error(`[Controller] ${failMessage} (user ${userId}):`, error);
+            res.status(500).json({ success: false, message: failMessage });
         }
     }
 
     /**
-     * @route POST /users/crypto/wallet/request-change { cryptoWalletCurrency, cryptoWalletAddress, password? }
-     * Sends a code to the account email; without a password, resends one for the same wallet.
+     * @route POST /users/me/momo/change { momoNumber, momoOperator, password, code }
+     * `code` comes from the member's authenticator app (or is a backup code).
+     * 403 AUTHENTICATOR_REQUIRED when the member has none yet.
      */
-    async requestCryptoWalletChange(req: AuthenticatedRequest, res: Response): Promise<void> {
-        const userId = req.user?.userId;
-        if (!userId) {
-            res.status(401).json({ success: false, message: 'Authentication required.' });
-            return;
-        }
+    async changeMomo(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'Le changement n’a pas pu être enregistré. Réessayez.', id => this.userService.changeMomo(id, req.body || {}));
+    }
+
+    /** @route POST /users/crypto/wallet/change { cryptoWalletCurrency, cryptoWalletAddress, password, code } */
+    async changeCryptoWallet(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'Le changement n’a pas pu être enregistré. Réessayez.', id => this.userService.changeCryptoWallet(id, req.body || {}));
+    }
+
+    /**
+     * The old e-mailed-code routes (request-change / confirm-change), kept so
+     * an app opened before the update gets a clear answer instead of a 404.
+     */
+    async retiredChangeCodeRoute(_req: AuthenticatedRequest, res: Response): Promise<void> {
+        res.status(410).json({
+            success: false,
+            code: 'APP_UPDATE_REQUIRED',
+            message: 'Rechargez la page : le changement se confirme maintenant avec votre mot de passe et le code de l’application d’authentification.',
+        });
+    }
+
+    /** @route GET /users/me/authenticator */
+    async getAuthenticatorStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'Le statut n’a pas pu être lu. Réessayez.', id => memberAuthService.status(id));
+    }
+
+    /** @route POST /users/me/authenticator/setup/request { password } (no password: resend while a code is live) */
+    async requestAuthenticatorSetup(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'Le code n’a pas pu être envoyé. Réessayez.', id => memberAuthService.requestSetup(id, req.body || {}));
+    }
+
+    /** @route POST /users/me/authenticator/setup/start { code } → QR code + secret */
+    async startAuthenticatorSetup(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'La configuration n’a pas pu démarrer. Réessayez.', id => memberAuthService.startSetup(id, req.body || {}));
+    }
+
+    /** @route POST /users/me/authenticator/setup/confirm { code } → 10 backup codes, shown once */
+    async confirmAuthenticatorSetup(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'La configuration n’a pas pu être terminée. Réessayez.', id => memberAuthService.confirmSetup(id, req.body || {}));
+    }
+
+    /** @route GET /users/internal/:userId/authenticator (service) → { enabled } */
+    async internalAuthenticatorStatus(req: Request, res: Response): Promise<void> {
         try {
-            const data = await this.userService.requestCryptoWalletChange(userId, req.body || {});
-            res.status(200).json({ success: true, data, message: `Un code a été envoyé à ${data.sentTo}.` });
+            const enabled = await memberAuthService.isEnabled(req.params.userId);
+            res.status(200).json({ success: true, data: { enabled } });
         } catch (error: any) {
-            if (error instanceof AppError) {
-                res.status(error.statusCode).json({ success: false, message: error.message });
-                return;
-            }
-            log.error(`[Controller] Crypto wallet change request failed for user ${userId}:`, error);
-            res.status(500).json({ success: false, message: 'Le code n’a pas pu être envoyé. Réessayez.' });
+            log.error(`[Controller] Authenticator status failed for ${req.params.userId}:`, error);
+            res.status(500).json({ success: false, message: 'Authenticator status unavailable.' });
         }
     }
 
     /**
-     * @route POST /users/crypto/wallet/confirm-change { cryptoWalletCurrency, cryptoWalletAddress, code }
-     * Applies the change; replacing a wallet locks withdrawals (48 h by default).
+     * @route POST /users/internal/:userId/authenticator/verify { code, action } (service)
+     * payment-service confirms a withdrawal with it. Answers 200 { ok: true } or
+     * the refusal's status/message/code (400 wrong, 429 locked, 403 none).
      */
-    async confirmCryptoWalletChange(req: AuthenticatedRequest, res: Response): Promise<void> {
-        const userId = req.user?.userId;
-        if (!userId) {
-            res.status(401).json({ success: false, message: 'Authentication required.' });
+    async internalVerifyAuthenticator(req: Request, res: Response): Promise<void> {
+        const action = req.body?.action === 'withdrawal' ? 'withdrawal' : null;
+        if (!action) {
+            res.status(400).json({ success: false, message: 'Unknown action.' });
             return;
         }
         try {
-            const data = await this.userService.confirmCryptoWalletChange(userId, req.body || {});
-            res.status(200).json({ success: true, data });
+            const r = await memberAuthService.verifyCode(req.params.userId, req.body?.code, action);
+            res.status(200).json({ success: true, data: { ok: true, ...r } });
         } catch (error: any) {
             if (error instanceof AppError) {
-                res.status(error.statusCode).json({ success: false, message: error.message });
+                res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
                 return;
             }
-            log.error(`[Controller] Crypto wallet change confirm failed for user ${userId}:`, error);
-            res.status(500).json({ success: false, message: 'Le changement n’a pas pu être enregistré. Réessayez.' });
+            log.error(`[Controller] Authenticator verify failed for ${req.params.userId}:`, error);
+            res.status(500).json({ success: false, message: 'Authenticator check unavailable.' });
         }
     }
 

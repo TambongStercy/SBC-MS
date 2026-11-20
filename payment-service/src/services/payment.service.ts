@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { pushWithdrawalResult } from './withdrawal-push';
 import { Types, Aggregate } from 'mongoose';
 import transactionRepository, { CreateTransactionInput } from '../database/repositories/transaction.repository';
@@ -480,6 +481,30 @@ class PaymentService {
      * every path that starts or releases a payout from a member's balance.
      * Fails closed: if user-service cannot answer, nothing is paid.
      */
+    /**
+     * Security plan Phase 3 (Sterling, 2026-11-20): a member withdraws only once
+     * their authenticator app is set up, and confirms each withdrawal with its
+     * code instead of an e-mailed one. MEMBER_AUTHENTICATOR_REQUIRED=false goes
+     * back to the e-mailed code. Fails closed when user-service cannot answer.
+     * Admin paths (approval, admin-initiated) do not call it.
+     */
+    public async assertMemberAuthenticator(userId: string | Types.ObjectId): Promise<void> {
+        if (!config.memberAuthenticatorRequired) return;
+        let enabled: boolean;
+        try {
+            enabled = await userServiceClient.isAuthenticatorEnabled(userId.toString());
+        } catch (error: any) {
+            log.error(`Authenticator check failed for user ${userId}: ${error.message}`);
+            throw new AppError('Les retraits sont momentanément indisponibles. Veuillez réessayer dans quelques minutes.', 503);
+        }
+        if (!enabled) {
+            log.warn(`Withdrawal refused for user ${userId}: no authenticator app set up.`);
+            const refusal = new AppError('Pour retirer, configurez d’abord l’application d’authentification (Google Authenticator, Microsoft Authenticator ou 2FAS) depuis votre profil.', 403);
+            (refusal as any).code = 'AUTHENTICATOR_REQUIRED';
+            throw refusal;
+        }
+    }
+
     public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {
         let lock;
         try {
@@ -495,6 +520,7 @@ class PaymentService {
             : lock.reason === 'phone_change' ? 'du numéro de téléphone'
             : lock.reason === 'momo_change' ? 'du numéro Mobile Money'
             : lock.reason === 'crypto_change' ? 'du portefeuille crypto'
+            : lock.reason === 'authenticator_reset' ? 'de l’application d’authentification'
             : "de l'adresse e-mail ou du numéro de téléphone";
         log.warn(`Withdrawal refused for user ${userId}: locked until ${lock.until} after ${lock.reason ?? 'contact change'} (${audience})`);
 
@@ -533,6 +559,7 @@ class PaymentService {
         // --- End Global Withdrawal Control Check ---
 
         await this.assertWithdrawalsNotLocked(userId);
+        await this.assertMemberAuthenticator(userId);
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -572,7 +599,9 @@ class PaymentService {
                 log.info(`Re-sending OTP for existing PENDING_OTP_VERIFICATION withdrawal (Tx ID: ${existingActiveWithdrawal.transactionId}).`);
                 const { verificationExpiry } = await this.sendWithdrawalOTP(existingActiveWithdrawal.transactionId);
                 otpExpiresAt = verificationExpiry; // Use the new expiry from re-send
-                message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) awaiting OTP verification. Please complete or cancel it before initiating a new one. An OTP has been re-sent to your registered contact for this existing request.`;
+                message = config.memberAuthenticatorRequired
+                    ? `Vous avez déjà une demande de retrait en attente (ID : ${existingActiveWithdrawal.transactionId}). Confirmez-la avec le code de votre application d’authentification, ou annulez-la avant d’en faire une nouvelle.`
+                    : `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) awaiting OTP verification. Please complete or cancel it before initiating a new one. An OTP has been re-sent to your registered contact for this existing request.`;
             } else if (existingActiveWithdrawal.status === TransactionStatus.PENDING || existingActiveWithdrawal.status === TransactionStatus.PROCESSING) {
                 message = `You have an ongoing withdrawal request (ID: ${existingActiveWithdrawal.transactionId}) that is currently being processed. Please be patient and wait for it to complete before initiating a new withdrawal. Processing typically takes a few minutes.`;
             } else {
@@ -797,7 +826,7 @@ class PaymentService {
                 total: netAmountDesired, // Display the NET amount the user requested (in target payout currency)
                 status: updatedTransaction.status,
                 expiresAt: updatedTransaction.verificationExpiry,
-                message: "Withdrawal initiation successful. Please check your registered contact for an OTP."
+                message: config.memberAuthenticatorRequired ? "Confirmez le retrait avec le code de votre application d’authentification." : "Withdrawal initiation successful. Please check your registered contact for an OTP."
             };
         } catch (error: any) {
             log.error(`Error initiating withdrawal for user ${userId}: ${error.message}`, error);
@@ -813,7 +842,7 @@ class PaymentService {
      * Now operates directly on the Transaction model.
      * Removed balance debit here.
      */
-    async verifyWithdrawal(transactionId: string, verificationCode: string) {
+    async verifyWithdrawal(transactionId: string, verificationCode: string, requesterId?: string) {
         log.info(`Verifying withdrawal transaction ${transactionId}`);
 
         try {
@@ -832,6 +861,11 @@ class PaymentService {
 
             if (transaction.type !== TransactionType.WITHDRAWAL) {
                 throw new AppError('Transaction is not a withdrawal type.', 400);
+            }
+
+            if (requesterId && transaction.userId.toString() !== requesterId.toString()) {
+                log.warn(`User ${requesterId} tried to confirm withdrawal ${transactionId} of user ${transaction.userId}.`);
+                throw new AppError('Withdrawal transaction not found.', 404);
             }
 
             if (transaction.status !== TransactionStatus.PENDING_OTP_VERIFICATION) {
@@ -853,7 +887,11 @@ class PaymentService {
                 throw new AppError('Verification code expired. Please re-initiate withdrawal.', 400);
             }
 
-            if (transaction.verificationCode !== verificationCode) {
+            if (config.memberAuthenticatorRequired) {
+                // The code comes from the member's authenticator app (or is a backup
+                // code); user-service checks it, once, with its own lockouts.
+                await userServiceClient.verifyAuthenticatorCode(transaction.userId.toString(), String(verificationCode));
+            } else if (transaction.verificationCode !== verificationCode) {
                 // Invalid OTP
                 throw new AppError('Invalid verification code.', 400);
             }
@@ -1610,6 +1648,16 @@ class PaymentService {
             throw new AppError('Transaction not found.', 404);
         }
 
+        if (config.memberAuthenticatorRequired) {
+            // Confirmed with the authenticator app: no code is sent. The stored code is
+            // random and never shown (the expiry still bounds the pending request).
+            const placeholder = crypto.randomBytes(16).toString('hex');
+            const expiry = new Date(Date.now() + 10 * 60 * 1000);
+            await transactionRepository.update(transaction._id, { verificationCode: placeholder, verificationExpiry: expiry });
+            log.info(`Withdrawal ${transactionId} awaits the member's authenticator code (until ${expiry.toISOString()}).`);
+            return { verificationCode: placeholder, verificationExpiry: expiry };
+        }
+
         // Generate OTP
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
         const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
@@ -2108,6 +2156,12 @@ class PaymentService {
         ipAddress?: string,
         deviceInfo?: string
     ) {
+        // Closed 2026-11-20 (Security plan Phase 3): this paid any address sent in the
+        // request, with no code, bypassing the saved-wallet lock. No app calls it;
+        // crypto withdrawals go through initiateCryptoWithdrawalWithOTP + verifyWithdrawal.
+        log.warn(`Refused deprecated crypto payout for user ${userId} (${netAmountDesired} ${cryptoCurrency}).`);
+        throw new AppError('Cette demande n’est plus acceptée : faites votre retrait crypto depuis le portefeuille de l’application.', 410);
+        // eslint-disable-next-line no-unreachable
         try {
             log.info(`Creating crypto payout for user ${userId}: ${netAmountDesired} ${cryptoCurrency} to ${cryptoAddress}`);
 
@@ -2226,6 +2280,7 @@ class PaymentService {
         // --- End Global Withdrawal Control Check ---
 
         await this.assertWithdrawalsNotLocked(userId);
+        await this.assertMemberAuthenticator(userId);
 
         // --- Daily Withdrawal Limit Check ---
         const today = new Date();
@@ -2338,8 +2393,11 @@ class PaymentService {
 
         log.info(`Crypto withdrawal: ${usdAmount} USD + ${cryptoFeeInUSD.toFixed(2)} USD fee = ${grossAmountToDebitInUSD.toFixed(2)} USD total debit`);
 
-        // Generate OTP
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate OTP (with the authenticator required, a random placeholder that is never sent:
+        // the member confirms with their app's code, see verifyWithdrawal)
+        const verificationCode = config.memberAuthenticatorRequired
+            ? crypto.randomBytes(16).toString('hex')
+            : Math.floor(100000 + Math.random() * 900000).toString();
         const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
         // Create transaction in PENDING_OTP_VERIFICATION status
@@ -2373,8 +2431,8 @@ class PaymentService {
         // Send OTP notification via email or SMS
         const userName = userDetails.name || 'User';
 
-        // Prefer email, fallback to SMS if no email available
-        if (userDetails.email || userDetails.phoneNumber) {
+        // Prefer email, fallback to SMS if no email available (not when the app confirms it)
+        if (!config.memberAuthenticatorRequired && (userDetails.email || userDetails.phoneNumber)) {
             try {
                 const otpRequest = {
                     userId: userId.toString(),
@@ -2404,7 +2462,9 @@ class PaymentService {
             total: totalRequiredBalanceInUSD,
             status: transaction.status,
             expiresAt: verificationExpiry,
-            message: 'Crypto withdrawal OTP sent to your registered contact. Please verify to complete the withdrawal.'
+            message: config.memberAuthenticatorRequired
+                ? 'Confirmez le retrait avec le code de votre application d’authentification.'
+                : 'Crypto withdrawal OTP sent to your registered contact. Please verify to complete the withdrawal.'
         };
     }
 
