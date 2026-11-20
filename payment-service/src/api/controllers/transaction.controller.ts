@@ -1,3 +1,4 @@
+import config from '../../config';
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import paymentService from '../../services/payment.service';
@@ -285,6 +286,8 @@ export class TransactionController {
             }
 
             log.info(`${withdrawalType} withdrawal result: ${JSON.stringify(withdrawalResult)}`);
+            // Tells the app which code confirms it (Security plan Phase 3): the authenticator app, or the e-mailed code.
+            (withdrawalResult as any).confirmWith = config.memberAuthenticatorRequired ? 'authenticator' : 'otp';
 
             // If a message about existing pending withdrawal is returned, include it
             if (withdrawalResult.message) {
