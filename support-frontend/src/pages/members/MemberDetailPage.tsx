@@ -165,6 +165,29 @@ function TabList<T>({ q, columns, rowKey, emptyTitle, onRowClick }: {
   );
 }
 
+const FAILURE_GROUP: Record<string, { label: string; tone: 'danger' | 'warning' | 'neutral' | 'info' }> = {
+  sbc_code: { label: 'Code SBC', tone: 'danger' },
+  provider_api: { label: 'Prestataire', tone: 'warning' },
+  member: { label: 'Côté membre', tone: 'neutral' },
+  unknown: { label: 'Inconnue', tone: 'info' },
+};
+
+/** Why a payment did not finish, as recorded by payment-service (same groups as the admin « Paiements » page). */
+function PayinReason({ p }: { p: Payin }) {
+  if (!p.failure) return <span className="text-fg-muted">—</span>;
+  const g = FAILURE_GROUP[p.failure.group] ?? FAILURE_GROUP.unknown;
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-1">
+        <Badge tone={g.tone}>{g.label}</Badge>
+        <span className="font-mono text-xs">{p.failure.code}</span>
+      </div>
+      {p.failure.message && <div className="max-w-xs text-xs text-fg-muted">{p.failure.message}</div>}
+      {!!p.earlierFailures && <div className="text-xs text-fg-muted">{p.earlierFailures} tentative(s) échouée(s) avant</div>}
+    </div>
+  );
+}
+
 function PayinsTab({ id }: { id: string }) {
   const q = useQuery({ queryKey: ['members', id, 'payins'], queryFn: () => membersApi.payins(id) });
   const columns: ListColumn<Payin>[] = [
@@ -172,6 +195,7 @@ function PayinsTab({ id }: { id: string }) {
     { key: 'amount', header: 'Montant', numeric: true, cell: p => formatMoney(p.amount, p.currency) },
     { key: 'gateway', header: 'Prestataire', cell: p => p.gateway },
     { key: 'status', header: 'Statut', cell: p => <Badge tone={/succe|complet|confirm/i.test(p.status) ? 'success' : /fail|cancel|expir/i.test(p.status) ? 'danger' : 'neutral'}>{p.status}</Badge> },
+    { key: 'reason', header: 'Raison', cell: p => <PayinReason p={p} /> },
     { key: 'session', header: 'Session', cell: p => <span className="break-all font-mono text-xs text-fg-muted">{p.sessionId}</span> },
     { key: 'date', header: 'Date', cell: p => formatDateTime(p.createdAt) },
   ];

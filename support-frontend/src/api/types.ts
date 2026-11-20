@@ -108,6 +108,10 @@ export interface Payin {
   purpose?: string;
   createdAt: string;
   gatewayRef?: string;
+  /** Why it did not finish (payment-service Security plan Phase 10). */
+  failure?: { group: 'sbc_code' | 'provider_api' | 'member' | 'unknown'; code: string; message: string | null; providerCode: string | null; step: string; at: string } | null;
+  /** Failed attempts before this one on the same payment (retries). */
+  earlierFailures?: number;
 }
 
 export type BusinessStatus =
