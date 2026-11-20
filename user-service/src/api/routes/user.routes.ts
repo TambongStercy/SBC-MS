@@ -243,6 +243,10 @@ router.post('/crypto/check-limits', requireActiveSubscription as any, mediumLimi
 // --- Crypto Wallet Management Routes (paywalled) ---
 router.get('/crypto/wallet', requireActiveSubscription as any, (req, res) => userController.getCryptoWallet(req as AuthenticatedRequest, res));
 router.put('/crypto/wallet', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.updateCryptoWallet(req as AuthenticatedRequest, res));
+// Setting or changing the wallet: password + emailed code; replacing one locks withdrawals 48 h.
+// PUT above only accepts the wallet already saved (409 CRYPTO_CHANGE_NEEDS_CODE otherwise).
+router.post('/crypto/wallet/request-change', requireActiveSubscription as any, strictLimiter, (req, res) => userController.requestCryptoWalletChange(req as AuthenticatedRequest, res));
+router.post('/crypto/wallet/confirm-change', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.confirmCryptoWalletChange(req as AuthenticatedRequest, res));
 
 // --- Public Profile View Route ---
 router.get('/:userId', (req, res, next) => userController.viewUserProfile(req, res, next));

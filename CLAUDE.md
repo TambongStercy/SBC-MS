@@ -411,8 +411,20 @@ push), so a hijacker cannot silence it.
   app's `MomoChangeSheet` (SBC-WEB-UI) drives it.
 - **The country is not the member's to change** (same plan item): `PUT
   /users/me` ignores `country`; support or the admin edit changes it.
-- **Same gap still open: the crypto wallet address** (`PUT
-  /users/crypto/wallet`) changes with no code and no lock.
+- **The crypto wallet locks too (same plan item).** `PUT /users/crypto/wallet`
+  only accepts the wallet already saved (409 `CRYPTO_CHANGE_NEEDS_CODE`
+  otherwise, a first wallet included). Setting or changing it:
+  `POST /users/crypto/wallet/request-change {cryptoWalletCurrency,
+  cryptoWalletAddress, password}`, then `/crypto/wallet/confirm-change {…, code}`
+  (purpose `changeCrypto`, target `CURRENCY|address`). Replacing a wallet locks
+  withdrawals (reason `crypto_change`) and alerts the account email. Addresses
+  are checked against the network's format (`utils/crypto-wallet.ts`): a TRON
+  address on USDTBSC is refused before any code. payment-service's
+  `processCryptoWithdrawalPayout` pays only the address recorded on the
+  transaction at request time (`metadata.cryptoAddress`), and fails the
+  withdrawal if the wallet changed since. Checks:
+  `user-service/src/scripts/check-crypto-wallet-lock.ts`,
+  `payment-service/src/scripts/check-crypto-payout-wallet.ts`.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
 

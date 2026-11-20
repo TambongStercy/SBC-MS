@@ -681,6 +681,10 @@ export class UserController {
                 message: 'Crypto wallet information updated successfully'
             });
         } catch (error: any) {
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message, code: (error as any).code });
+                return;
+            }
             log.error(`Error updating crypto wallet: ${error.message}`);
             res.status(500).json({
                 success: false,
@@ -2506,6 +2510,52 @@ export class UserController {
                 return;
             }
             log.error(`[Controller] MoMo change confirm failed for user ${userId}:`, error);
+            res.status(500).json({ success: false, message: 'Le changement n’a pas pu être enregistré. Réessayez.' });
+        }
+    }
+
+    /**
+     * @route POST /users/crypto/wallet/request-change { cryptoWalletCurrency, cryptoWalletAddress, password? }
+     * Sends a code to the account email; without a password, resends one for the same wallet.
+     */
+    async requestCryptoWalletChange(req: AuthenticatedRequest, res: Response): Promise<void> {
+        const userId = req.user?.userId;
+        if (!userId) {
+            res.status(401).json({ success: false, message: 'Authentication required.' });
+            return;
+        }
+        try {
+            const data = await this.userService.requestCryptoWalletChange(userId, req.body || {});
+            res.status(200).json({ success: true, data, message: `Un code a été envoyé à ${data.sentTo}.` });
+        } catch (error: any) {
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            log.error(`[Controller] Crypto wallet change request failed for user ${userId}:`, error);
+            res.status(500).json({ success: false, message: 'Le code n’a pas pu être envoyé. Réessayez.' });
+        }
+    }
+
+    /**
+     * @route POST /users/crypto/wallet/confirm-change { cryptoWalletCurrency, cryptoWalletAddress, code }
+     * Applies the change; replacing a wallet locks withdrawals (48 h by default).
+     */
+    async confirmCryptoWalletChange(req: AuthenticatedRequest, res: Response): Promise<void> {
+        const userId = req.user?.userId;
+        if (!userId) {
+            res.status(401).json({ success: false, message: 'Authentication required.' });
+            return;
+        }
+        try {
+            const data = await this.userService.confirmCryptoWalletChange(userId, req.body || {});
+            res.status(200).json({ success: true, data });
+        } catch (error: any) {
+            if (error instanceof AppError) {
+                res.status(error.statusCode).json({ success: false, message: error.message });
+                return;
+            }
+            log.error(`[Controller] Crypto wallet change confirm failed for user ${userId}:`, error);
             res.status(500).json({ success: false, message: 'Le changement n’a pas pu être enregistré. Réessayez.' });
         }
     }

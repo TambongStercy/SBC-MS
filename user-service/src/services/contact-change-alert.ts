@@ -4,7 +4,7 @@ import { WithdrawalLockReason } from '../utils/withdrawal-lock';
 import { notificationService } from './clients/notification.service.client';
 
 /**
- * Tells the owner that their email, phone number or Mobile Money number just
+ * Tells the owner that their email, phone number, Mobile Money number or crypto wallet just
  * changed and that withdrawals are blocked meanwhile. The email goes to the address held
  * BEFORE the change, so whoever replaced it cannot silence the alert. The
  * lock only helps if the owner hears about it in time to call support.
@@ -22,12 +22,16 @@ export function alertContactChange(args: {
         ? 'Votre adresse e-mail SBC a été modifiée'
         : args.reason === 'momo_change'
             ? 'Votre numéro Mobile Money SBC a été modifié'
-            : 'Votre numéro de téléphone SBC a été modifié';
+            : args.reason === 'crypto_change'
+                ? 'Votre portefeuille crypto SBC a été modifié'
+                : 'Votre numéro de téléphone SBC a été modifié';
     const what = args.reason === 'email_change'
         ? `L'adresse e-mail de votre compte SBC vient d'être remplacée par ${maskEmail(args.newValue)}.`
         : args.reason === 'momo_change'
             ? `Le numéro Mobile Money qui reçoit vos retraits SBC vient d'être remplacé par un numéro se terminant par ${args.newValue.slice(-3)}.`
-            : `Le numéro de téléphone de votre compte SBC vient d'être remplacé par un numéro se terminant par ${args.newValue.slice(-3)}.`;
+            : args.reason === 'crypto_change'
+                ? `L'adresse crypto qui reçoit vos retraits SBC vient d'être remplacée par une adresse se terminant par ${args.newValue.slice(-4)}.`
+                : `Le numéro de téléphone de votre compte SBC vient d'être remplacé par un numéro se terminant par ${args.newValue.slice(-3)}.`;
     const userId = String(args.userId);
 
     if (args.previousEmail) {
