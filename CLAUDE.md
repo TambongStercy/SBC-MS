@@ -450,7 +450,7 @@ push), so a hijacker cannot silence it.
   policy still to be published, so nothing is stored yet); `user_geo_days`
   (one doc per member/day/country, lists capped at 5, TTL 180 days);
   `users.lastActiveAt`, `lastLoginAt` (sign-ins recorded in `verifyOtp`),
-  `geo.lastCountry`, nightly `geo.usualCountry`/`usualShare` (≥ 5 active days in
+  `geo.lastCountry`, nightly `geo.usualCountry`/`usualShare` (≥ 15 distinct active days in
   30, 03:30 Douala). In the data export; erased on account deletion.
 - **Web app:** `utils/deviceSignals.ts` wraps `fetch` for same-origin `/api/`
   calls only (a cross-origin custom header would trigger a CORS preflight).

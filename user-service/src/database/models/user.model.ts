@@ -131,7 +131,7 @@ export interface IUser extends Document {
     geo?: {
         lastCountry?: string;
         lastCountryAt?: Date;
-        /** Country with the most active days over 30 days (min. 5 days), recomputed nightly. */
+        /** Country with the most active days over 30 days (min. 15 distinct days), recomputed nightly. */
         usualCountry?: string | null;
         usualShare?: number | null;
         usualComputedAt?: Date;

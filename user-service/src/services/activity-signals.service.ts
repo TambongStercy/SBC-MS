@@ -18,6 +18,8 @@ export const SIGNALS_POLICY_VERSION = () => process.env.SIGNALS_POLICY_VERSION |
 const RETENTION_DAYS = 180;
 const MAX_LIST = 5;
 const CONSENT_CACHE_MS = 10 * 60 * 1000;
+/** Distinct active days in 30 needed before a usual country is set (Sterling, 2026-11-20). */
+export const USUAL_MIN_DAYS = 15;
 
 export type SignalSource = 'web' | 'app' | 'api';
 
@@ -171,15 +173,17 @@ export async function ingestActivityBatch(records: ActivityRecord[]): Promise<{ 
 
 /**
  * Nightly: each member's usual country = the one with the most active days over
- * the last 30 days, if they were active at least 5 days; `usualShare` = that
- * country's share of their active days. Members below 5 days get null.
+ * the last 30 days, if they were active at least USUAL_MIN_DAYS distinct days
+ * (Sterling, 2026-11-20: 15); `usualShare` = that country's days / active days.
+ * Members below it get null.
  */
 export async function recomputeUsualCountries(now: Date = new Date()): Promise<{ members: number }> {
     const since = doualaDay(new Date(now.getTime() - 30 * 86400 * 1000));
     const cursor = UserGeoDayModel.aggregate([
         { $match: { day: { $gte: since }, country: { $ne: 'XX' } } },
         { $group: { _id: { userId: '$userId', country: '$country' }, days: { $addToSet: '$day' } } },
-        { $group: { _id: '$_id.userId', byCountry: { $push: { country: '$_id.country', days: { $size: '$days' } } } } },
+        { $group: { _id: '$_id.userId', byCountry: { $push: { country: '$_id.country', days: { $size: '$days' } } }, daySets: { $push: '$days' } } },
+        { $project: { byCountry: 1, activeDays: { $size: { $reduce: { input: '$daySets', initialValue: [], in: { $setUnion: ['$$value', '$$this'] } } } } } },
     ]).allowDiskUse(true).cursor({ batchSize: 1000 });
 
     let batch: any[] = [];
@@ -189,10 +193,10 @@ export async function recomputeUsualCountries(now: Date = new Date()): Promise<{
         batch = [];
     };
     for await (const r of cursor) {
-        const row = r as { _id: Types.ObjectId; byCountry: { country: string; days: number }[] };
-        const total = row.byCountry.reduce((n, c) => n + c.days, 0);
+        const row = r as { _id: Types.ObjectId; byCountry: { country: string; days: number }[]; activeDays: number };
+        const total = row.activeDays;
         const top = row.byCountry.slice().sort((a, b) => b.days - a.days)[0];
-        const usual = total >= 5 && top ? top.country : null;
+        const usual = total >= USUAL_MIN_DAYS && top ? top.country : null;
         batch.push({
             updateOne: {
                 filter: { _id: row._id },

@@ -8,7 +8,7 @@ import { doualaDay, ingestActivityBatch, ipRange, recomputeUsualCountries } from
  * from the gateway are stored only for members who accepted the policy version
  * that announces them, counts add up across batches, lists stay capped, the
  * 180-day expiry is set, the member's last activity/country follow, and the
- * nightly usual country needs 5 active days.
+ * nightly usual country needs 15 distinct active days.
  *
  * Needs a Mongo instance; uses its own database and drops it.
  *
@@ -82,18 +82,18 @@ const main = async () => {
     const day = (n: number) => doualaDay(new Date(now.getTime() - n * 86400000));
     await UserGeoDayModel.deleteMany({});
     await ingestActivityBatch([
-        ...[1, 2, 3, 4, 5, 6].map(n => rec(Y, { day: day(n), country: 'CM' })),
-        ...[2, 7].map(n => rec(Y, { day: day(n), country: 'FR' })),
+        ...Array.from({ length: 12 }, (_, i) => rec(Y, { day: day(i + 1), country: 'CM' })),
+        ...[2, 13, 14, 15].map(n => rec(Y, { day: day(n), country: 'FR' })), // day 2 in both: counted once
         rec(Y, { day: day(40), country: 'US' }), // older than 30 days: ignored
     ]);
     await recomputeUsualCountries(now);
     u = (await UserModel.findById(yes._id).lean())!;
-    check('usual country = most active days over 30 days, with its share', u.geo?.usualCountry === 'CM' && u.geo?.usualShare === 0.75, `${u.geo?.usualCountry} ${u.geo?.usualShare}`);
+    check('15 distinct active days: usual country = most active, share of active days', u.geo?.usualCountry === 'CM' && u.geo?.usualShare === 0.8, `${u.geo?.usualCountry} ${u.geo?.usualShare}`);
     await UserGeoDayModel.deleteMany({});
-    await ingestActivityBatch([1, 2, 3].map(n => rec(Y, { day: day(n), country: 'SN' })));
+    await ingestActivityBatch([...Array.from({ length: 13 }, (_, i) => rec(Y, { day: day(i + 1), country: 'SN' })), rec(Y, { day: day(1), country: 'CM' }), rec(Y, { day: day(14), country: 'CM' })]);
     await recomputeUsualCountries(now);
     u = (await UserModel.findById(yes._id).lean())!;
-    check('under 5 active days, no usual country', u.geo?.usualCountry === null);
+    check('14 distinct active days (even with 15 country-days): no usual country', u.geo?.usualCountry === null, String(u.geo?.usualCountry));
 
     check('ipRange: /24 for IPv4, /48 for IPv6, mapped IPv4 handled',
         ipRange('102.244.33.7') === '102.244.33.0/24' && ipRange('2a02:c207:2054:1234::1') === '2a02:c207:2054::/48' && ipRange('::ffff:41.82.1.9') === '41.82.1.0/24' && ipRange('junk') === null);
