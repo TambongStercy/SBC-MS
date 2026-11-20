@@ -7,6 +7,7 @@ import config from './config';
 import logger from './utils/logger';
 import { errorHandler } from './api/middleware/error.middleware';
 import { adminAllowlist } from './api/middleware/admin-allowlist.middleware';
+import { activitySignals, startSignalsFlush } from './api/middleware/activity-signals.middleware';
 
 // Initialize logger
 const log = logger.getLogger('Server');
@@ -25,6 +26,10 @@ app.use(morgan('combined'));
 
 // Before any proxy: admin paths need an allow-listed admin (see the middleware).
 app.use(adminAllowlist);
+
+// Security plan Phase 1: per-member country/device/activity counts (off unless ACTIVITY_SIGNALS_ENABLED=true).
+app.use(activitySignals);
+startSignalsFlush();
 
 // Health check endpoint
 app.get('/health', (req, res) => {
