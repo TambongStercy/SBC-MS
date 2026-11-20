@@ -60,7 +60,7 @@ interface IOtp extends Document {
     target?: string;
 }
 
-export type OtpPurpose = 'changeEmail' | 'changePhone';
+export type OtpPurpose = 'changeEmail' | 'changePhone' | 'changeMomo' | 'changeCrypto';
 
 // Interface defining the User document structure (FIELDS ONLY)
 export interface IUser extends Document {
@@ -126,7 +126,7 @@ export interface IUser extends Document {
      * number changes (see utils/withdrawal-lock.ts).
      */
     withdrawalsLockedUntil?: Date;
-    withdrawalLockReason?: 'email_change' | 'phone_change';
+    withdrawalLockReason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change';
     ipAddress?: string;
     ipCity?: string;
     ipRegion?: string;
@@ -172,7 +172,7 @@ export interface IUser extends Document {
 const otpSchema = new Schema<IOtp>({
     code: { type: String, required: true },
     expiration: { type: Date, required: true },
-    purpose: { type: String, enum: ['changeEmail', 'changePhone'] },
+    purpose: { type: String, enum: ['changeEmail', 'changePhone', 'changeMomo', 'changeCrypto'] },
     target: { type: String },
 }, { _id: false });
 
@@ -243,7 +243,7 @@ const UserSchema = new Schema<IUser>(
         otps: [otpSchema],
         otpSendLog: { type: [Date], default: undefined },
         withdrawalsLockedUntil: { type: Date },
-        withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change'] },
+        withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change', 'momo_change', 'crypto_change'] },
         ipAddress: { type: String },
         ipCity: { type: String, index: true },
         ipRegion: { type: String },

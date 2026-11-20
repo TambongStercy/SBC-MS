@@ -89,6 +89,8 @@ interface IConfig {
     moneyfusion: {
         apiUrl: string;
         payoutUrl: string;
+        /** Payin status (GET <statusUrl>/<tokenPay>). */
+        statusUrl: string;
         privateKey: string;
         withdrawalsEnabled: boolean;
     };
@@ -184,6 +186,9 @@ const config: IConfig = {
     moneyfusion: {
         apiUrl: process.env.MONEYFUSION_API_URL || '', // The API URL from the dashboard
         payoutUrl: process.env.MONEYFUSION_PAYOUT_URL || 'https://pay.moneyfusion.net/api/v1/withdraw',
+        // www.pay.moneyfusion.net (their documented host) fails the TLS handshake
+        // (checked 2026-11-19); pay.moneyfusion.net answers the same route.
+        statusUrl: (process.env.MONEYFUSION_STATUS_URL || 'https://pay.moneyfusion.net/paiementNotif').replace(/\/+$/, ''),
         privateKey: process.env.MONEYFUSION_PRIVATE_KEY || '', // For payout auth header
         withdrawalsEnabled: process.env.MONEYFUSION_WITHDRAWALS_ENABLED === 'true',
     },

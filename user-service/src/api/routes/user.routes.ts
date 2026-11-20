@@ -243,6 +243,10 @@ router.post('/crypto/check-limits', requireActiveSubscription as any, mediumLimi
 // --- Crypto Wallet Management Routes (paywalled) ---
 router.get('/crypto/wallet', requireActiveSubscription as any, (req, res) => userController.getCryptoWallet(req as AuthenticatedRequest, res));
 router.put('/crypto/wallet', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.updateCryptoWallet(req as AuthenticatedRequest, res));
+// Setting or changing the wallet: password + emailed code; replacing one locks withdrawals 48 h.
+// PUT above only accepts the wallet already saved (409 CRYPTO_CHANGE_NEEDS_CODE otherwise).
+router.post('/crypto/wallet/request-change', requireActiveSubscription as any, strictLimiter, (req, res) => userController.requestCryptoWalletChange(req as AuthenticatedRequest, res));
+router.post('/crypto/wallet/confirm-change', requireActiveSubscription as any, mediumLimiter, (req, res) => userController.confirmCryptoWalletChange(req as AuthenticatedRequest, res));
 
 // --- Public Profile View Route ---
 router.get('/:userId', (req, res, next) => userController.viewUserProfile(req, res, next));
@@ -258,6 +262,9 @@ router.post('/confirm-change-email', mediumLimiter, (req, res, next) => userCont
 router.post('/request-change-phone', (req, res, next) => userController.requestChangePhoneOtp(req as AuthenticatedRequest, res, next));
 // COMPLETE Phone Change (Authenticated, rate limited)
 router.post('/confirm-change-phone', mediumLimiter, (req, res, next) => userController.confirmChangePhone(req as AuthenticatedRequest, res, next));
+// Mobile Money number that receives withdrawals: password + code to the account email (Security plan Phase 0).
+router.post('/me/momo/request-change', strictLimiter, (req, res) => userController.requestMomoChange(req as AuthenticatedRequest, res));
+router.post('/me/momo/confirm-change', mediumLimiter, (req, res) => userController.confirmMomoChange(req as AuthenticatedRequest, res));
 
 // === Admin Routes ===
 // Apply admin authorization middleware for these routes

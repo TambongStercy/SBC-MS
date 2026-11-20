@@ -304,14 +304,27 @@ export class MoneyFusionService {
             }
         } catch (error: any) {
             log.error(`MoneyFusion payment error: ${error.message}`);
-            throw new Error(`MoneyFusion payment failed: ${error.response?.data?.message || error.message}`);
+            // Keep the HTTP status, body and transport code: the failure reason
+            // (utils/payment-failure.ts) is read from them.
+            throw Object.assign(new Error(`MoneyFusion payment failed: ${error.response?.data?.message || error.message}`), {
+                code: error.code,
+                response: error.response ? { status: error.response.status, data: error.response.data } : undefined,
+            });
         }
     }
 
+    /**
+     * The payin's status at MoneyFusion: its `data`, or null when MoneyFusion
+     * answers that it does not know the token. A transport failure THROWS, so
+     * the payin reconciler does not count an unreachable MoneyFusion as an
+     * answer. Until 2026-11-19 this called www.pay.moneyfusion.net, whose TLS
+     * handshake fails, and returned null for it: every MoneyFusion payin was
+     * "asked" and backed off without MoneyFusion ever being reached.
+     */
     async checkPaymentStatus(token: string): Promise<any> {
         try {
             const response = await axios.get(
-                `https://www.pay.moneyfusion.net/paiementNotif/${token}`,
+                `${config.moneyfusion.statusUrl}/${encodeURIComponent(token)}`,
                 { timeout: 15000 }
             );
 
@@ -320,8 +333,9 @@ export class MoneyFusionService {
             }
             return null;
         } catch (error: any) {
+            if (error?.response?.status === 404) return null;
             log.error(`MoneyFusion status check failed for token ${token}: ${error.message}`);
-            return null;
+            throw error;
         }
     }
 
