@@ -117,6 +117,13 @@ const payinView = (i: any) => ({
     purpose: i.metadata?.planId || i.metadata?.product || i.paymentType || null,
     createdAt: i.createdAt,
     gatewayRef: i.gatewayPaymentId ?? null,
+    // Security plan Phase 10: why it did not finish (agents only; the member's
+    // activation view copies its own fields and never includes this).
+    failure: i.failure ? {
+        group: i.failure.group, code: i.failure.code, message: i.failure.providerMessage ?? null,
+        providerCode: i.failure.providerCode ?? null, step: i.failure.step, at: i.failure.at,
+    } : null,
+    earlierFailures: Array.isArray(i.failureHistory) ? i.failureHistory.length : 0,
 });
 
 class SupportFinanceService {
