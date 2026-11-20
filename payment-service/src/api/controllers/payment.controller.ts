@@ -16,6 +16,7 @@ import { Types } from 'mongoose';
 import { AdminFilters, dateMatch, readAdminFilters } from '../../utils/admin-filters';
 import { directOrMemberCountryMatch, memberIdsForCountry, sendFilterError } from '../../utils/country-members';
 import { memberObjectIdMatch, narrowRange } from '../../utils/admin-scope';
+import PaymentIntentModel from '../../database/models/PaymentIntent';
 
 const log = logger.getLogger('PaymentController');
 
@@ -187,6 +188,11 @@ export class PaymentController {
             };
 
             res.render('payment', viewData);
+            // Security plan Phase 10 funnel: the page was opened (first time + count), fire and forget.
+            void PaymentIntentModel.updateOne({ sessionId }, [{ $set: {
+                'metadata.pageOpenedAt': { $ifNull: ['$metadata.pageOpenedAt', '$$NOW'] },
+                'metadata.pageOpens': { $add: [{ $ifNull: ['$metadata.pageOpens', 0] }, 1] },
+            } }]).catch(() => undefined);
         } catch (error: any) {
             log.error(`Error rendering payment page for session ${sessionId}:`, error);
             res.status(500).render('error', { message: 'An internal server error occurred.', error: error.message });
@@ -404,7 +410,7 @@ export class PaymentController {
             });
         } catch (error: any) {
             log.error('Error creating payment intent:', error);
-            res.status(500).json({
+            res.status(error?.statusCode || 500).json({
                 success: false,
                 message: error.message || 'Failed to create payment intent'
             });
@@ -1837,7 +1843,7 @@ export class PaymentController {
                     createdBy: 'admin',
                     externalReference
                 }
-            });
+            }, { reuseAndLimit: false });
 
             let finalIntent = paymentIntent;
 

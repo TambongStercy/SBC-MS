@@ -5,6 +5,7 @@ import { authenticate, requireAdmin, requireServiceCaller } from '../middleware/
 import { requireSsoScope } from '../middleware/sso-auth.middleware';
 import adminController from '../controllers/admin.controller';
 import { sbcLiveRefundController } from '../controllers/sbc-live-refund.controller';
+import { conversionSummary, failureCsv, failureList } from '../../services/payment-conversion.service';
 
 const router = Router();
 const adminRouter = Router();
@@ -42,6 +43,23 @@ adminRouter.post('/recover-payment-intent', paymentController.recoverExistingPay
 // (or by SBC admin directly). See SbcLiveRefundService for the policy.
 adminRouter.get('/sbc-live-refunds', sbcLiveRefundController.listRefunds);
 adminRouter.post('/sbc-live-refunds/:id/decision', sbcLiveRefundController.decideRefund);
+
+// Security plan Phase 10: payment conversion (funnel, providers, countries, failures). Read-only.
+adminRouter.get('/conversion/summary', async (req, res) => {
+    try { res.json({ success: true, data: await conversionSummary(req.query as any) }); }
+    catch (err: any) { res.status(500).json({ success: false, message: err?.message || 'Conversion figures unavailable' }); }
+});
+adminRouter.get('/conversion/failures', async (req, res) => {
+    try {
+        if (req.query.format === 'csv') {
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="paiements-echecs.csv"');
+            res.send('\ufeff' + await failureCsv(req.query as any));
+            return;
+        }
+        res.json({ success: true, data: await failureList(req.query as any) });
+    } catch (err: any) { res.status(500).json({ success: false, message: err?.message || 'Failure list unavailable' }); }
+});
 
 router.use('/admin', adminRouter);
 

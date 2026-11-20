@@ -429,6 +429,36 @@ push), so a hijacker cannot silence it.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
 
+### Payment conversion (Security plan Phase 10, part 1, 2026-11-20)
+
+- **Fewer empty payments** (`createPaymentIntent`): a second tap for the same
+  payment (same member, amount, currency, type and metadata: `metadata.funnelKey`)
+  reuses the open one (PENDING_USER_INPUT, no gateway, < 30 min); at most 5 new
+  payments per member per 10 min (429). Admin manual intents pass
+  `{ reuseAndLimit: false }`.
+- **`submitPaymentDetails` refuses SUCCEEDED/CONFIRMED/PROCESSING/PARTIALLY_PAID**
+  (409): the public submit route used to re-initiate any status, a paid one included.
+- **Funnel stamps:** `metadata.pageOpenedAt`/`pageOpens` (payment page render),
+  `metadata.creditedAt` (creating service answered 2xx to a paid callback).
+- **Reconciler:** every 5 min, each waiting payment re-checked every 15 min
+  (`PAYIN_RECONCILE_EVERY_MIN`); after 72 h (`PAYIN_EXPIRE_AFTER_HOURS`) a payment
+  whose provider answered at least once becomes EXPIRED with failure
+  `member/no_final_answer_72h`. Never-answered ones keep being checked until 7
+  days. A late provider success still credits it (handlers skip only
+  SUCCEEDED/FAILED).
+- **Admin "Paiements" (`/paiements`, module payments):** `GET
+  /api/payments/admin/conversion/summary?from&to` (funnel, provider, country,
+  product, country×provider, daily, failure groups, top codes, stuck > 24 h,
+  median time to pay; computed from paymentintents with the `{createdAt}` index,
+  cached 10 min) and `/conversion/failures` (cursor list, `format=csv`).
+- The payment page's polling read `result.data`, which the status route never
+  sends, so it never saw a final status; fixed (`public/js/payment.js`).
+- Not done yet (plan items): provider-outage and error-spike alerts, offering
+  another provider, French reason + next step shown to the member, MoMo number
+  check before sending, archiving abandoned payments (never deleting, Sterling),
+  web/app split (no signal on payment requests), DR Congo and NOWPayments routes.
+- Checks: `payment-service/src/scripts/check-payment-conversion.ts`.
+
 ### Signals: country, device, activity (Security plan Phase 1, 2026-11-20)
 
 - **nginx (preprod done 2026-11-20, prod not yet):** `nginx/sbc-cloudflare.conf`

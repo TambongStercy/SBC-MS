@@ -147,5 +147,8 @@ const PaymentIntentSchema: Schema = new Schema(
 
 // Index for efficient querying by provider reference
 PaymentIntentSchema.index({ gateway: 1, gatewayPaymentId: 1 }, { sparse: true });
+// Security plan Phase 10: conversion dashboard ranges and the per-member limit.
+PaymentIntentSchema.index({ createdAt: -1 });
+PaymentIntentSchema.index({ userId: 1, createdAt: -1 });
 
 export default mongoose.model<IPaymentIntent>('PaymentIntent', PaymentIntentSchema); 

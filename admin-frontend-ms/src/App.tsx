@@ -19,6 +19,7 @@ import FixFeexpayPaymentsPage from './pages/FixFeexpayPaymentsPage';
 import FixMoneyFusionWithdrawalsPage from './pages/FixMoneyFusionWithdrawalsPage';
 import FixCinetPayWithdrawalsPage from './pages/FixCinetPayWithdrawalsPage';
 import FixProviderIssuesPage from './pages/FixProviderIssuesPage';
+import PaymentConversionPage from './pages/PaymentConversionPage';
 import ManualPaymentRecoveryPage from './pages/ManualPaymentRecoveryPage';
 import StorageMonitoringPage from './pages/StorageMonitoringPage';
 import RelanceDashboardPage from './pages/RelanceDashboardPage';
@@ -81,6 +82,7 @@ function App() {
             <Route path="/fix-moneyfusion-withdrawals" element={<FixMoneyFusionWithdrawalsPage />} />
             <Route path="/fix-cinetpay-withdrawals" element={<FixCinetPayWithdrawalsPage />} />
             <Route path="/fix-provider-issues" element={<FixProviderIssuesPage />} />
+            <Route path="/paiements" element={<PaymentConversionPage />} />
             <Route path="/manual-payment-recovery" element={<ManualPaymentRecoveryPage />} />
             <Route path="/relance/dashboard" element={<RelanceDashboardPage />} />
             <Route path="/relance/messages" element={<RelanceMessagesPage />} />
