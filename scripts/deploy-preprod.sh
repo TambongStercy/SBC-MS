@@ -10,6 +10,7 @@ set -e
 
 PREPROD_DIR="/var/www/SBC-MS-preprod"
 ADMIN_DIR="$PREPROD_DIR/admin-frontend-ms"
+SUPPORT_DIR="$PREPROD_DIR/support-frontend"
 LOG_PREFIX="[PREPROD-DEPLOY]"
 FULL_DEPLOY=false
 
@@ -45,15 +46,18 @@ declare -A PM2_NAME=(
   [sbclove-service]="sbclove-preprod"
   [advertising-service]="advertising-preprod"
   [event-service]="event-preprod"
+  [support-service]="support-preprod"
 )
 
 CHANGED_SERVICES=()
 REBUILD_ADMIN=false
+REBUILD_SUPPORT=false
 
 if [ "$FULL_DEPLOY" = true ] || [ "$OLD_HEAD" = "$NEW_HEAD" ]; then
   # Full deploy or nothing changed (manual trigger) — do everything
   CHANGED_SERVICES=("${!PM2_NAME[@]}")
   REBUILD_ADMIN=true
+  REBUILD_SUPPORT=true
 else
   CHANGED_FILES=$(git diff --name-only "$OLD_HEAD" "$NEW_HEAD")
   echo "$LOG_PREFIX Changed files:"
@@ -69,15 +73,20 @@ else
     REBUILD_ADMIN=true
   fi
 
+  if echo "$CHANGED_FILES" | grep -q "^support-frontend/"; then
+    REBUILD_SUPPORT=true
+  fi
+
   # Shared files that affect all services
   if echo "$CHANGED_FILES" | grep -qE "^(build-all\.sh|ecosystem\.preprod\.config\.js|package\.json)$"; then
     echo "$LOG_PREFIX Shared config changed — switching to full deploy"
     CHANGED_SERVICES=("${!PM2_NAME[@]}")
     REBUILD_ADMIN=true
+    REBUILD_SUPPORT=true
   fi
 fi
 
-if [ ${#CHANGED_SERVICES[@]} -eq 0 ] && [ "$REBUILD_ADMIN" = false ]; then
+if [ ${#CHANGED_SERVICES[@]} -eq 0 ] && [ "$REBUILD_ADMIN" = false ] && [ "$REBUILD_SUPPORT" = false ]; then
   echo "$LOG_PREFIX Nothing to deploy."
   exit 0
 fi
@@ -128,13 +137,30 @@ if [ "$REBUILD_ADMIN" = true ]; then
   echo "$LOG_PREFIX Admin frontend rebuilt"
 fi
 
+# Rebuild the SBC Support agent front (preprod-support.sniperbuisnesscenter.com) if changed.
+# Same explicit exit-code check as the admin block. Skipped while the
+# directory does not exist yet (the front ships on its own branch).
+if [ "$REBUILD_SUPPORT" = true ] && [ -d "$SUPPORT_DIR" ]; then
+  echo "$LOG_PREFIX Rebuilding support frontend..."
+  cd "$SUPPORT_DIR"
+  if git diff --name-only "$OLD_HEAD" "$NEW_HEAD" | grep -qE "^support-frontend/package(-lock)?\.json$" || [ "$FULL_DEPLOY" = true ] || [ ! -d node_modules ]; then
+    npm install
+  fi
+  if ! npm run build; then
+    echo "$LOG_PREFIX ERROR: Support frontend build failed. Preprod dist NOT updated."
+    exit 1
+  fi
+  cd "$PREPROD_DIR"
+  echo "$LOG_PREFIX Support frontend rebuilt"
+fi
+
 pm2 save
 
 # Health check
 echo "$LOG_PREFIX Running health checks..."
 sleep 5
 
-PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008" "6009" "6010")
+PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008" "6009" "6010" "6012")
 FAILED=0
 
 for PORT in "${PORTS[@]}"; do

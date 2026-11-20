@@ -1471,6 +1471,98 @@ hand-started process (it holds port 3009) and stop it, make sure
 `sbclove-service/.env` has the same `JWT_SECRET` as `user-service/.env`, and run
 `npm install` there if `node_modules` is missing (see the section above).
 
+### SBC Support (support-service, 2026-11-17)
+
+Agent desk + member « Aide » + internal case/view-task intake. Contract:
+`docs/support/CONTRACT.md` (routes, roles, settings, env).
+- **Ports / PM2:** 3012 `support-service` (prod, DB `sbc_support`), 6012
+  `support-preprod` (DB `sbc_support_preprod`). Health `/health` (200 only when
+  Mongo and Redis answer; dependencies listed, never fatal).
+- **Gateway:** `/api/support/*` → `SUPPORT_SERVICE_URL` (path kept). It is marked
+  `public` in `admin-routes.ts`: the desk has its own agents, TOTP, cookies and
+  CSRF, and must never go through `ADMIN_ALLOWLIST`.
+- **Front:** `support-frontend/dist` on `support.` / `preprod-support.`
+  (`nginx/support-sniper`, `nginx/preprod-support-sniper`); `REBUILD_SUPPORT`
+  in the deploy scripts.
+- **Env (support-service/.env, see `.env.example`):** required
+  `SUPPORT_JWT_SECRET` (≠ `JWT_SECRET`), `TOTP_ENC_KEY` (`openssl rand -base64 32`;
+  never rotate without re-enrolling every agent), `SERVICE_SECRET`, `JWT_SECRET`
+  (same as user-service), `MONGODB_URI`, `SUPPORT_PUBLIC_URL`; then the four
+  service URLs, `TURNSTILE_SECRET`, `DEEPSEEK_API_KEY`, `R2_*` +
+  `R2_PRIVATE_BUCKET` (default `sbc-support-private`). It refuses to start
+  without the required ones. Without the R2 keys (or with the bucket missing) every
+  attachment upload answers 503; locally, `R2_ENDPOINT` points at a MinIO instead.
+- **First deploy:** the usual new-service traps apply (section above): the
+  deploy script picks the service up only on the 2nd run, run `npm install` in
+  `support-service/` by hand, set `SUPPORT_SERVICE_URL` in `gateway-service/.env`
+  and `pm2 reload gateway-service --update-env`. Then DNS (Cloudflare, proxied)
+  for `support` / `preprod-support`, the vhosts + certificate, a Cloudflare rate
+  rule on `/api/support/desk/auth/*`, the Turnstile site key/secret, the R2
+  bucket. Check `curl localhost:3012/health` and `https://support.…/api/support/health`.
+- **First admin:** `cd support-service && node dist/scripts/create-support-admin.js
+  --email <email> --name "<name>"` prints a one-time activation link (48 h) to
+  stdout only: hand it over directly, never paste it in a chat log. The agent
+  sets a password (≥ 12 chars, not a common one) and enrols TOTP at first sign-in.
+  Lost phone: Administration → Agents → new activation link (wipes password,
+  TOTP and backup codes).
+- **Help articles (assistant):** the assistant answers only from published
+  articles. `node dist/scripts/seed-kb.js` lists the 19 starter articles
+  (`src/data/kb-starter.ts`), `--apply` adds the missing ones as drafts,
+  `--publish` publishes the seeded drafts nobody has edited. It never
+  overwrites an existing slug. Have SBC review them in Contenus first. Article
+  text must hold no price, fee or money deadline (the AI's safety check drops
+  such answers), and members' own words go in the tags: search ranks an article
+  by how many of the question's topic words it covers.
+  - How-to questions about money or the account ("comment faire un retrait",
+    "j'ai oublié mon mot de passe") get the article word for word, never the AI.
+  - Personal problems ("pas arrivé", "bloqué", an amount) keep the secure route.
+  - DeepSeek (`DEEPSEEK_API_KEY`) is called only when the member asks again and an
+    article covers the question.
+- **Live updates (LiveKit):** new messages/status changes reach the agent app and the
+  member « Aide » without a refresh. The service sends a data message (ticket id + kind,
+  never text) to `support-desk` and `support-member-<userId>`; the apps reload through
+  the API. Listen-only tokens from `GET /desk/realtime/token` and `/me/realtime/token`.
+  Needs a LiveKit server + `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`; the
+  host must also be in the `connect-src` of `nginx/support-sniper` (and preprod) — the
+  vhosts list `livekit.sniperbuisnesscenter.com`, change it if LiveKit lives elsewhere.
+  Without it both apps poll (5 s ticket, 15 s lists). Local: a `livekit/livekit-server`
+  container (`--dev`-style key) on `ws://localhost:7890`.
+- **Session replay (OpenReplay, self-hosted):** the member app records every session
+  (names, emails, phones visible; passwords and codes never recorded) and sends the session id + link when the member opens a
+  ticket. The desk shows « Revoir la session » only for tickets that have one; the link
+  comes from `POST /desk/tickets/:id/replay`, audited (`ticket.replay.opened`). Links
+  not on `OPENREPLAY_DASHBOARD_URL` are dropped. Needs its own server (not the prod box):
+  see `docs/support/OPENREPLAY.md`.
+- **Requests without an account:** `POST /api/support/public/tickets` (member app
+  `/signaler-un-probleme`, linked from the sign-in page) for people who cannot sign in.
+  Turnstile + hidden field + 3/h and 10/day per IP. The person then chats like a member
+  (same WhatsApp-style page) with the request's key (`x-support-guest-key`, kept on the
+  device; reply emails carry the link `…/signaler-un-probleme/suivi/<id>#k=<key>`). The
+  contact details are unverified: agents must not disclose account details on such a ticket.
+  Emails with no member (agents, public requests) carry `userId` `000000000000000000000000`:
+  notification-service refuses an email without a userId, which silently dropped every
+  agent email (activation, lockout, alerts) until 2026-11-18.
+- **Analytique (desk, support administrator):** `GET /desk/analytics` computes the KPIs
+  (requests in/handled, median and p90 first response and resolution, SLA breaches, backlog
+  and its oldest, reopened, recurring categories, assistant settled without an agent, cases,
+  approvals, agent load) against the previous period, daily series, and plain-sentence
+  insights. Technical errors come from the member app (`POST /me/client-errors`,
+  `clienterror*` collections), each type open / handling / resolved (`errors.manage`); a
+  resolved type that recurs is a regression.
+- **Phone alerts (ntfy):** every new request (member, assistant, public form) is pushed to
+  `NTFY_URL`/`NTFY_TOPIC` (`services/ntfy.service.ts`, JSON publish, `NTFY_TOKEN` for a
+  protected topic): number, category, priority (urgent→5 … low→2), name, title, start of
+  the message, click → the desk ticket. No phone or email in it. Off without the two vars.
+- **Audit:** `auditlogs` is append-only and hash-chained;
+  `node dist/scripts/verify-audit-chain.js` exits 1 on any altered or missing
+  row. Give the service's Mongo user no update/remove right on it when users
+  are introduced.
+- **Money:** support never moves money. Activation, regularisation and
+  re-checks are calls to payment-service (§2.2) after an approval by a
+  different agent; kill switches live in the support `settings` collection.
+- **Tests:** `npm test` (Jest + supertest) uses `sbc_support_test` and Redis
+  DB 15 only, mocks every outbound call.
+
 ### CinetPay per-country accounts
 
 CinetPay's new platform (which we use, at `api.cinetpay.co` with OAuth) issues

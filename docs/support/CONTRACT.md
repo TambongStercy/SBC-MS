@@ -100,7 +100,7 @@ and does nothing; a reservation stuck `applying` for 15 min (crash) is taken ove
 | `POST /withdrawals/:transactionId/regularize` | `{ action: 'complete'\|'fail', reason, evidence: string[], approvalId }` | conditional transition; `409 code=STATE_CHANGED` if not in an allowed state |
 | `POST /activation/manual` | `{ userId, gateway, externalRef, plan, approvalId }` | verifies `externalRef` at the provider; unique `{gateway, gatewayPaymentId}`; `409 code=REF_ALREADY_USED`, `422 code=PROVIDER_NOT_CONFIRMED` |
 | `GET /finance/summary` | `?from&to&country` | counts and sums per business status, ages bucketed `<24h`, `24-48h`, `48-72h`, `>72h` |
-| `GET /finance/withdrawals` | `?status&ageBucket&gateway&country&page&limit` | paginated list for the finance board |
+| `GET /finance/withdrawals` | `?status&ageBucket&gateway&country&from&to&page&limit` | `{ items, total, page, limit }`; items `{ transactionId, userId, amount, currency, status, businessStatus, method, gateway, country, createdAt, updatedAt, ageBucket }`. `status=non_final` = every withdrawal without a final provider answer (used by support's 24/48/72 h job) |
 
 ```
 RecheckResult = { result: 'confirmed'|'pending'|'not_found'|'failed'|'provider_unavailable',
@@ -192,6 +192,7 @@ Idle 30 min, absolute 12 h.
 
 | Route | Body | Result |
 |---|---|---|
+| `GET /desk/auth/csrf` | — | 204; sets the readable `sbc_sup_csrf` cookie (`Path=/`) when missing (sign-in needs it too) |
 | `POST /desk/auth/login` | `{ email, password, turnstileToken? }` | `{ step: 'totp'\|'enroll', challengeId }` — same error and timing whatever the reason |
 | `POST /desk/auth/totp` | `{ challengeId, code? , backupCode? }` | sets cookies, `{ agent }` |
 | `POST /desk/auth/enroll/start` | `{ challengeId }` | `{ otpauthUrl, qrDataUrl }` |
@@ -206,21 +207,86 @@ Modules (all under `/desk`, each route checks a permission server-side; refusals
 `agents`, `settings`, `audit`, `approvals`, `members`, `tickets`, `templates`, `kb`,
 `activation`, `finance`, `cases`, `views`, `reports`, `notifications`.
 
+Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend). Lists are
+`{ items, total, page, limit }` unless noted; sensitive routes need `x-reauth-token`.
+
+| Area | Routes |
+|---|---|
+| agents (`agents.manage`) | `GET /agents` (array), `GET /roles`, `POST /agents` → `{ agent, activationUrl }` (link shown once; `delivery:'email'` emails it instead), `PUT /agents/:id/roles`, `POST /agents/:id/disable\|enable\|activation-link\|revoke-sessions`, `GET /agents/:id/sessions` |
+| settings / audit | `GET /settings`, `PUT /settings/:key { value, reason }`; `GET /audit?actor&action&objectId&from&to&page&limit`, `POST /audit/verify` → `{ ok, checked, firstBrokenSeq, verifiedAt }` |
+| approvals | `GET /approvals?status&mine=1` (array), `GET /approvals/:id`, `POST /approvals/:id/approve { note }`, `/reject { reason }`, `/execute` (retry after an owner outage), `/cancel` |
+| members | `POST /members/search { q }` (body, never a query string: emails and phones stay out of access logs), `GET /members/:id` → `{ member }`, `GET /members/:id/payins\|withdrawals\|tickets`, `POST /members/:id/contact-change` → `{ approvalId }`, `POST /members/contact-change/:approvalId/send-code`, `POST /members/contact-change/:approvalId/apply { code }` |
+| tickets | `GET /tickets?queue&status(new…closed\|active)&priority&assignee&memberId&number&slaBreached&page&limit` (filters only; a `q` in the URL is ignored), `POST /tickets/search { q, …same filters }` (the free text, never in a URL), `GET /tickets/queues`, `GET /tickets/assignees`, `GET /tickets/:id` → `{ ticket, messages, events }`, `POST /tickets/:id/messages { body, internal, attachmentIds? }`, `/status { status, reason }`, `/assign { agentId }`, `/priority`, `/take`, `GET /tickets/:id/attachments/:aid/url`, `POST /attachments` (multipart `file` → `{ id }`) |
+| templates / kb / guides | `GET\|POST /templates`, `PUT\|DELETE /templates/:id`; `GET /kb/categories`, `GET\|POST /kb/articles`, `GET\|PUT /kb/articles/:id`, `POST /kb/articles/:id/publish { version }\|unpublish`; `GET\|PUT /guides { nodes }` |
+| activation / finance / cases | `POST /activation/check { userId?, sessionId?, reference? }` → RecheckResult, `POST /activation/manual-requests { userId, gateway, externalRef, plan, reason, caseId? }` → `{ approvalId }`; `GET /finance/summary`, `GET /finance/withdrawals`, `POST /finance/withdrawals/:tx/recheck`, `POST /finance/withdrawals/:tx/regularization-requests { action, reason, evidence[], caseId? }`; `GET /cases?type(…\|finance)&status&severity&assignee`, `GET /cases/:id`, `POST /cases/:id/assign\|comments\|status\|recheck` |
+| views | `GET /views/current`, `POST /views/next`, `POST /views/availability`, `GET /views/mine`, `GET /views/tasks/:id`, `POST /views/tasks/:id/start\|heartbeat\|decision { decision: approve\|reject\|review\|technical_error, observedViews?, reason?, ban?, version }`; supervisor: `GET /views/board`, `GET /views/tasks?state`, `GET /views/verifiers`, `POST /views/tasks/:id/reassign { agentId\|null, reason }`, `GET\|PUT /views/settings`, `GET /views/qa`, `POST /views/qa/:taskId { verdict: confirmed\|corrected, decision?, observedViews?, reason }`, `GET /views/stats` |
+| session replay | `POST /tickets/:id/replay` (`tickets.read`) → `{ url }` of the member's OpenReplay session; audited `ticket.replay.opened`. `GET /tickets/:id` only says `ticket.replay: { at } \| null` |
+| analytics (`analytics.read`, support administrator) | `GET /analytics?from&to` → `{ period, kpis, series[], categories[], sources[], agents[], errorTypes[], insights[] }`: every KPI of the period with the previous period of the same length; daily series (Douala days): created, handled, backlog, median first response / resolution, errors by class. `POST /analytics/errors/:id/state { state: open\|handling\|resolved, note? }` (`errors.manage`, audited); `POST /analytics/errors/:id/replay` → `{ url }` (audited) |
+| live updates | `GET /desk/realtime/token` (`tickets.read`) → `{ enabled:false }` or `{ enabled:true, url, room:'support-desk', token }` (LiveKit, listen-only, 4 h) — see §3.3 |
+| reports / bell / meta | `GET /reports/agents?from&to&agentId` → `{ from, to, rows }`, `GET /reports/agents/export` (CSV, `export`, audited), `GET /reports/summary`, `GET /reports/export?type=tickets\|cases\|views`; `GET /notifications`, `POST /notifications/:id/read\|read-all`; `GET /meta` |
+
+Ticket statuses are stored with the CdC keys (`nouveau`, `ouvert`, `en_attente_membre`,
+`en_attente_interne`, `resolu`, `ferme`, used as is by `/me/*`); the desk reads and writes the
+English keys `new`, `open`, `waiting_member`, `waiting_internal`, `resolved`, `closed`.
+
 ### 3.2 Member — `/me/*` (member JWT from the app, verified with `JWT_SECRET`, any role)
 
 | Route | Notes |
 |---|---|
 | `GET /me/kb/categories`, `GET /me/kb/search?q=`, `GET /me/kb/articles/:slug` | published articles only |
 | `GET /me/guides` | guided-paths tree (FAQ flows) |
-| `POST /me/assistant/ask` `{ question, conversationId? }` | `{ conversationId, answer, source: 'faq'\|'ai'\|'route', articles: [{slug,title}], route?: 'activation'\|'withdrawal'\|'ticket', canEscalate }` |
-| `POST /me/assistant/:conversationId/escalate` `{ category }` | creates a ticket with the conversation attached |
-| `GET /me/tickets`, `POST /me/tickets`, `GET /me/tickets/:id`, `POST /me/tickets/:id/messages`, `POST /me/tickets/:id/close` | own tickets only; internal notes never returned |
+| `POST /me/assistant/ask` `{ question, conversationId?, level?: 'faq'\|'ai' }` | `{ conversationId, answer, source: 'faq'\|'ai'\|'route', articles: [{slug,title}], route?: 'activation'\|'withdrawal'\|'ticket', canEscalate }`. Default level `faq`; the app re-sends the same question with `level:'ai'` when the member clicks « Ça ne répond pas ». Only `ai` may call DeepSeek (money routing, caps and kill switch still apply) |
+| `POST /me/assistant/:conversationId/escalate` `{ category, replay? }` | creates a ticket with the conversation attached → `{ ticketId, number }` (same ticket on a repeat) |
+| `GET /me/tickets/categories` | `[{ key, label }]` |
+| `GET /me/tickets`, `POST /me/tickets` `{ category, subject, message, attachmentIds?, replay? }`, `GET /me/tickets/:id`, `POST /me/tickets/:id/messages` `{ message, attachmentIds? }`, `POST /me/tickets/:id/close` | own tickets only; internal notes never returned; message author `{ type, name }` | A ticket carries `agentReadAt` (last time an agent opened it; the member's earlier messages are read). Opening a ticket in the desk sets it and sends a `read` live signal when there was something new.
+| `POST /me/client-errors` `{ errors: [{ method, path, status, code?, message?, replay? }] }` | failed API calls the app hit (status 0 or ≥ 400), ≤ 20 per batch, 500/day per member → 202 `{ recorded }`. Grouped per type (`METHOD /api/route/:id STATUS [CODE]`, ids generalised), counted per Douala day with the members touched (kept 400 days); messages stripped of emails and digit runs. A type marked « corrigé » that happens again is reopened as a regression. |
 | `POST /me/attachments` (multipart, `file`) | images/PDF ≤ 10 MB → `{ id }` |
-| `GET /me/activation/status` | own recent payins + subscription state |
-| `POST /me/activation/check` `{ sessionId?, reference? }` | recheck; `not_found`/`provider_unavailable` ⇒ activation case + ticket |
-| `GET /me/withdrawals` / `GET /me/withdrawals/:id` | real status in plain French (business status mapping) |
+| `GET /me/activation/status` | `{ activated, subscription: { type, status, startDate, endDate } \| null, payins: [...] }` |
+| `POST /me/activation/check` `{ sessionId?, reference?, moneyDebited? }` | `{ result, message, statusLabel, ticketId, ticketNumber?, canReportDebit? }`; `not_found`/`provider_unavailable` ⇒ activation case + ticket (`ticketId` set). A payment never sent to an operator (no `gatewayRef`, and `PENDING_USER_INPUT` or gateway `none`) answers `not_finished` without asking the operator and without a case (`canReportDebit: true`); sent again with `moneyDebited: true`, it opens the case + ticket |
+| `GET /me/withdrawals` / `GET /me/withdrawals/:id` | `{ id, amount, currency, method, businessStatus, statusLabel, explanation, createdAt, updatedAt }` (short French label + one French sentence) |
+| `GET /me/guides` | guided-paths tree: nodes `{ id, label, text?, action?, category?, articles?, children? }` (editable from the desk) |
 
-Rate limits (Redis, per member): assistant 20/day, ticket creation 5/day, activation check 10/h.
+| `GET /me/realtime/token` | `{ enabled:false }` or `{ enabled:true, url, room:'support-member-<userId>', token }` (LiveKit, listen-only, 4 h) — see §3.3 |
+
+`replay` = `{ sessionId, url }` from the member app's OpenReplay tracker (`getSessionID()`, `getSessionURL({ withCurrentTime: true })`). Kept only when `url` is on `OPENREPLAY_DASHBOARD_URL` and contains the session id; ignored otherwise or when that setting is empty.
+
+Rate limits (Redis, per member): assistant 20/day (setting), ticket creation 5/day (incl.
+escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIMITED'`.
+
+### 3.4 Public — `/public/*` (no account)
+
+| Route | Notes |
+|---|---|
+| `POST /public/tickets` `{ contact: { name, phone, email }, category, subject, message, turnstileToken?, website? }` | For people who cannot sign in. All three contact fields required (email: the reply is sent there). Text only, no files. Turnstile required when `TURNSTILE_SECRET` is set (`TURNSTILE_FAILED`); `website` is a hidden field: filled ⇒ fake 201, nothing stored; 3/hour and 10/day per IP (counted after the contact check). → `{ number }` only. The ticket has `memberId: null`, `source: 'public'`; agent replies (not internal notes) are emailed to `contact.email`. |
+
+Creating answers `{ id, number, key }`: the person then **chats with the agent like a member**, sending the key as `Authorization: SupportKey <key>` (browsers: no extra CORS header) or `x-support-guest-key` (wrong or missing key ⇒ 404; 30 failures/hour per IP ⇒ 429):
+
+| Route | Notes |
+|---|---|
+| `GET /public/tickets/:id` | same shape as `GET /me/tickets/:id` |
+| `POST /public/tickets/:id/messages` `{ message, attachmentIds? }` | 60/day per request |
+| `POST /public/tickets/:id/attachments` (multipart `file`) | images/PDF ≤ 10 MB, 20/day per request → `{ id }` |
+| `POST /public/tickets/:id/close` | |
+| `GET /public/tickets/:id/realtime/token` | LiveKit room `support-guest-<id>` (listen-only) |
+
+The server keeps the key's SHA-256 and the key encrypted with `TOTP_ENC_KEY`, so agent reply emails carry the link that reopens the chat: `<MEMBER_APP_URL>/signaler-un-probleme/suivi/<id>#k=<key>` (after `#`: never sent to a server).
+
+The member form (`POST /me/tickets`) also takes an optional `contact` (same checks): how the member wants to be reached, prefilled from the account. The desk returns `ticket.contact` (`verified: false`) and, without an account, `member: { id: null, name }`. **Never treat contact details as identity**: anyone can type someone else's email or number.
+
+### 3.3 Live updates (LiveKit data messages)
+
+New messages and status changes reach both apps without a refresh. support-service publishes
+a reliable data message on topic `support` after every ticket change
+(`services/realtime.service.ts`): `{ type:'ticket', ticketId, kind: created|message|status|assigned|priority, at }`.
+- Rooms: `support-desk` (every agent with `tickets.read`) and `support-member-<userId>` (the
+  member). Internal notes, assignments and priority changes go to the desk room only.
+- No ticket text ever goes through LiveKit: on a message the apps reload the ticket through the
+  normal authenticated API, which still checks every read.
+- Tokens only allow subscribing (`canPublish:false`, `canPublishData:false`): only the service
+  can send into a room.
+- Fire and forget: a LiveKit outage never fails or slows the request.
+- Without `LIVEKIT_*` the token routes answer `{ enabled:false }` and both apps keep polling
+  (5 s on a ticket, 15 s on a list). Connected, they poll every 60 s as a safety net.
 
 ## 4. Roles and permissions
 
@@ -254,10 +320,10 @@ Defaults pending SBC (Rufus) validation — CdC §15.1. All are settings, not co
 
 | Key | Default |
 |---|---|
-| `approval.regularization` | always double approval |
+| `approval.regularization` | `always` (requester + a different finance_manager); only value accepted for now |
 | `approval.manualActivation` | always |
 | `approval.contactChange` | always |
-| `approval.withdrawalManualCompleteAbove` | 50 000 XAF |
+| `approval.withdrawalManualCompleteAbove` | 50 000 XAF (stored; no effect while every regularization needs approval) |
 | `finance.alertHours` | `[24, 48, 72]` (alert, case to finance_manager, critical) |
 | `views.assignmentMode` | `round_robin` (`round_robin` \| `load` \| `manual`) |
 | `views.unstartedRequeueMinutes` | 10 |
@@ -276,8 +342,21 @@ base64, required), `SERVICE_SECRET` (required), `JWT_SECRET` (member tokens, req
 `NOTIFICATION_SERVICE_URL`, `SUPPORT_PUBLIC_URL`, `SUPPORT_ALLOWED_ORIGINS`,
 `TURNSTILE_SECRET` (optional; login skips Turnstile when unset, logs a warning in prod),
 `DEEPSEEK_API_KEY` (optional), `DEEPSEEK_MODEL` (default `deepseek-chat`),
-`R2_*` (reuse the names used by other services; private bucket for attachments).
-The service refuses to start without the required ones.
+`NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN` (optional; a phone notification per new request: number, category, priority, name, title, start of the message, link to the desk; never a phone or email),
+`OPENREPLAY_DASHBOARD_URL` (optional; self-hosted OpenReplay dashboard, replays on tickets are off without it),
+`LIVEKIT_URL` (wss URL the browsers connect to), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`,
+`LIVEKIT_HTTP_URL` (optional; server API URL, defaults to `LIVEKIT_URL` with ws→http) —
+all optional, live updates are off without them (§3.3),
+`R2_*` (reuse the names used by other services; private bucket for attachments:
+`R2_PRIVATE_BUCKET`, default `sbc-support-private`, objects under `support/attachments/`).
+Without R2 keys every attachment upload answers 503 (« Stockage des fichiers indisponible »).
+Local development: `R2_ENDPOINT` points at an S3-compatible store (MinIO), `R2_ACCOUNT_ID` empty;
+leave `R2_ENDPOINT` empty on preprod/prod.
+Optional: `REDIS_KEY_PREFIX` (default `sbc-support:<NODE_ENV>:`), `MEMBER_APP_URL`,
+`COOKIE_SECURE=false` (local http only; ignored in production), `LOGIN_MIN_MS` (700),
+`JOBS_ENABLED`, `DEEPSEEK_PRICE_IN_PER_M` / `DEEPSEEK_PRICE_OUT_PER_M` (budget accounting).
+The service refuses to start without the required ones (and in production without
+`MONGODB_URI` and `SUPPORT_PUBLIC_URL`).
 
 ## 7. Branches
 
