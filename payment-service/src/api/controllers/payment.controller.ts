@@ -18,6 +18,7 @@ import { directOrMemberCountryMatch, memberIdsForCountry, sendFilterError } from
 import { memberObjectIdMatch, narrowRange } from '../../utils/admin-scope';
 import PaymentIntentModel from '../../database/models/PaymentIntent';
 import { memberFailureText } from '../../utils/member-failure-text';
+import { supportRequestUrl } from '../../utils/support-link';
 import { archiveCollection } from '../../jobs/payin-archive.job';
 
 const log = logger.getLogger('PaymentController');
@@ -76,6 +77,7 @@ export class PaymentController {
                         paymentStatus: PaymentStatus.EXPIRED, assetBasePath: '/api/payments/static', gateway: '', gatewayPaymentId: '',
                         isCryptoPayment: false, cryptoBetaEnabled: false, operatorChoices: {},
                         phoneNumber: undefined, countryCode: undefined, operator: undefined, errorMessage: undefined, cryptoAddress: undefined, payAmount: undefined, payCurrency: undefined, paymentType: undefined, subscriptionType: undefined, subscriptionPlan: undefined, paidAmount: undefined, paidCurrency: undefined, cryptoQrCodeBase64: undefined, cryptoUsdAmount: undefined, 
+                        supportUrl: supportRequestUrl(sessionId),
                         failureText: { reason: 'Ce paiement a expiré : il n’a pas été utilisé pendant plus de 7 jours.', nextStep: 'Relancez le paiement depuis l’application SBC.' },
                     });
                 }
@@ -180,6 +182,7 @@ export class PaymentController {
                 // Security plan Phase 10: why it failed and what to do, in French.
                 failureText: paymentIntent && [PaymentStatus.FAILED, PaymentStatus.EXPIRED, PaymentStatus.CANCELED].includes(paymentIntent.status)
                     ? memberFailureText(paymentIntent.failure) : undefined,
+                supportUrl: supportRequestUrl(paymentIntent ? paymentIntent.sessionId : sessionId),
                 assetBasePath: '/api/payments/static', // Path to static assets
                 // NEW: Add gateway and gatewayPaymentId
                 gateway: paymentIntent ? (paymentIntent.gateway || '') : '',

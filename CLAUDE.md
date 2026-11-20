@@ -482,6 +482,13 @@ push), so a hijacker cannot silence it.
     Douala); dry run first: `scripts/archive-abandoned-payins.ts`. An archived
     payment's link shows "Paiement expiré".
   - Dashboard: members above 20 attempts in a day (for Phase 4).
+  - **« Contacter le support »** on a failed/expired/cancelled/archived payment
+    page opens `<SUPPORT_HELP_URL>/demandes/nouvelle?paiement=<sessionId>` (member
+    app « Aide », the form pre-fills the reference). Hidden while
+    `SUPPORT_HELP_URL` is empty: set it when SBC Support goes live. The support
+    desk's member page shows each payment's recorded failure (support branches).
+  - A retry on the same payment moves the previous `failure` to `failureHistory`
+    (kept), so each attempt keeps its own reason (#432).
 - Not done (plan items): offering another provider (each country has ONE
   provider today, BF aside; needs Rufus's call and other provider accounts),
   web/app split (no signal on payment requests), DR Congo and NOWPayments

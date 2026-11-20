@@ -1532,6 +1532,9 @@ if (typeof cryptoUsdAmount !== 'undefined' && cryptoUsdAmount) {
                                                                 </div>
                                                             </div>
                                                             <p class="text-sm text-gray-600 mt-3">Pour réessayer, retournez dans l'application SBC et relancez le paiement.</p>
+                                                            <% if (typeof supportUrl !== 'undefined' && supportUrl) { %>
+                                                                <a href="<%= supportUrl %>" class="btn-secondary mt-4" style="text-decoration:none" id="contact-support">Contacter le support</a>
+                                                            <% } %>
                                                             <p class="text-xs text-gray-500 mt-2">Référence : <%= sessionId %></p>
                                                         </div>
                                                     <% } %>
