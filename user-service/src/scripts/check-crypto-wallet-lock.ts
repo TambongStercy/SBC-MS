@@ -128,6 +128,24 @@ const main = async () => {
     const cross = await refusal(() => userService.confirmCryptoWalletChange(newId, { cryptoWalletAddress: TRX, cryptoWalletCurrency: 'TRX', code: 'MOMO12' }));
     check('a code issued for another purpose is refused', cross?.statusCode === 400);
 
+    // --- a member who gets codes on WhatsApp ---
+    process.env.WHATSAPP_OTP_ENABLED = 'true';
+    const w = await UserModel.create({
+        name: 'WhatsApp', email: 'wa@gmail.com', phoneNumber: '237677009988', password: 'Secret123!', country: 'CM',
+        referralCode: 'CRYP3', notificationPreference: 'whatsapp',
+    } as any);
+    const before = sent.length;
+    const viaWa = await userService.requestCryptoWalletChange(String(w._id), { cryptoWalletAddress: TRX, cryptoWalletCurrency: 'TRX', password: 'Secret123!' });
+    const waSends = sent.slice(before);
+    check('the code follows the member’s choice: WhatsApp to the account phone, mirrored to the account email',
+        waSends.length === 2 && String(waSends[0].channel).toLowerCase() === 'whatsapp' && waSends[0].recipient === '237677009988'
+        && waSends[1].recipient === 'wa@gmail.com' && waSends.every(s => s.purpose === 'changeCrypto'), JSON.stringify(waSends.map(s => [s.channel, s.recipient])));
+    check('the screen says where it went, masked', viaWa.sentTo === 'WhatsApp +237 •••• 988 et w***@gmail.com', viaWa.sentTo);
+    process.env.WHATSAPP_OTP_ENABLED = 'false';
+    const before2 = sent.length;
+    const waOff = await userService.requestCryptoWalletChange(String(w._id), { cryptoWalletAddress: TRX, cryptoWalletCurrency: 'TRX', password: 'Secret123!' });
+    check('with WhatsApp codes switched off, it goes by email', sent.length === before2 + 1 && sent[before2].recipient === 'wa@gmail.com' && waOff.sentTo === 'w***@gmail.com', waOff.sentTo);
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll checks passed');

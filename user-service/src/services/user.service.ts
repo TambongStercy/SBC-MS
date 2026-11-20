@@ -7,7 +7,7 @@ import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
 import { generateReferralCode } from '../utils/referral.utils';
-import { maskEmail } from '../utils/mask-email';
+import { maskEmail, maskPhone } from '../utils/mask-email';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
 import { generateSecureOTP, getOtpExpiration, otpMatches, otpSendDecision, OTP_REUSE_MIN_REMAINING_MS, OTP_SEND_COOLDOWN_MS, whatsappOtpEnabled } from '../utils/otp.utils';
 import { notificationService, DeliveryChannel } from './clients/notification.service.client';
@@ -1883,8 +1883,8 @@ export class UserService {
         if (isSameCryptoWallet(user, address, currency)) {
             throw new AppError('C’est déjà votre portefeuille crypto.', 400);
         }
-        if (!user.email) {
-            throw new AppError('Votre compte n’a pas d’adresse e-mail : contactez le support pour changer votre portefeuille crypto.', 400);
+        if (!this.canReachOwnerForCode(user)) {
+            throw new AppError('Votre compte n’a ni adresse e-mail ni WhatsApp pour recevoir le code : contactez le support pour changer votre portefeuille crypto.', 400);
         }
         const target = cryptoChangeTarget(address, currency);
         const password = typeof input.password === 'string' ? input.password : '';
@@ -1895,19 +1895,9 @@ export class UserService {
         }
 
         const otpCode = await this.generateAndStoreOtp(user._id, 'otps', 10, { purpose: 'changeCrypto', target });
-        await notificationService.sendOtp({
-            userId: user._id.toString(),
-            recipient: user.email,
-            channel: DeliveryChannel.EMAIL,
-            code: otpCode,
-            expireMinutes: 10,
-            isRegistration: false,
-            purpose: 'changeCrypto',
-            userName: user.name,
-            language: user.language?.[0] || 'fr',
-        });
-        log.info(`Crypto wallet change code sent to the account email of user ${userId} (${currency}, address ending ${addressTail(address)})`);
-        return { sentTo: maskEmail(user.email) };
+        const sentTo = await this.sendChangeCodeToOwner(user, otpCode, 'changeCrypto');
+        log.info(`Crypto wallet change code sent to the account owner (${sentTo}) for user ${userId} (${currency}, address ending ${addressTail(address)})`);
+        return { sentTo };
     }
 
     /**
@@ -1936,7 +1926,7 @@ export class UserService {
             && otpMatches(otp.code, code) && otp.expiration > now);
         if (!matching) {
             log.warn(`Invalid or expired crypto wallet change code for user ${userId}`);
-            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu par e-mail.', 400);
+            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu.', 400);
         }
         await userRepository.clearOtps(user._id, 'otps');
 
@@ -4123,6 +4113,25 @@ export class UserService {
         }
     }
 
+    /** Whether a code can reach the account's owner (e-mail, or WhatsApp when WhatsApp codes are on). */
+    private canReachOwnerForCode(user: IUser): boolean {
+        return !!user.email || (whatsappOtpEnabled() && !!user.phoneNumber);
+    }
+
+    /**
+     * Sends the code that confirms a MoMo or crypto wallet change to the
+     * account's owner, on the channel they chose for their codes (e-mail or
+     * WhatsApp, WhatsApp mirrored to e-mail as for sign-in codes). Returns
+     * where it went, masked, for the confirmation screen.
+     */
+    private async sendChangeCodeToOwner(user: IUser, code: string, purpose: 'changeMomo' | 'changeCrypto'): Promise<string> {
+        const { channel, recipient } = this.getOtpDeliveryInfo(user);
+        await this.sendAccountAccessOtp(user, code, { purpose });
+        if (channel !== DeliveryChannel.WHATSAPP) return maskEmail(recipient);
+        const whatsapp = `WhatsApp ${maskPhone(recipient)}`;
+        return user.email ? `${whatsapp} et ${maskEmail(user.email)}` : whatsapp;
+    }
+
     /**
      * Sends a sign-in OTP on the user's preferred channel, mirroring it to their
      * email whenever that channel is WhatsApp.
@@ -4575,8 +4584,8 @@ export class UserService {
         if (user.momoNumber && user.momoOperator && isSameMomo(user, { momoNumber: number, momoOperator: operator }, country)) {
             throw new AppError('C’est déjà votre numéro Mobile Money.', 400);
         }
-        if (!user.email) {
-            throw new AppError('Votre compte n’a pas d’adresse e-mail : contactez le support pour changer votre numéro Mobile Money.', 400);
+        if (!this.canReachOwnerForCode(user)) {
+            throw new AppError('Votre compte n’a ni adresse e-mail ni WhatsApp pour recevoir le code : contactez le support pour changer votre numéro Mobile Money.', 400);
         }
         const target = momoChangeTarget(number, operator);
         const password = typeof input.password === 'string' ? input.password : '';
@@ -4587,19 +4596,9 @@ export class UserService {
         }
 
         const otpCode = await this.generateAndStoreOtp(user._id, 'otps', 10, { purpose: 'changeMomo', target });
-        await notificationService.sendOtp({
-            userId: user._id.toString(),
-            recipient: user.email,
-            channel: DeliveryChannel.EMAIL,
-            code: otpCode,
-            expireMinutes: 10,
-            isRegistration: false,
-            purpose: 'changeMomo',
-            userName: user.name,
-            language: user.language?.[0] || 'fr',
-        });
-        log.info(`MoMo change code sent to the account email of user ${userId} (number ending ${number.slice(-3)}, ${operator})`);
-        return { sentTo: maskEmail(user.email) };
+        const sentTo = await this.sendChangeCodeToOwner(user, otpCode, 'changeMomo');
+        log.info(`MoMo change code sent to the account owner (${sentTo}) for user ${userId} (number ending ${number.slice(-3)}, ${operator})`);
+        return { sentTo };
     }
 
     /**
@@ -4629,7 +4628,7 @@ export class UserService {
             && otpMatches(otp.code, code) && otp.expiration > now);
         if (!matching) {
             log.warn(`Invalid or expired MoMo change code for user ${userId}`);
-            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu par e-mail.', 400);
+            throw new AppError('Code invalide ou expiré. Utilisez le dernier code reçu.', 400);
         }
         await userRepository.clearOtps(user._id, 'otps');
 
