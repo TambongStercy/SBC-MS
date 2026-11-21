@@ -1,7 +1,8 @@
 /**
  * Asserts Security plan Phase 7 (dormant accounts), user-service side:
  *   - the nightly pass: status from the last sign of life (sign-in, token,
- *     IP, creation), only accounts holding money, total in XAF, flags
+ *     IP, creation), only accounts holding at least DORMANCY_MIN_XAF (500),
+ *     total in XAF, flags
  *     (commissions without sign-in, authenticator, fraud = frozen), accounts
  *     that no longer hold money leave the list, deleted ones never enter it;
  *   - the snapshot: card = sum of the list (nightly check), breakdowns;
@@ -75,6 +76,7 @@ const main = async () => {
     const F = await mk({ balance: 9_000, deleted: true }, 500);
     const G = await mk({ balance: 40_000, frozen: { at: new Date(), reason: 'check' } }, 300);
     const H = await mk({ balance: 20_000, activationBalance: 5_000, name: '=HYPERLINK("x")' }, 250);
+    const I = await mk({ balance: 300, dormancy: { status: 'long_dormant', heldXaf: 300, runId: 'old' } }, 500);
     await MemberAuthModel.create({ userId: C, totpSecretEnc: 'enc', totpEnrolledAt: new Date() });
     await WalletMovementModel.create([
         { reference: 'commission:c1', direction: 'CREDIT', userId: C, currency: 'XAF', amount: 1000, requestedAmount: 1000, source: 'commission', status: 'APPLIED', appliedAt: ago(30) },
@@ -85,7 +87,9 @@ const main = async () => {
     const run = await dz.runDormancyPass(new Date(), { batch: 2 });
     const get = async (id: Types.ObjectId) => (await UserModel.collection.findOne({ _id: id })) as any;
     const [a, b, c, d, e, f, g, h] = await Promise.all([A, B, C, D, E, F, G, H].map(get));
-    check('pass ran, 6 accounts holding money (deleted one left out)', run?.accounts === 6, JSON.stringify(run));
+    check('pass ran, 7 accounts holding money (deleted one left out)', run?.accounts === 7, JSON.stringify(run));
+    const i = await get(I);
+    check('I: 300 F, under the 500 F minimum → no status (old one removed)', !i.dormancy?.status && i.dormancy?.heldXaf === undefined);
     check('A signed in 10 days ago → active (basis signin)', a.dormancy.status === 'active' && a.dormancy.basis === 'signin');
     check('B: IP date 100 days ago → inactive', b.dormancy.status === 'inactive' && b.dormancy.basis === 'ip');
     check('C: token issued 200 days ago → dormant (basis token)', c.dormancy.status === 'dormant' && c.dormancy.basis === 'token');
@@ -101,7 +105,7 @@ const main = async () => {
     check('F: deleted → no status', !f.dormancy?.status);
 
     const snap: any = await DormancySnapshotModel.findOne({}).lean();
-    check('snapshot: all = 6 accounts', snap.all.count === 6);
+    check('snapshot: all = 7 accounts, 1 under the minimum', snap.all.count === 7 && snap.belowMin?.count === 1 && snap.belowMin?.xafEq === 300 && snap.thresholds.minXaf === 500);
     check('snapshot: dormant card = B+C+D+G+H (5) = 384,000 F', snap.dormant.count === 5 && snap.dormant.xafEq === 3_000 + 66_000 + 250_000 + 40_000 + 25_000, `${snap.dormant.count} / ${snap.dormant.xafEq}`);
     check('nightly check: card = list', snap.check?.ok === true, JSON.stringify(snap.check));
     check('by country: Congo name read as CG', snap.dormant.byCountry.some((x: any) => x.country === 'CG' && x.xafEq === 250_000));
@@ -110,7 +114,7 @@ const main = async () => {
     check('flags: 1 commission-without-sign-in, 1 fraud', snap.dormant.flags.commissionsNoLogin.count === 1 && snap.dormant.flags.fraudFlag.count === 1);
 
     const sum = await dz.dormancySummary();
-    check('summary ready, share = dormant / all', sum.ready && Math.abs(sum.share - Math.round((384_000 / 394_000) * 100) / 100) < 0.01, String(sum.share));
+    check('summary ready, share = dormant / all', sum.ready && Math.abs(sum.share - Math.round((384_000 / 394_300) * 100) / 100) < 0.01, String(sum.share));
     check('summary: one month in the trend, no previous month yet', sum.trend.length === 1 && sum.previous === null);
 
     // ---- list ----

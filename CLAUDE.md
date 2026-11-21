@@ -662,7 +662,8 @@ Design, limits, deploy: `docs/security-plan/phase7-dormant-accounts.md`. Admin �
 (`/comptes-dormants`, module finance).
 - **Nightly pass:** user-service `services/dormancy.service.ts` + `jobs/dormancy.job.ts` (03:45 Douala; at start if
   the snapshot is missing; `DORMANCY_JOB_DISABLED=true` stops it).
-  - **Who gets a status:** every account holding money in any of the six balances gets `dormancy.status`
+  - **Who gets a status:** every account holding at least `DORMANCY_MIN_XAF` (500 F, all six balances converted;
+    smaller ones count only in the member total, `belowMin` in the snapshot) gets `dormancy.status`
     (active < 90 j, inactive, dormant ≥ 180, long_dormant ≥ 365; `DORMANCY_*_DAYS`) and `dormancy.heldXaf`
     (USD at `DORMANCY_XAF_PER_USD`, 660). The same pass sets the flags and writes one `dormancy_snapshots` doc.
     The page reads only snapshots for its numbers.

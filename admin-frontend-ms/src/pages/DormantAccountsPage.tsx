@@ -181,7 +181,7 @@ const DormantAccountsPage: React.FC = () => {
     <div className="space-y-4">
       <PageHeader
         title="Comptes dormants"
-        description={th ? `Argent détenu par les comptes sans activité depuis ${th.inactiveDays} jours ou plus (inactif ${th.inactiveDays}–${th.dormantDays} j, dormant ${th.dormantDays}–${th.longDormantDays} j, dormant > 1 an au-delà).` : 'Argent détenu par les comptes que personne n’utilise.'}
+        description={th ? `Argent détenu par les comptes sans activité depuis ${th.inactiveDays} jours ou plus (inactif ${th.inactiveDays}–${th.dormantDays} j, dormant ${th.dormantDays}–${th.longDormantDays} j, dormant > 1 an au-delà).${th.minXaf ? ` Les comptes de moins de ${formatMoney(th.minXaf)} ne sont pas comptés.` : ''}` : 'Argent détenu par les comptes que personne n’utilise.'}
       />
       {error && <p className="text-sm text-danger" role="alert">{error}</p>}
       {summary && !summary.ready && (
@@ -202,7 +202,7 @@ const DormantAccountsPage: React.FC = () => {
           hint={d ? <>{formatMoney(d.xaf)} + {usd(d.usd)} (à {summary?.xafPerUsd} F/$) · {summary?.previous ? <Delta now={d.xafEq} before={summary.previous.xafEq} /> : 'pas encore de mois précédent'}</> : undefined}
         />
         <Metric label="Part des soldes membres" value={summary?.share !== undefined ? pct(summary.share) : pending('w-16')} hint={summary?.all ? `sur ${formatMoney(summary.all.xafEq)} détenus par ${formatNumber(summary.all.count)} comptes` : undefined} />
-        <Metric label="Comptes concernés" value={d ? formatNumber(d.count) : pending('w-16')} hint={d ? `dont ${formatNumber(d.flags.checked.count)} vérifiés` : undefined} onClick={d ? () => setFilters({}) : undefined} />
+        <Metric label="Comptes concernés" value={d ? formatNumber(d.count) : pending('w-16')} hint={d ? `dont ${formatNumber(d.flags.checked.count)} vérifiés${summary?.belowMin?.count && th?.minXaf ? ` · ${formatNumber(summary.belowMin.count)} sous ${formatMoney(th.minXaf)} non comptés` : ''}` : undefined} onClick={d ? () => setFilters({}) : undefined} />
         <Metric
           label="Commissions sans connexion"
           tone={d?.flags.commissionsNoLogin.count ? 'danger' : 'neutral'}

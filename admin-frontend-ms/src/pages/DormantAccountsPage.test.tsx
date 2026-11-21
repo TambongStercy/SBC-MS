@@ -19,8 +19,8 @@ vi.mock('../services/adminDormantApi', async () => ({
 const tot = (count: number, xafEq: number) => ({ count, xaf: xafEq, usd: 0, xafEq });
 const summary: api.DormantSummary = {
   ready: true, day: '2026-11-21', at: '2026-11-21T02:45:00Z',
-  thresholds: { inactiveDays: 90, dormantDays: 180, longDormantDays: 365 }, xafPerUsd: 660,
-  all: tot(10, 1_000_000),
+  thresholds: { inactiveDays: 90, dormantDays: 180, longDormantDays: 365, minXaf: 500 }, xafPerUsd: 660,
+  all: tot(10, 1_000_000), belowMin: tot(3, 900),
   byStatus: { active: tot(5, 600_000), inactive: tot(2, 100_000), dormant: tot(2, 50_000), long_dormant: tot(1, 250_000) },
   dormant: {
     ...tot(5, 400_000),
@@ -65,6 +65,7 @@ describe('Comptes dormants', () => {
     expect(screen.getByText(/\+100 % sur un mois/)).toBeTruthy();
     expect(screen.getByText('Commissions sans connexion', { selector: 'span' })).toBeTruthy();
     expect(screen.getByText(/Les dates de connexion sont enregistrées depuis/)).toBeTruthy();
+    expect(screen.getByText(/3 sous 500 F non comptés/)).toBeTruthy();
   });
 
   it('read-only access: no actions', async () => {

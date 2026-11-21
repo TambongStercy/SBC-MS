@@ -6,6 +6,8 @@
  *   DORMANCY_DORMANT_DAYS         180  → dormant
  *   DORMANCY_LONG_DORMANT_DAYS    365  → long_dormant
  *   DORMANCY_XAF_PER_USD          660  USD balances in XAF on the page (SBC's USD price)
+ *   DORMANCY_MIN_XAF              500  accounts holding less (all balances, in XAF) get no status:
+ *                                      counted in the member total only, never listed or held
  *   DORMANCY_REACTIVATION_HOLD    log  off | log | on
  *       on:  first sign-in after dormant / long_dormant holds withdrawals
  *            DORMANCY_HOLD_HOURS and may open a dormant_reactivation case;
@@ -20,6 +22,13 @@ const num = (k: string, d: number) => {
     return Number.isFinite(v) && v > 0 ? v : d;
 };
 
+/** Like num, but 0 is allowed (0 = every account holding money counts). */
+const nonNeg = (k: string, d: number) => {
+    const raw = process.env[k];
+    const v = raw === undefined || raw === '' ? NaN : Number(raw);
+    return Number.isFinite(v) && v >= 0 ? v : d;
+};
+
 export type HoldMode = 'off' | 'log' | 'on';
 
 export function dormancyConfig() {
@@ -32,6 +41,7 @@ export function dormancyConfig() {
         dormantDays,
         longDormantDays,
         xafPerUsd: num('DORMANCY_XAF_PER_USD', 660),
+        minXaf: nonNeg('DORMANCY_MIN_XAF', 500),
         holdMode: (mode === 'on' || mode === 'off' ? mode : 'log') as HoldMode,
         holdHours: num('DORMANCY_HOLD_HOURS', 72),
         /** Commissions this recent, with no sign-in for inactiveDays, raise the flag. */

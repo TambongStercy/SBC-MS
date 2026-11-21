@@ -7,7 +7,7 @@ accounts when they come back. Branch `feature/dormant-accounts`.
 
 | Plan item | Where | Status |
 |---|---|---|
-| 1. Nightly status (active / inactive / dormant / long_dormant), only for accounts holding money, thresholds as settings | `user-service/src/services/dormancy.service.ts` `runDormancyPass`, `jobs/dormancy.job.ts` (03:45 Douala), `config/dormancy.ts` | done |
+| 1. Nightly status (active / inactive / dormant / long_dormant), only for accounts holding at least 500 F (`DORMANCY_MIN_XAF`), thresholds as settings | `user-service/src/services/dormancy.service.ts` `runDormancyPass`, `jobs/dormancy.job.ts` (03:45 Douala), `config/dormancy.ts` | done |
 | 2. Commissions but no sign-in | same pass: a `commission` credit in the wallet ledger within 90 days, and the account not active | done |
 | 3. Reactivation: 72 h hold + `dormant_reactivation` case with a new device / country / contact change | `noteSignIn` (called from `verify-otp`), `watchHolds` (every 10 min), `utils/withdrawal-lock.ts` | done, **log mode** by default |
 | 4. Admin page « Comptes dormants » | `admin-frontend-ms/src/pages/DormantAccountsPage.tsx` (Finances → Comptes dormants, module finance) | done except the reactivation campaign |
@@ -33,6 +33,8 @@ The account then gets a status by how long ago that was:
 | Over 365 | long_dormant |
 
 The « Total dormant » card is every account at 90 days or more.
+
+**Minimum.** An account holding less than `DORMANCY_MIN_XAF` (default 500 F, all balances converted) gets no status: it is never listed, held or exported. It still counts in the member total that the « Part des soldes membres » card divides by. The snapshot keeps their number and amount (`belowMin`), and the page says how many were left out.
 
 Each row stores which date it used (`dormancy.basis`), and the list shows it.
 
