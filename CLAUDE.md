@@ -619,7 +619,8 @@ activations, unfinished payments. Each admin number opens the list behind it.
 
 Design, inventory and rollout: `docs/security-plan/phase2-ledger.md`. Blnk runs on the
 **secondary server** (`ubuntu@169.58.159.177`, `/opt/blnk-preprod`, PostgreSQL 19 there),
-behind nginx `blnk.sniperbusinesscenter.com`, which only lets in the main server's IP.
+behind nginx `preprod-blnk.sniperbusinesscenter.com`, which only lets in the main server's IP
+(`blnk.` is kept for prod). The ledger is created once under a claim in `blnk_state`.
 Preprod worker: pm2 `blnk-sync-preprod`.
 - Blnk 0.15.9 (`ghcr.io/blnkfinance/blnk`), local stack `infra/blnk/docker-compose.local.yml`
   on 127.0.0.1:5101. **`"server": {"secure": true}` is required**, or Blnk ignores the key.

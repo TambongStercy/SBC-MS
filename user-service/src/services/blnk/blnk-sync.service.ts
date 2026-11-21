@@ -59,13 +59,51 @@ async function state<T>(key: string): Promise<T | null> {
 }
 const setState = (key: string, value: unknown) => BlnkStateModel.updateOne({ _id: key }, { $set: { value, at: new Date() } }, { upsert: true });
 
-/** The members' ledger, created once. */
+let ledgerInFlight: Promise<string> | null = null;
+const LEDGER_CLAIM_WAIT_MS = 15_000;
+
+/**
+ * The members' ledger, created exactly once. Several callers can arrive
+ * together (the openings script runs 10 at a time, the worker runs beside it):
+ * one in-process promise per process, and across processes a claim document
+ * (unique _id) that only one process wins; the others wait for its ledgerId.
+ * The first version had neither and created 9 ledgers on preprod.
+ */
 export async function ensureLedger(): Promise<string> {
     const known = await state<string>('ledgerId');
     if (known) return known;
-    const l = await blnk.createLedger(blnkConfig().ledgerName, { app: 'sbc', purpose: 'member wallets (Security plan Phase 2)' });
-    await setState('ledgerId', l.ledger_id);
-    return l.ledger_id;
+    if (!ledgerInFlight) {
+        ledgerInFlight = createLedgerOnce().finally(() => { ledgerInFlight = null; });
+    }
+    return ledgerInFlight;
+}
+
+async function createLedgerOnce(): Promise<string> {
+    let won = false;
+    try {
+        await BlnkStateModel.create({ _id: 'ledgerClaim', value: { pid: process.pid }, at: new Date() });
+        won = true;
+    } catch (err: any) {
+        if (err?.code !== 11000) throw err;
+    }
+    if (won) {
+        try {
+            const l = await blnk.createLedger(blnkConfig().ledgerName, { app: 'sbc', purpose: 'member wallets (Security plan Phase 2)' });
+            await setState('ledgerId', l.ledger_id);
+            return l.ledger_id;
+        } catch (err) {
+            // Let another attempt claim it again.
+            await BlnkStateModel.deleteOne({ _id: 'ledgerClaim' });
+            throw err;
+        }
+    }
+    const until = Date.now() + LEDGER_CLAIM_WAIT_MS;
+    while (Date.now() < until) {
+        const id = await state<string>('ledgerId');
+        if (id) return id;
+        await new Promise(res => setTimeout(res, 200));
+    }
+    throw new BlnkError(null, 'LEDGER_PENDING', 'The ledger is being created by another process; try again.');
 }
 
 /**
@@ -142,13 +180,20 @@ async function syncOne(m: IWalletMovement): Promise<BlnkSyncStatus | 'stop'> {
         });
         await record(m, 'synced', { txId: tx.transaction_id, counterpart });
         return 'synced';
-    } catch (err) {
-        if (!(err instanceof BlnkError)) throw err;
+    } catch (caught) {
+        if (!(caught instanceof BlnkError)) throw caught;
+        let err: BlnkError = caught;
         if (err.retryable) return 'stop';
         if (err.code === 'TXN_DUPLICATE_REFERENCE') {
+            // Our own earlier post (a replay): synced. A transaction under this reference that
+            // does not touch this member's balance is a collision, never counted as synced.
             const t = await blnk.byReference(reference).catch(() => null);
-            await record(m, 'synced', { txId: t?.transaction_id ?? null, counterpart });
-            return 'synced';
+            const { balanceId } = await ensureMemberBalance(m.userId, m.currency);
+            if (t && (t.source === balanceId || t.destination === balanceId)) {
+                await record(m, 'synced', { txId: t.transaction_id, counterpart });
+                return 'synced';
+            }
+            err = new BlnkError(409, 'REFERENCE_COLLISION', `reference ${reference} already used by another balance`);
         }
         await record(m, 'rejected', { error: `${err.code}: ${err.message}`, counterpart });
         void openSupportCase({
