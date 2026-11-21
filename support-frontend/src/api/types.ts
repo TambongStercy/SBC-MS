@@ -260,7 +260,7 @@ export type CaseType =
   | 'activation' | 'withdrawal_divergence' | 'debit_missing' | 'paid_not_debited'
   | 'duplicate_callback' | 'unknown_status' | 'amount_mismatch' | 'ledger_mismatch'
   // Security plan Phase 5: fraud cases (opened by the fraud engine).
-  | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation';
+  | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation' | 'dormant_review';
 
 export type CaseStatus = 'open' | 'in_progress' | 'waiting_provider' | 'resolved' | 'closed';
 export type Severity = 'info' | 'warning' | 'critical';

@@ -689,6 +689,19 @@ class PaymentService {
         }
 
         const until = new Date(lock.until);
+        // Security plan Phase 7: an account unused for months has just come back.
+        if (lock.reason === 'dormant_reactivation') {
+            log.warn(`Withdrawal refused for user ${userId}: held until ${lock.until} after a dormant account came back (${audience})`);
+            if (audience === 'admin') {
+                const when = until.toLocaleString('fr-FR', { timeZone: 'Africa/Douala', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                throw new AppError(`Retraits bloqués pour ce membre jusqu'au ${when} (heure de Douala) : le compte, inactif depuis des mois, vient d'être réutilisé.`, 403);
+            }
+            const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000));
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            const remaining = h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
+            throw new AppError(`Pour protéger votre compte, inutilisé depuis longtemps, les retraits sont bloqués quelques jours après votre retour. Vous pourrez retirer à nouveau dans ${remaining}.`, 403);
+        }
         const what = lock.reason === 'email_change' ? "de l'adresse e-mail"
             : lock.reason === 'phone_change' ? 'du numéro de téléphone'
             : lock.reason === 'momo_change' ? 'du numéro Mobile Money'

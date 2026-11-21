@@ -21,6 +21,7 @@ import FixCinetPayWithdrawalsPage from './pages/FixCinetPayWithdrawalsPage';
 import FixProviderIssuesPage from './pages/FixProviderIssuesPage';
 import PaymentConversionPage from './pages/PaymentConversionPage';
 import ActivityPage from './pages/ActivityPage';
+import DormantAccountsPage from './pages/DormantAccountsPage';
 import ManualPaymentRecoveryPage from './pages/ManualPaymentRecoveryPage';
 import StorageMonitoringPage from './pages/StorageMonitoringPage';
 import RelanceDashboardPage from './pages/RelanceDashboardPage';
@@ -71,6 +72,8 @@ function App() {
             <Route path="/products" element={<ProductsManagementPage />} />
             <Route path="/transactions" element={<TransactionManagementPage />} />
             <Route path="/account-transactions" element={<AccountTransactionsManagementPage />} />
+            {/* Security plan Phase 7: money held by accounts nobody uses. */}
+            <Route path="/comptes-dormants" element={<DormantAccountsPage />} />
             <Route path="/settings" element={<SettingsManagementPage />} />
             <Route path="/storage" element={<StorageMonitoringPage />} />
             <Route path="/tombola" element={<TombolaManagementPage />} />

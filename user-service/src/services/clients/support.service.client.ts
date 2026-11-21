@@ -22,7 +22,7 @@ export type SupportCaseType =
     | 'activation' | 'withdrawal_divergence' | 'debit_missing' | 'paid_not_debited'
     | 'duplicate_callback' | 'unknown_status' | 'amount_mismatch' | 'ledger_mismatch'
     // Security plan Phase 5: fraud cases (the fraud engine, Phase 4, opens them).
-    | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation';
+    | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation' | 'dormant_review';
 
 export interface SupportCaseInput {
     type: SupportCaseType;

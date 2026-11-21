@@ -29,6 +29,7 @@ import {
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
 import { doualaDay, ingestActivityBatch, ipRange } from '../../services/activity-signals.service';
+import { noteSignIn } from '../../services/dormancy.service';
 import { markSignupCompleted, markSignupWrongCode, recordSignupAttempt, signupContext } from '../../services/signup-attempts.service';
 
 /** Fire-and-forget: one login in the day's signals (headers set by nginx / the gateway). */
@@ -1039,6 +1040,8 @@ export class UserController {
                 this.log.info(`OTP verification successful for userId: ${userId}`);
                 // Security plan Phase 9: the browser's signing key, bound to this token.
                 await bindAtSignIn(result.newToken, String(userId), req.body?.devicePublicKey, req.header('x-sbc-device'));
+                // Security plan Phase 7: the sign-in date; a dormant account coming back is held before it gets its token.
+                await noteSignIn(String(userId), { country: req.header('x-sbc-geo'), deviceId: req.header('x-sbc-device') });
                 res.status(200).json({ success: true, message: 'Verification successful', data: { token: result.newToken, user: userProfile } });
                 // Security plan Phase 1: a sign-in counts in the day's signals (consenting members only).
                 recordLogin(String(userId), req);

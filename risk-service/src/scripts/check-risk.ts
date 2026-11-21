@@ -132,6 +132,9 @@ const main = async () => {
     const view = (await axios.get(`${url}/api/risk/internal/members/${p}`, auth)).data.data;
     check('member view: linked filleul, shared number by tail only', view.linked.some((x: any) => x.userId === String(f)) && view.identifiers.some((i: any) => i.tail === '233' && i.kind === 'phone' && i.uses.includes('payout_number')));
     check('/health answers 200', (await axios.get(`${url}/health`)).status === 200);
+    const flags = (await axios.post(`${url}/api/risk/internal/members/flags`, { userIds: [String(p), String(f), 'not-an-id'] }, auth)).data.data;
+    check('flags (Phase 7): only members not simply allowed, by id', flags.length >= 1 && flags.every((x: any) => x.decision !== 'allow') && flags.some((x: any) => x.userId === String(p) && x.decision === 'hold'), JSON.stringify(flags));
+    check('flags without the service secret → 401', (await axios.post(`${url}/api/risk/internal/members/flags`, { userIds: [String(p)] }, { validateStatus: () => true })).status === 401);
 
     // ---- second run: the filleul's withdrawal number changes → no longer flagged ----
     await payment.collection('transactions').updateOne({ userId: f, type: 'withdrawal' }, { $set: { 'metadata.accountInfo.fullMomoNumber': '237655555555' } });
