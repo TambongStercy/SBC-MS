@@ -47,6 +47,7 @@ declare -A PM2_NAME=(
   [advertising-service]="advertising-preprod"
   [event-service]="event-preprod"
   [support-service]="support-preprod"
+  [risk-service]="risk-preprod"
 )
 
 CHANGED_SERVICES=()
@@ -166,7 +167,7 @@ pm2 save
 echo "$LOG_PREFIX Running health checks..."
 sleep 5
 
-PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008" "6009" "6010" "6012")
+PORTS=("6001" "6002" "6003" "6004" "6006" "6007" "6008" "6009" "6010" "6012" "6013")
 FAILED=0
 
 for PORT in "${PORTS[@]}"; do

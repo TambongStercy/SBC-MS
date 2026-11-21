@@ -633,6 +633,27 @@ Preprod worker: pm2 `blnk-sync-preprod`.
 - Checks: `user-service/src/scripts/check-blnk-ledger.ts` (needs local Blnk),
   `payment-service/src/scripts/check-ledger-triple-check.ts`.
 
+### Fraud engine: risk-service (Security plan Phase 4, part 1, 2026-11-21)
+
+Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `risk-service` on 3013 and
+`risk-preprod` on 6013 (databases `sbc_risk`, `sbc_risk_preprod`). Internal only: no gateway route.
+- **Links:** phone numbers (payout, profile MoMo, paying number: one identifier whatever the role)
+  and devices. Numbers compare on their last 9 digits. More than 50 accounts on one identifier = a
+  hub, which links nothing. Stored as an HMAC (`RISK_HASH_KEY`, never rotate) plus a 3-digit tail.
+- **Rules:**
+  - shared payout number in a referral tree: 40;
+  - self-referral in a linked group: 50;
+  - multi-account: 20–40;
+  - quick withdrawal: 10.
+  - Score 40 = `require_code`, 70 = `hold`.
+- **Look-back:** `dist/scripts/lookback.js` (dry run; `--apply`). It only reads the source
+  databases. Its cases are sent to support with `alert: false` (new support intake option: filed
+  without notifying anyone).
+- **payment-service:** `RISK_MODE=off|silent` + `RISK_SERVICE_URL`. Silent asks inside
+  `assertWithdrawalsNotLocked` (100 ms budget), logs, never refuses. No enforce mode yet: it waits
+  for Rufus's rules on held withdrawals.
+- Checks: `risk-service/src/scripts/check-risk.ts`, `payment-service/src/scripts/check-risk-silent.ts`.
+
 ### Support integration (Security plan Phase 5, 2026-11-21)
 
 Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, permissions §4).

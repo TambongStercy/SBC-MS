@@ -23,6 +23,7 @@ ALL_SERVICES=(
   "advertising-service"
   "event-service"
   "support-service"
+  "risk-service"
 )
 
 ROOT_DIR=$(pwd)
