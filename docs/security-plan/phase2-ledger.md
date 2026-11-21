@@ -1,7 +1,7 @@
 # Security plan Phase 2: second ledger (Blnk)
 
-Status (2026-11-21): built and tested **locally only** (Sterling: image download approved
-for this machine, not yet for the server). Nothing runs on preprod or prod.
+Status (2026-11-21): tested against a local Blnk; Blnk installed on the secondary server for
+preprod (see « Where it runs »). The sync is not started yet.
 
 ## What it does
 
@@ -72,24 +72,39 @@ is named:
 | payment-service `sbc-live-refund.service.ts` `processApprovedRefund` | SBC Live refund credit |
 | product-service `user.service.client.ts` `updateUserBalance` | product flows (no reference) |
 
-## Rollout on the server (waits for your OK)
+## Where it runs (Sterling, 2026-11-21)
 
-1. **PostgreSQL (the one already running, 16):**
-   - database `blnk_preprod` (later `blnk`), with its own role and `CONNECTION LIMIT 20`;
-   - add the database to the nightly backup (`pg_dump` next to the mongodump, to R2).
-2. **Blnk 0.15.9 server and worker in Docker:**
-   - listening on 127.0.0.1 only;
-   - `blnk.json` with `"server": {"secure": true, "secret_key": …}`. **Without `secure: true`
-     Blnk accepts any request, key or not** (checked locally);
-   - Redis: the server's own, on a database number of its own.
-3. **user-service `.env`:** `BLNK_URL`, `BLNK_API_KEY`, `BLNK_LEDGER_NAME`.
-4. **Start the worker:** pm2 `blnk-sync-preprod` running `node dist/workers/blnk-sync.worker.js`.
-5. **Openings:** `node dist/scripts/blnk-post-openings.js` (dry run), then `--apply`.
-6. **Shadow run:** 14 clean nights in a row (no unexplained difference), with
-   `LEDGER_TRIPLE_CHECK=log` in payment-service.
-7. **Enforcement:** `LEDGER_TRIPLE_CHECK=enforce`.
-8. **Holds in Blnk** (inflight at reservation, commit or void with the Mongo reservation):
-   with enforcement.
+Blnk runs on the **secondary server** (`ubuntu@169.58.159.177`: Ubuntu 24.04, 8 cores, 23 GB).
+It does not run on the main server.
+
+- `/opt/blnk-preprod` (root only):
+  - `docker-compose.yml`: Blnk 0.15.9 server and worker, plus Redis 7, all on the host network;
+  - `blnk.json` (mode 600, `secure: true`);
+  - `.api-key` and `.pgpass-value`, generated on the server and never printed.
+- **PostgreSQL 19** (already installed): database and role `blnk_preprod` (`CONNECTION LIMIT 30`).
+- **Ports:** Blnk listens on 5101, its worker on 5004, Redis on 127.0.0.1:6390. ufw denies
+  everything incoming except 22, 80 and 443. Checked from outside: 5101, 5004, 6390 and 5432
+  are all closed.
+- **nginx** `blnk.sniperbusinesscenter.com` → 127.0.0.1:5101:
+  - only `207.180.242.122` (the main server) and 127.0.0.1 are allowed; everyone else gets 403;
+  - the ACME path is open;
+  - HTTPS comes from certbot, and needs the Cloudflare record set to **DNS only** (grey
+    cloud). Behind Cloudflare's proxy every caller would be a Cloudflare address.
+- **Main server:** preprod `user-service/.env` gets `BLNK_URL=https://blnk.sniperbusinesscenter.com`
+  and `BLNK_API_KEY`; the pm2 process is `blnk-sync-preprod` (ecosystem.preprod.config.js).
+  The deploy restarts it with user-service; the first start is by hand.
+- **Prod later:** a second Blnk instance (its own database, port and host name).
+
+## Rollout steps (each one confirmed with Sterling)
+
+1. Blnk, its database and nginx on the secondary server: **done**.
+2. HTTPS (certbot), once the record is DNS only.
+3. Preprod user-service `.env` and the `blnk-sync-preprod` worker (needs this branch deployed).
+4. Openings: `node dist/scripts/blnk-post-openings.js` (dry run), then `--apply`.
+5. Shadow run: 14 clean nights in a row, with `LEDGER_TRIPLE_CHECK=log` in payment-service.
+6. `LEDGER_TRIPLE_CHECK=enforce`.
+7. Backups of `blnk_preprod` (nightly `pg_dump` from the secondary server).
+8. Holds in Blnk (inflight at reservation) with enforcement.
 
 ## Local
 
