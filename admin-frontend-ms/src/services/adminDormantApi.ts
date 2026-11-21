@@ -11,9 +11,11 @@ export interface DormantSummary {
   ready: boolean;
   day?: string;
   at?: string;
-  thresholds?: { inactiveDays: number; dormantDays: number; longDormantDays: number };
+  thresholds?: { inactiveDays: number; dormantDays: number; longDormantDays: number; minXaf?: number };
   xafPerUsd?: number;
   all?: Totals;
+  /** Accounts holding less than thresholds.minXaf: in `all`, never listed. */
+  belowMin?: Totals | null;
   byStatus?: Record<DormancyStatus, Totals>;
   dormant?: Totals & {
     byBalance: Record<BalanceField, number>;

@@ -168,6 +168,7 @@ export async function runDormancyPass(now: Date = new Date(), opts: { batch?: nu
         const bySize: Record<string, Tot> = Object.fromEntries(SIZE_BUCKETS.map(s => [s.key, tot()]));
         const flags = { commissionsNoLogin: tot(), fraudFlag: tot(), checked: tot(), noAuthenticator: tot(), neverWithdrew: tot() };
         const basis: Record<string, number> = {};
+        const belowMin = tot();
 
         const cursor = UserModel.find(MONEY_FILTER).select(PASS_FIELDS).lean().cursor({ batchSize });
         let batch: any[] = [];
@@ -209,6 +210,9 @@ export async function runDormancyPass(now: Date = new Date(), opts: { batch?: nu
                 const status = statusFor(seen.at, now, cfg);
                 const b = balancesOf(u);
                 const xafEq = heldXafOf(b, cfg.xafPerUsd);
+                add(all, b, xafEq);
+                // Under the minimum: part of the member total, never a status (the unset below clears an old one).
+                if (xafEq < cfg.minXaf) { add(belowMin, b, xafEq); continue; }
                 const mv = moveBy.get(id);
                 const lastCommissionAt: Date | null = mv?.lastCommissionAt ?? null;
                 const lastWithdrawalAt: Date | null = mv?.lastWithdrawalAt ?? null;
@@ -216,7 +220,6 @@ export async function runDormancyPass(now: Date = new Date(), opts: { batch?: nu
                 const fraudFlag = !!u.frozen?.at || (risk ? risk.has(id) : !!u.dormancy?.fraudFlag);
                 const authenticator = authSet.has(id);
 
-                add(all, b, xafEq);
                 add(byStatus[status], b, xafEq);
                 basis[seen.basis] = (basis[seen.basis] ?? 0) + 1;
                 if (status !== 'active') {
@@ -264,7 +267,7 @@ export async function runDormancyPass(now: Date = new Date(), opts: { batch?: nu
         }
         await flush();
 
-        // Accounts that no longer hold money (or were deleted) leave the list. Sign-in date, check and hold stay.
+        // Accounts that no longer hold money, hold less than the minimum, or were deleted leave the list. Sign-in date, check and hold stay.
         const stale = await UserModel.collection.updateMany(
             { 'dormancy.status': { $exists: true }, 'dormancy.runId': { $ne: runId }, $nor: [{ 'dormancy.lastSignInAt': { $gte: wallStart } }] },
             { $unset: { 'dormancy.status': '', 'dormancy.heldXaf': '', 'dormancy.runId': '', 'dormancy.commissionsNoLogin': '', 'dormancy.fraudFlag': '' } },
@@ -275,9 +278,10 @@ export async function runDormancyPass(now: Date = new Date(), opts: { batch?: nu
         const countries = Object.entries(byCountry).sort((a, b) => b[1].xafEq - a[1].xafEq);
         const snapshot = {
             runId, at: now, durationMs: Date.now() - started,
-            thresholds: { inactiveDays: cfg.inactiveDays, dormantDays: cfg.dormantDays, longDormantDays: cfg.longDormantDays },
+            thresholds: { inactiveDays: cfg.inactiveDays, dormantDays: cfg.dormantDays, longDormantDays: cfg.longDormantDays, minXaf: cfg.minXaf },
             xafPerUsd: cfg.xafPerUsd,
             all: roundTot(all),
+            belowMin: roundTot(belowMin),
             byStatus: Object.fromEntries(Object.entries(byStatus).map(([k, v]) => [k, roundTot(v)])),
             dormant: {
                 ...roundTot(dorm),
@@ -294,7 +298,7 @@ export async function runDormancyPass(now: Date = new Date(), opts: { batch?: nu
         if (!check.ok) log.error(`Dormancy check: card ${check.card.count} / ${check.card.xafEq} F ≠ list ${check.list.count} / ${check.list.xafEq} F (run ${runId})`);
         await clearOldExports(now);
         const r = { runId, day, accounts: all.count, dormant: dorm.count, ms: Date.now() - started, checkOk: check.ok };
-        log.info(`Dormancy pass ${day}: ${r.accounts} accounts holding money, ${r.dormant} inactive 90+ days (${round2(dorm.xafEq)} F), ${stale.modifiedCount} left the list, ${r.ms} ms, check ${check.ok ? 'ok' : 'FAILED'}`);
+        log.info(`Dormancy pass ${day}: ${r.accounts} accounts holding money (${belowMin.count} under ${cfg.minXaf} F), ${r.dormant} inactive 90+ days (${round2(dorm.xafEq)} F), ${stale.modifiedCount} left the list, ${r.ms} ms, check ${check.ok ? 'ok' : 'FAILED'}`);
         return r;
     } finally {
         passRunning = false;
@@ -349,6 +353,7 @@ export async function dormancySummary(now: Date = new Date()) {
         thresholds: latest.thresholds,
         xafPerUsd: latest.xafPerUsd,
         all: latest.all,
+        belowMin: latest.belowMin ?? null,
         byStatus: latest.byStatus,
         dormant: latest.dormant,
         share: latest.all?.xafEq ? round2((latest.dormant?.xafEq ?? 0) / latest.all.xafEq) : 0,

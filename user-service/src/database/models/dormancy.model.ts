@@ -23,6 +23,8 @@ const SnapshotSchema = new Schema({
     xafPerUsd: { type: Number },
     /** Every account holding money. */
     all: Totals,
+    /** Accounts holding money but less than the minimum (DORMANCY_MIN_XAF): no status. */
+    belowMin: Totals,
     byStatus: { type: Schema.Types.Mixed, default: {} },
     /** Accounts inactive for inactiveDays or more (inactive + dormant + long_dormant). */
     dormant: { type: Schema.Types.Mixed, default: {} },
