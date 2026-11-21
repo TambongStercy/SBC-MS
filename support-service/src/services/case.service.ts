@@ -18,6 +18,9 @@ export interface CaseInput {
     subject?: { userId?: unknown; transactionId?: unknown; sessionId?: unknown; gateway?: unknown };
     /** Phase 5: the member's country (else looked up) and the money at stake (XAF). */
     country?: unknown; amount?: unknown;
+    /** false: file the case without alerting anyone (Phase 4 look-back over past data, which
+     *  would otherwise ring the managers once per historical case). Default true. */
+    alert?: unknown;
 }
 
 /**
@@ -30,6 +33,7 @@ export async function upsertCase(input: CaseInput, source: string): Promise<{ ca
     if (!CASE_TYPES.includes(type as any)) throw badRequest('Unknown case type', 'BAD_TYPE');
     const dedupKey = str(input.dedupKey, 300);
     if (!dedupKey) throw badRequest('dedupKey required', 'BAD_DEDUP_KEY');
+    const alert = input.alert !== false;
     const severity = (CASE_SEVERITIES.includes(input.severity as any) ? input.severity : 'warning') as CaseSeverity;
     const summary = str(input.summary, 1000);
     if (!summary) throw badRequest('summary required', 'BAD_SUMMARY');
@@ -65,12 +69,12 @@ export async function upsertCase(input: CaseInput, source: string): Promise<{ ca
             if (created) {
                 // $inc on insert starts at 1; make updatedAt consistent.
                 await Case.updateOne({ _id: doc._id }, { $set: { updatedAt: now } });
-                await alertForCase(doc, severity);
+                if (alert) await alertForCase(doc, severity);
             } else if (SEVERITY_RANK[severity] > SEVERITY_RANK[doc.severity as CaseSeverity]) {
                 const r = await Case.updateOne({ _id: doc._id, severity: doc.severity }, {
                     $set: { severity, severityRank: SEVERITY_RANK[severity] }, $push: { history: { at: now, kind: 'severity', by: source, from: doc.severity, to: severity } },
                 });
-                if (r.modifiedCount === 1) await alertForCase(doc, severity);
+                if (r.modifiedCount === 1 && alert) await alertForCase(doc, severity);
             }
             return { caseId: String(doc._id), created };
         } catch (err: any) {

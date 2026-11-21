@@ -127,6 +127,16 @@ module.exports = {
         NODE_ENV: 'preprod',
         PORT: 6012
       }
+    },
+    {
+      // Security plan Phase 4: fraud engine (DB sbc_risk_preprod), internal only.
+      name: 'risk-preprod',
+      cwd: './risk-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'preprod',
+        PORT: 6013
+      }
     }
   ]
 };

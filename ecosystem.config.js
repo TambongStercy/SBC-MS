@@ -107,6 +107,16 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3012
       }
+    },
+    {
+      // Security plan Phase 4: fraud engine (DB sbc_risk), internal only.
+      name: 'risk-service',
+      cwd: './risk-service',
+      script: 'dist/server.js',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3013
+      }
     }
   ]
 };

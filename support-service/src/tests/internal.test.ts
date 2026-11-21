@@ -1,7 +1,8 @@
 import request from 'supertest';
 import { Case } from '../database/models/case.model';
+import { AgentNotification } from '../database/models/agent-notification.model';
 import { ViewTask } from '../database/models/view-task.model';
-import { getApp, mockFetch, setupDb, teardown } from './helpers';
+import { getApp, makeAgent, mockFetch, setupDb, teardown } from './helpers';
 
 beforeEach(setupDb);
 afterAll(teardown);
@@ -39,6 +40,31 @@ describe('/internal/cases', () => {
 
             const bad = await post('/cases', { ...body, type: 'nope' });
             expect(bad.status).toBe(400);
+        } finally {
+            fetchMock.restore();
+        }
+    });
+});
+
+describe('/internal/cases with alert: false (Phase 4 look-back)', () => {
+    it('files a critical fraud case without notifying anyone', async () => {
+        await makeAgent(['finance_manager']);
+        const fetchMock = mockFetch({ '/api/notifications': () => ({ json: { success: true } }) });
+        try {
+            const r = await post('/cases', {
+                type: 'shared_payout_number', dedupKey: 'risk:shared_payout:abc', severity: 'critical', alert: false,
+                subject: { userId: '6e2e00000000000000000b01' }, summary: 'Numéro partagé', country: 'CM', amount: 120000,
+            });
+            expect(r.status).toBe(201);
+            expect(await AgentNotification.countDocuments({})).toBe(0);
+            expect(fetchMock.calls.filter((c) => /notifications|ntfy/.test(c.url))).toHaveLength(0);
+            const c = await Case.findOne({ dedupKey: 'risk:shared_payout:abc' }).lean();
+            expect(c!.severity).toBe('critical');
+            expect(c!.country).toBe('CM');
+
+            // control: the same case with alerts on notifies the finance manager
+            await post('/cases', { type: 'shared_payout_number', dedupKey: 'risk:shared_payout:def', severity: 'critical', subject: { userId: '6e2e00000000000000000b01' }, summary: 'Numéro partagé', country: 'CM' });
+            expect(await AgentNotification.countDocuments({})).toBeGreaterThan(0);
         } finally {
             fetchMock.restore();
         }

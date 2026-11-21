@@ -37,6 +37,7 @@ import {
     OPEN_WITHDRAWAL_STATUSES, COMPLETABLE_STATUSES,
 } from './withdrawal-lifecycle';
 import { openSupportCase } from './clients/support.service.client';
+import { askRisk } from './clients/risk.service.client';
 import { failureFromError, failureFromProviderResult } from '../utils/payment-failure';
 import { checkPayinNumber, numberCheckMode } from '../utils/payin-number';
 import { memberFailureText } from '../utils/member-failure-text';
@@ -653,6 +654,18 @@ class PaymentService {
             : 'Votre retrait est en cours de vérification. Le support vous contactera si nécessaire.', 409);
     }
 
+    /**
+     * Security plan Phase 4 (silent mode): what the fraud engine would answer
+     * for this member. Logged only, never refuses (RISK_MODE, see
+     * clients/risk.service.client.ts).
+     */
+    private async logRiskDecision(userId: string | Types.ObjectId, audience: 'member' | 'admin'): Promise<void> {
+        const a = await askRisk({ userId: userId.toString(), action: audience === 'admin' ? 'withdrawal_admin' : 'withdrawal' });
+        if (a && a.decision !== 'allow') {
+            log.warn(`Risk (silent) user ${userId}: would ${a.decision} (score ${a.score}: ${a.reasons.map(r => r.rule).join(', ')}) [${audience}]`);
+        }
+    }
+
     public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {
         let lock;
         try {
@@ -663,6 +676,7 @@ class PaymentService {
         }
         if (!lock.locked || !lock.until) {
             await this.assertLedgerAgrees(userId, audience);
+            await this.logRiskDecision(userId, audience);
             return;
         }
 

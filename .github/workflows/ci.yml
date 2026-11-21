@@ -23,6 +23,7 @@ jobs:
           - advertising-service
           - event-service
           - support-service
+          - risk-service
       fail-fast: false
 
     steps:
