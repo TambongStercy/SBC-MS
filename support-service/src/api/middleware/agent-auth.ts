@@ -17,6 +17,8 @@ export interface DeskAgent {
     email: string;
     roles: string[];
     permissions: Permission[];
+    /** Country team; empty = every country. */
+    countries: string[];
 }
 
 export interface DeskRequest extends Request { agent?: DeskAgent }
@@ -107,12 +109,12 @@ export async function requireAgent(req: Request, _res: Response, next: NextFunct
         if (!claims) throw unauthorized();
         const session = await loadActiveSession(claims.sid, claims.sub);
         if (!session) throw unauthorized();
-        const agent = await Agent.findById(claims.sub, { email: 1, name: 1, roles: 1, status: 1 }).lean();
+        const agent = await Agent.findById(claims.sub, { email: 1, name: 1, roles: 1, status: 1, countries: 1 }).lean();
         if (!agent || agent.status !== 'active') throw unauthorized();
         // Roles come from the database, not the token: a role change applies at once.
         (req as DeskRequest).agent = {
             id: String(agent._id), sid: claims.sid, name: agent.name, email: agent.email, roles: agent.roles,
-            permissions: permissionsFor(agent.roles),
+            permissions: permissionsFor(agent.roles), countries: agent.countries ?? [],
         };
         const store = requestContext.getStore();
         if (store) store.actor = `${agent._id}|${agent.roles[0] ?? 'none'}`;

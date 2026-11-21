@@ -15,6 +15,7 @@ import { recordConsents, exportUserData, deleteOwnAccount } from '../../services
 import logger from '../../utils/logger'; // Import logger
 import { uploadAvatar } from '../middleware/upload.middleware'; // Corrected import path
 import { strictLimiter, mediumLimiter, generalLimiter, uploadLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
+import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
 
 const router = Router();
 const log = logger.getLogger('UserRoutes'); // Create logger instance
@@ -59,6 +60,9 @@ serviceRouter.post('/:userId/withdrawal/success', (req, res) => userController.p
 serviceRouter.get('/:userId/withdrawal-lock', (req, res) => userController.getWithdrawalLock(req, res));
 // Security plan Phase 1: aggregated request signals from the gateway.
 serviceRouter.post('/activity/batch', (req, res) => userController.ingestActivityBatch(req, res));
+// Security plan Phase 11: the support desk reads the same activity figures (filtered to the agent's countries).
+serviceRouter.get('/activity/board', getActivityBoard);
+serviceRouter.get('/activity/list', getActivityList);
 // Member authenticator (Security plan Phase 3): payment-service checks it before a withdrawal.
 serviceRouter.get('/:userId/authenticator', (req, res) => userController.internalAuthenticatorStatus(req, res));
 serviceRouter.post('/:userId/authenticator/verify', (req, res) => userController.internalVerifyAuthenticator(req, res));

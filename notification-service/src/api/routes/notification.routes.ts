@@ -3,6 +3,7 @@ import { notificationController } from '../controllers/notification.controller';
 import { authenticate, authenticateServiceRequest, requireAdmin } from '../middleware/auth.middleware';
 import whatsappServiceFactory from '../../services/whatsapp-service-factory';
 import config from '../../config';
+import { otpDeliveryFor } from '../../services/otp-delivery.service';
 
 const router = Router();
 
@@ -13,6 +14,17 @@ router.get('/me/stats', authenticate, (req, res) => notificationController.getUs
 // Routes for inter-service communication (secure these with API keys in production)
 router.post('/otp', authenticateServiceRequest, (req, res) => notificationController.sendOtp(req, res));
 router.post('/internal/create', authenticateServiceRequest, (req, res) => notificationController.createInternalNotification(req, res));
+
+// Security plan Phase 11: delivery facts of sign-in codes (no code, body or recipient).
+router.post('/internal/otp-delivery', authenticateServiceRequest, async (req: Request, res: Response) => {
+    try {
+        const since = req.body?.since ? new Date(req.body.since) : undefined;
+        const data = await otpDeliveryFor(Array.isArray(req.body?.userIds) ? req.body.userIds.map(String) : [], since);
+        res.json({ success: true, data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error?.message || 'otp delivery lookup failed' });
+    }
+});
 
 // NEW internal route for broadcasting
 router.post('/internal/broadcast', authenticateServiceRequest, (req, res, next) => notificationController.handleBroadcastNotification(req, res, next));

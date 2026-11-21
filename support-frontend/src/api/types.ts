@@ -425,6 +425,8 @@ export interface AgentAccount {
   lastLoginAt?: string | null;
   createdAt: string;
   activeSessions: number;
+  /** Country team (ISO codes); empty = every country. */
+  countries?: string[];
 }
 
 export interface SettingEntry {

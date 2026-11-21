@@ -4,6 +4,7 @@ import { authenticateServiceRequest } from '../middleware/auth.middleware';
 import { Types } from 'mongoose';
 import TransactionModel, { TransactionStatus, TransactionType, Currency } from '../../database/models/transaction.model';
 import transactionRepository from '../../database/repositories/transaction.repository';
+import { activityPayments } from '../../services/payment-conversion.service';
 
 const router = Router();
 
@@ -16,6 +17,20 @@ router.use(authenticateServiceRequest);
  * @access  Private (Service-to-Service)
  */
 router.post('/deposit', (req, res, next) => paymentController.recordInternalDeposit(req, res, next));
+
+/**
+ * @route   GET /api/internal/activity/payments?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * @desc    Unfinished payments per Douala day and country (Security plan Phase 11 rollup)
+ * @access  Private (Service-to-Service)
+ */
+router.get('/activity/payments', async (req, res) => {
+    try {
+        const data = await activityPayments({ from: String(req.query.from || ''), to: String(req.query.to || '') });
+        res.json({ success: true, data });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error?.message || 'activity payments failed' });
+    }
+});
 
 /**
  * @route   GET /api/internal/intents/:sessionId

@@ -193,3 +193,45 @@ export async function paymentAlerts() {
     const shape = (a: any) => ({ key: a.key, kind: a.kind, gateway: a.gateway ?? null, country: a.country ?? null, title: a.title, openedAt: a.openedAt, lastSeenAt: a.lastSeenAt, resolvedAt: a.resolvedAt ?? null, notified: !!a.notifiedAt });
     return { open: open.map(shape), recent: recent.map(shape) };
 }
+
+/**
+ * Security plan Phase 11 (daily activity): unfinished payments per Douala day
+ * and country, for user-service's activity rollup (it stores the result; the
+ * dashboards never call this while loading). Failed ones by failure group,
+ * plus those still with the provider and those never sent to one.
+ */
+export async function activityPayments(f: { from?: string; to?: string }) {
+    const r = range({ from: f.from, to: f.to });
+    const m = { createdAt: { $gte: r.start, $lt: r.end } };
+    const rows = await PaymentIntentModel.aggregate([
+        { $match: m },
+        { $unionWith: { coll: ARCHIVE_COLLECTION, pipeline: [{ $match: m }] } },
+        { $match: { status: { $nin: SUCCESS } } },
+        {
+            $group: {
+                _id: {
+                    day: { $dateToString: { date: '$createdAt', format: '%Y-%m-%d', timezone: '+01:00' } },
+                    country: { $ifNull: [{ $cond: [{ $eq: ['$countryCode', ''] }, null, { $toUpper: '$countryCode' }] }, 'XX'] },
+                },
+                failed: { $sum: { $cond: [{ $in: ['$status', FAILED] }, 1, 0] } },
+                sbc_code: { $sum: { $cond: [{ $and: [{ $in: ['$status', FAILED] }, { $eq: ['$failure.group', 'sbc_code'] }] }, 1, 0] } },
+                provider_api: { $sum: { $cond: [{ $and: [{ $in: ['$status', FAILED] }, { $eq: ['$failure.group', 'provider_api'] }] }, 1, 0] } },
+                member: { $sum: { $cond: [{ $and: [{ $in: ['$status', FAILED] }, { $eq: ['$failure.group', 'member'] }] }, 1, 0] } },
+                waiting: { $sum: { $cond: [{ $in: ['$status', WAITING] }, 1, 0] } },
+                abandoned: { $sum: { $cond: [{ $eq: ['$status', PaymentStatus.PENDING_USER_INPUT] }, 1, 0] } },
+            },
+        },
+    ]).allowDiskUse(true);
+    return {
+        from: r.from,
+        to: r.to,
+        rows: rows.map((x: any) => ({
+            day: x._id.day,
+            country: x._id.country,
+            failed: x.failed,
+            groups: { sbc_code: x.sbc_code, provider_api: x.provider_api, member: x.member, unknown: x.failed - x.sbc_code - x.provider_api - x.member },
+            waiting: x.waiting,
+            abandoned: x.abandoned,
+        })),
+    };
+}

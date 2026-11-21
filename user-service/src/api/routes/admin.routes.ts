@@ -6,6 +6,7 @@ import { UserRole, ADMIN_CAPABLE_ROLES } from '../../database/models/user.model'
 import { adminAccessController } from '../controllers/admin-access.controller';
 import { protectAdminAccounts } from '../middleware/protect-admin-accounts.middleware';
 import { adminLimiter, strictLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
+import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
 
 const router = Router();
 
@@ -32,6 +33,10 @@ router.get('/me/access', adminAccessController.getMyAccess as any);
 router.get('/staff', superAdminOnly, adminAccessController.listStaff as any);
 router.put('/staff/:userId', superAdminOnly, adminAccessController.setStaffAccess as any);
 router.delete('/staff/:userId', superAdminOnly, adminAccessController.revokeStaff as any);
+
+// --- Daily activity (Security plan Phase 11; gateway module: dashboard) ---
+router.get('/activity', getActivityBoard as any);
+router.get('/activity/list', getActivityList as any);
 
 // --- Dashboard Route ---
 router.get('/dashboard', adminController.getDashboardData as any); // GET /api/admin/dashboard

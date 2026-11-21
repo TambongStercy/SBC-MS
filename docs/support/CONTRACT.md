@@ -58,6 +58,7 @@ All responses: `{ success: boolean, data?: …, message?: string, code?: string 
 |---|---|---|
 | `POST /support-details` | `{ userIds: string[] }` (≤ 100) | `data: SupportMember[]` |
 | `POST /support-search` | `{ q: string, limit?: number }` (≤ 20) — exact `_id`, email, phone (any format, normalised), or name prefix | `data: { _id, name, country, role, createdAt }[]` |
+| `GET /activity/board` | `?range=today\|7d\|30d&source=web\|app\|api&countries=CM,BJ` | Security plan Phase 11: the day's activity board, the same object as the admin `GET /api/users/admin/activity` (rows per country, total, daily series, sign-up failure reasons). Computed by user-service's rollup, never by the caller. |
 | `POST /support/contact-change` | `{ userId, field: 'email'\|'phoneNumber', newValue, step: 'send-code'\|'apply', code?, approvalId }` | `send-code`: OTP to the **new** contact; `apply`: verifies code, applies `withdrawalLockFields()` and `contact-change-alert` to the old contact. Value used by another account → `400 code=CONTACT_UNAVAILABLE` (neutral message). |
 
 `SupportMember` (never password, otps, tokens, device secrets):
@@ -205,7 +206,13 @@ Idle 30 min, absolute 12 h.
 
 Modules (all under `/desk`, each route checks a permission server-side; refusals audited):
 `agents`, `settings`, `audit`, `approvals`, `members`, `tickets`, `templates`, `kb`,
-`activation`, `finance`, `cases`, `views`, `reports`, `notifications`.
+`activation`, `finance`, `cases`, `views`, `reports`, `notifications`, `activity`.
+
+Activity (Phase 11): `GET /activity?range&source&country` (`activity.read`) → `{ board, team }`.
+An agent's `countries` (country team, `PUT /agents/:id/countries { countries: ['CM'] }`,
+`agents.manage` + reauth, audited; `[]` = every country) limits the board to those
+countries; asking for another country returns `board: null`. Tickets and cases are not
+filtered by country yet (Security plan Phase 5).
 
 Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend). Lists are
 `{ items, total, page, limit }` unless noted; sensitive routes need `x-reauth-token`.
@@ -310,6 +317,7 @@ a reliable data message on topic `support` after every ticket change
 | `kb.publish`, `templates.manage` | | | ✓ | | ✓ | ✓ |
 | `reports.read` | | ✓ | ✓ | | ✓ | ✓ |
 | `export` | | | ✓ | | ✓ | ✓ |
+| `activity.read` (Phase 11 activity panel) | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | `agents.manage`, `settings.manage`, `audit.read` | | | | | | ✓ |
 
 An approver must differ from the requester. Masking: `+237 6•• •• 34`, `j•••@gmail.com`.
