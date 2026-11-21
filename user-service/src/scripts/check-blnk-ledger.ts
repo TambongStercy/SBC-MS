@@ -118,7 +118,7 @@ const main = async () => {
     const fresh = await WalletMovementModel.create({ reference: 'deposit:FRESH', direction: 'CREDIT', userId: u2, currency: 'XAF', amount: 1, requestedAmount: 1, source: 'deposit', status: 'PENDING' });
     const r1 = await sync.syncBatch(200);
     check('a fresh PENDING claim holds the cursor', r1.stopped === 'pending');
-    await WalletMovementModel.collection.updateOne({ _id: fresh._id }, { $set: { createdAt: new Date(Date.now() - 20 * 60_000) } });
+    await WalletMovementModel.collection.updateOne({ _id: fresh._id as any }, { $set: { createdAt: new Date(Date.now() - 20 * 60_000) } });
     await sync.syncBatch(200);
     check('a stale PENDING claim (crash leftover) is skipped', (await BlnkSyncModel.findOne({ movementId: fresh._id }).lean())?.status === 'skipped_stuck_pending');
 

@@ -26,6 +26,7 @@ process.env.TOMBOLA_SERVICE_URL = process.env.TOMBOLA_SERVICE_URL || 'http://loc
 process.env.NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost/unused';
 process.env.PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || 'http://localhost/unused';
 delete process.env.SUPPORT_SERVICE_URL;
+export {};
 
 let failures = 0;
 const check = (label: string, ok: boolean, detail = '') => {
