@@ -615,6 +615,22 @@ activations, unfinished payments. Each admin number opens the list behind it.
 - Checks: `user-service/src/scripts/check-activity-dashboard.ts` (local Mongo +
   Redis), support `src/tests/activity.test.ts`.
 
+### Second ledger: Blnk (Security plan Phase 2, 2026-11-21, local only)
+
+Design, inventory and rollout: `docs/security-plan/phase2-ledger.md`. Not on any server yet
+(Sterling approved the image download for local use only).
+- Blnk 0.15.9 (`ghcr.io/blnkfinance/blnk`), local stack `infra/blnk/docker-compose.local.yml`
+  on 127.0.0.1:5101. **`"server": {"secure": true}` is required**, or Blnk ignores the key.
+- user-service: `services/blnk/` (client, sync), models `blnk_balances`, `blnk_syncs`,
+  `blnk_state`; worker `workers/blnk-sync.worker.ts` (own pm2 process); internal
+  `GET /users/internal/:id/ledger-check?currency=` (A, B, C). The walletmovements journal is
+  B and the source posted to Blnk (`mv:<reference>:<direction>`, replay-proof).
+- payment-service `assertLedgerAgrees` inside `assertWithdrawalsNotLocked`:
+  `LEDGER_TRIPLE_CHECK=off|log|enforce` (default off).
+- Server choice (Sterling): Blnk's data in the PostgreSQL 16 already on the server.
+- Checks: `user-service/src/scripts/check-blnk-ledger.ts` (needs local Blnk),
+  `payment-service/src/scripts/check-ledger-triple-check.ts`.
+
 ### Support integration (Security plan Phase 5, 2026-11-21)
 
 Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, permissions §4).

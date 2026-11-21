@@ -7,7 +7,7 @@ import { TransactionStatus, TransactionType, Currency, ITransaction } from '../d
 import PaymentIntentModel from '../database/models/PaymentIntent';
 import TransactionModel from '../database/models/transaction.model';
 import pendingPayoutWebhookModel from '../database/models/pending-payout-webhook.model';
-import { userServiceClient, UserDetails, UserDetailsWithMomo } from './clients/user.service.client';
+import { LedgerCheck, userServiceClient, UserDetails, UserDetailsWithMomo } from './clients/user.service.client';
 import { productServiceClient } from './clients/product.service.client';
 import notificationService, { DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
@@ -611,6 +611,48 @@ class PaymentService {
         }
     }
 
+    /**
+     * Security plan Phase 2: before money leaves a member's balance, A
+     * (users.balance), B (opening + recorded movements) and C (Blnk) must agree
+     * within 1 XAF / 0.01 USD, with nothing waiting to be synced.
+     * LEDGER_TRIPLE_CHECK: `off` (default), `log` (case on a difference, never
+     * refuses: the plan's shadow weeks), `enforce` (refuses, and refuses when the
+     * ledger cannot answer: never paid blind).
+     */
+    public async assertLedgerAgrees(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {
+        const mode = String(process.env.LEDGER_TRIPLE_CHECK || 'off').toLowerCase();
+        if (mode !== 'log' && mode !== 'enforce') return;
+        const uid = userId.toString();
+        let checks: LedgerCheck[];
+        try {
+            checks = await Promise.all([userServiceClient.getLedgerCheck(uid, 'XAF'), userServiceClient.getLedgerCheck(uid, 'USD')]);
+        } catch (error: any) {
+            log.error(`Ledger triple check unavailable for user ${uid}: ${error.message}`);
+            if (mode === 'enforce') throw new AppError('Les retraits sont momentanément indisponibles (vérification des soldes). Réessayez dans quelques minutes.', 503);
+            return;
+        }
+        if (checks.some(c => !c.enabled)) return; // Blnk not configured
+        const bad = checks.filter(c => !c.agree);
+        if (!bad.length) return;
+        const pendingOnly = bad.every(c => c.reason === 'sync_pending');
+        for (const c of bad) {
+            log.warn(`Ledger triple check (${mode}) user ${uid} ${c.currency}: A ${c.a} B ${c.b} C ${c.c} (${c.reason}, pending ${c.pendingSync})`);
+            if (c.reason !== 'sync_pending') {
+                void openSupportCase({
+                    type: 'ledger_mismatch', dedupKey: `ledger:triple:${uid}:${c.currency}:${c.a}:${c.b}:${c.c}`, severity: 'critical',
+                    subject: { userId: uid },
+                    summary: `Retrait ${mode === 'enforce' ? 'bloqué' : 'à surveiller'} : les trois soldes ne concordent pas (${c.currency}) : A ${c.a}, B ${c.b}, C ${c.c ?? '—'} (${c.reason}).`,
+                    details: { ...c, audience, mode },
+                });
+            }
+        }
+        if (mode !== 'enforce') return;
+        if (pendingOnly) throw new AppError('Votre solde est en cours de mise à jour. Réessayez dans une minute.', 409);
+        throw new AppError(audience === 'admin'
+            ? 'Retrait bloqué : les soldes de ce membre ne concordent pas (dossier ouvert pour la finance).'
+            : 'Votre retrait est en cours de vérification. Le support vous contactera si nécessaire.', 409);
+    }
+
     public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {
         let lock;
         try {
@@ -619,7 +661,10 @@ class PaymentService {
             log.error(`Withdrawal lock check failed for user ${userId}: ${error.message}`);
             throw new AppError('Les retraits sont momentanément indisponibles. Veuillez réessayer dans quelques minutes.', 503);
         }
-        if (!lock.locked || !lock.until) return;
+        if (!lock.locked || !lock.until) {
+            await this.assertLedgerAgrees(userId, audience);
+            return;
+        }
 
         // Security plan Phase 5: money frozen by support, until an approved unfreeze (no end date to show).
         if (lock.reason === 'account_frozen') {

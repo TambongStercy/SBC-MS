@@ -1,0 +1,41 @@
+# Security plan Phase 2: Blnk (second ledger) for LOCAL development and tests only.
+# Server and worker from the pinned image; PostgreSQL and Redis from images already
+# used locally. Everything listens on 127.0.0.1 only.
+#   cp blnk.local.json.example blnk.local.json   (then set secret_key)
+#   docker compose -f docker-compose.local.yml up -d
+name: sbc-blnk-local
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: blnk
+      POSTGRES_PASSWORD: blnk-local
+      POSTGRES_DB: blnk
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: [pg_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "blnk"]
+      interval: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+  server:
+    image: ghcr.io/blnkfinance/blnk:0.15.9
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["blnk migrate up && exec blnk start"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    ports: ["127.0.0.1:5101:5001"]
+    volumes: ["./blnk.local.json:/blnk.json:ro"]
+    restart: on-failure
+  worker:
+    image: ghcr.io/blnkfinance/blnk:0.15.9
+    entrypoint: ["blnk", "workers"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    volumes: ["./blnk.local.json:/blnk.json:ro"]
+    restart: on-failure
+volumes:
+  pg_data:

@@ -1,0 +1,14 @@
+{
+  "project_name": "SBC ledger (local)",
+  "data_source": {
+    "dns": "postgres://blnk:blnk-local@postgres:5432/blnk?sslmode=disable"
+  },
+  "redis": {
+    "dns": "redis:6379"
+  },
+  "server": {
+    "port": "5001",
+    "secret_key": "CHANGE-ME",
+    "secure": true
+  }
+}

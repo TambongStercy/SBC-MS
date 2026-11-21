@@ -16,6 +16,8 @@ import logger from '../../utils/logger'; // Import logger
 import { uploadAvatar } from '../middleware/upload.middleware'; // Corrected import path
 import { strictLimiter, mediumLimiter, generalLimiter, uploadLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
 import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
+import { blnkEnabled } from '../../services/blnk/blnk.client';
+import { tripleCheck } from '../../services/blnk/blnk-sync.service';
 
 const router = Router();
 const log = logger.getLogger('UserRoutes'); // Create logger instance
@@ -58,6 +60,18 @@ serviceRouter.post('/:userId/withdrawal/success', (req, res) => userController.p
 
 // Withdrawals blocked after an email/phone change (payment-service checks it before every payout)
 serviceRouter.get('/:userId/withdrawal-lock', (req, res) => userController.getWithdrawalLock(req, res));
+// Security plan Phase 2: A (users.balance), B (opening + movements), C (Blnk) for the withdrawal pre-check.
+serviceRouter.get('/:userId/ledger-check', async (req, res) => {
+    if (!/^[a-f0-9]{24}$/i.test(req.params.userId)) { res.status(400).json({ success: false, message: 'userId is invalid.' }); return; }
+    const currency = req.query.currency === 'USD' ? 'USD' : 'XAF';
+    if (!blnkEnabled()) { res.status(200).json({ success: true, data: { enabled: false } }); return; }
+    try {
+        res.status(200).json({ success: true, data: { enabled: true, ...(await tripleCheck(req.params.userId, currency)) } });
+    } catch (err: any) {
+        // Blnk unreachable: the caller decides (enforce mode refuses the payout).
+        res.status(503).json({ success: false, code: 'LEDGER_UNAVAILABLE', message: err?.message ?? 'Blnk unavailable' });
+    }
+});
 // Security plan Phase 1: aggregated request signals from the gateway.
 serviceRouter.post('/activity/batch', (req, res) => userController.ingestActivityBatch(req, res));
 // Security plan Phase 11: the support desk reads the same activity figures (filtered to the agent's countries).

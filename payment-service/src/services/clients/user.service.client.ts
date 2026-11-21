@@ -7,6 +7,13 @@ import { AppError } from '../../utils/errors';
 const log = logger.getLogger('UserServiceClient');
 
 // Define and export the UserDetails interface needed by PaymentService
+/** Security plan Phase 2 triple check (user-service GET /users/internal/:id/ledger-check). */
+export interface LedgerCheck {
+    enabled: boolean; currency?: 'XAF' | 'USD';
+    a?: number; b?: number | null; c?: number | null; cInflight?: number | null;
+    pendingSync?: number; agree?: boolean; reason?: string | null;
+}
+
 export interface UserDetails {
     _id: string | Types.ObjectId;
     name: string;
@@ -410,6 +417,17 @@ class UserServiceClient {
         if (typeof response?.data?.locked !== 'boolean') {
             throw new AppError('Unexpected withdrawal-lock response from user service.', 502);
         }
+        return response.data;
+    }
+
+    /**
+     * Security plan Phase 2: balances A (account), B (opening + movements) and C
+     * (Blnk) for one currency. `enabled: false` when Blnk is not configured.
+     * Throws when user-service or Blnk cannot answer (the caller decides).
+     */
+    async getLedgerCheck(userId: string, currency: 'XAF' | 'USD'): Promise<LedgerCheck> {
+        const response = await this.request<{ success: boolean; data: LedgerCheck }>('get', `/users/internal/${userId}/ledger-check?currency=${currency}`);
+        if (typeof response?.data?.enabled !== 'boolean') throw new AppError('Unexpected ledger-check response from user service.', 502);
         return response.data;
     }
 
