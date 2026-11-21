@@ -38,7 +38,7 @@ async function migrate() {
     console.log('Referral Denormalization Migration');
     console.log('='.repeat(60));
     console.log(`Mode: ${DRY_RUN ? 'DRY RUN (no changes will be made)' : 'APPLY MODE'}`);
-    console.log(`Database: ${MONGODB_URI}`);
+    console.log(`Database: ${String(MONGODB_URI).replace(/\/\/[^@/]*@/, '//***@')}`);
     console.log('');
 
     await mongoose.connect(MONGODB_URI);

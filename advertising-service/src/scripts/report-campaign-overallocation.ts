@@ -30,7 +30,7 @@ const APPLY = process.argv.includes('--apply');
 
 const run = async () => {
     await mongoose.connect(config.mongodb.uri, config.mongodb.options);
-    console.log(`Connected to ${config.mongodb.uri}\n`);
+    console.log(`Connected to ${config.mongodb.uri.replace(/\/\/[^@/]*@/, '//***@')}\n`);
 
     // COMPLETED too: a campaign that closed over target is exactly the complaint,
     // and its offers can still be sitting there waiting to be accepted.
