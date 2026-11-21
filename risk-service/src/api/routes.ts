@@ -4,6 +4,7 @@ import { decide, memberView } from '../services/decision.service';
 import { RiskMemberModel } from '../database/models';
 import { redis } from '../lib/redis';
 import { requireService } from './service-auth';
+import { enqueue, kycStatus, kycView } from '../services/kyc.service';
 
 const ID = /^[a-f0-9]{24}$/i;
 
@@ -37,7 +38,8 @@ export function routes(): Router {
     /** GET /api/risk/internal/members/:userId: score, reasons, linked accounts (support desk). */
     r.get('/api/risk/internal/members/:userId', requireService, async (req, res) => {
         if (!ID.test(req.params.userId)) return res.status(400).json({ success: false, message: 'bad userId' });
-        return res.json({ success: true, data: await memberView(req.params.userId) });
+        const [view, kyc] = await Promise.all([memberView(req.params.userId), kycView(req.params.userId)]);
+        return res.json({ success: true, data: { ...view, kyc } });
     });
 
     /**
@@ -51,6 +53,22 @@ export function routes(): Router {
         const rows = await RiskMemberModel.find({ userId: { $in: ids }, decision: { $ne: 'allow' } }, { _id: 0, userId: 1, decision: 1, score: 1 }).lean();
         return res.json({ success: true, data: rows });
     });
+
+    /**
+     * POST /api/risk/internal/kyc/hint {userId, reason: signup|contact_change}: queue a level 1
+     * check (Phase 8). user-service calls it without waiting; it only writes the queue.
+     */
+    r.post('/api/risk/internal/kyc/hint', requireService, async (req, res) => {
+        const { userId, reason } = req.body ?? {};
+        if (typeof userId !== 'string' || !ID.test(userId) || (reason !== 'signup' && reason !== 'contact_change' && reason !== 'manual')) {
+            return res.status(400).json({ success: false, message: 'userId and reason (signup | contact_change | manual) are required' });
+        }
+        await enqueue([userId], reason);
+        return res.status(202).json({ success: true });
+    });
+
+    /** GET /api/risk/internal/kyc/status: queue size, results, bands (no member data). */
+    r.get('/api/risk/internal/kyc/status', requireService, async (_req, res) => res.json({ success: true, data: await kycStatus() }));
 
     return r;
 }

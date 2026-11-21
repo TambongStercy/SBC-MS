@@ -30,6 +30,7 @@ import { startOfCurrentMonthDouala } from '../../database/repositories/referral.
 import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
 import { doualaDay, ingestActivityBatch, ipRange } from '../../services/activity-signals.service';
 import { noteSignIn } from '../../services/dormancy.service';
+import { kycHint } from '../../utils/kyc-hint';
 import { markSignupCompleted, markSignupWrongCode, recordSignupAttempt, signupContext } from '../../services/signup-attempts.service';
 
 /** Fire-and-forget: one login in the day's signals (headers set by nginx / the gateway). */
@@ -907,6 +908,8 @@ export class UserController {
 
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
             recordSignupAttempt(signup, { userId: result.userId });
+            // Security plan Phase 8: KYC level 1 in the background (risk-service → kyc-worker).
+            kycHint(result.userId, 'signup');
         } catch (error: any) {
             log.error('Error registering a new user', error);
             res.status(400).json({ success: false, message: error.message });

@@ -1,0 +1,11 @@
+# kyc-worker (Security plan Phase 8). Level 1 checks only; keeps no member data.
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 KYC_DB_PATH=/data/kyc.sqlite
+RUN useradd --system --uid 10001 --home /app kyc && mkdir -p /data && chown kyc /data
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app ./app
+USER kyc
+EXPOSE 5201
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5201", "--workers", "2", "--no-server-header", "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1"]

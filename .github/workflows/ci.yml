@@ -93,6 +93,23 @@ jobs:
           if npm run | grep -q "^  test"; then npm test -- --run; fi
           npm run build
 
+  test-kyc-worker:
+    name: Test kyc-worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Security plan Phase 8. Unit and API tests only: no DNS (the lookup is faked).
+      - name: Install and test
+        working-directory: kyc-worker
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest -q
+
   build-admin:
     name: Build Admin Frontend
     runs-on: ubuntu-latest

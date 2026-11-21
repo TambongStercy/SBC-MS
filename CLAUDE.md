@@ -705,6 +705,29 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
   for Rufus's rules on held withdrawals.
 - Checks: `risk-service/src/scripts/check-risk.ts`, `payment-service/src/scripts/check-risk-silent.ts`.
 
+### KYC level 1 (Security plan Phase 8, part 1, 2026-11-21)
+
+Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
+- **kyc-worker** (`kyc-worker/`, Python FastAPI, Docker): runs on the **secondary server** behind nginx
+  `preprod-kyc.sniperbusinesscenter.com` (main server IP only) on 127.0.0.1:5201. Every request is
+  signed: `X-KYC-Timestamp` + `X-KYC-Signature` = HMAC-SHA256(`KYC_SHARED_SECRET`, `ts.body`), ±5 min.
+  Level 1 is local computation (libphonenumber, a disposable-domain list, Gmail dots/+tag, a
+  random-looking test) plus one DNS query per domain, cached in its SQLite. It stores no member data.
+  Tests: `pytest` (CI job `test-kyc-worker`).
+- **user-service** `utils/kyc-hint.ts`: fire-and-forget hint (1 s) after `register` and in
+  `alertContactChange` (email/phone/MoMo, not crypto). `KYC_HINTS_DISABLED=true` stops it.
+- **risk-service** `services/kyc.service.ts`: `kycqueue` (one row per member, live first) → one
+  batch a second (`KYC_PER_SECOND`, 50) → `kycresults` (signals, reasons, score, band; HMACs only,
+  TTL 12 months). It reads members **read-only** from `USERS_MONGODB_URI`. A member whose checked fields
+  are unchanged (fingerprint) is not resent. The nightly refresh (02:05 Douala) queues members never
+  checked or changed; backfill rows run 02:00–05:00 only. Off unless `KYC_WORKER_URL`,
+  `KYC_SHARED_SECRET` (≥ 32 chars) and `USERS_MONGODB_URI` are set.
+  - Routes: `POST /api/risk/internal/kyc/hint`, `GET /api/risk/internal/kyc/status`, and `kyc` in
+    the member view.
+- The score feeds no decision yet (Phase 4 is silent). Level 2 (SEON/Holehe) and level 3 (Smile ID)
+  wait for decisions.
+- Checks: `risk-service/src/scripts/check-kyc.ts` (fake worker; `KYC_REAL_WORKER_URL` for the real one).
+
 ### Support integration (Security plan Phase 5, 2026-11-21)
 
 Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, permissions §4).

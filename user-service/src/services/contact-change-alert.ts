@@ -2,6 +2,7 @@ import config from '../config';
 import { maskEmail } from '../utils/mask-email';
 import { WithdrawalLockReason } from '../utils/withdrawal-lock';
 import { notificationService } from './clients/notification.service.client';
+import { kycHint } from '../utils/kyc-hint';
 
 /**
  * Tells the owner that their email, phone number, Mobile Money number or crypto wallet just
@@ -33,6 +34,8 @@ export function alertContactChange(args: {
                 ? `L'adresse crypto qui reçoit vos retraits SBC vient d'être remplacée par une adresse se terminant par ${args.newValue.slice(-4)}.`
                 : `Le numéro de téléphone de votre compte SBC vient d'être remplacé par un numéro se terminant par ${args.newValue.slice(-3)}.`;
     const userId = String(args.userId);
+    // Security plan Phase 8: the new details get a KYC level 1 check (crypto wallets are not checked).
+    if (args.reason !== 'crypto_change') kycHint(userId, 'contact_change');
 
     if (args.previousEmail) {
         void notificationService.sendAccountEmail({

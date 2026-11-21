@@ -1,0 +1,23 @@
+# Secondary server: /opt/kyc-<env>/ holds this file, .env (KYC_SHARED_SECRET, never printed) and data/.
+# Listens on 127.0.0.1 only; nginx (allow main server IP) in front. OpenReplay goes first on this
+# server, so the worker is capped.
+services:
+  kyc-worker:
+    build: ./src
+    image: sbc/kyc-worker:${KYC_TAG:-local}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:${KYC_PORT:-5201}:5201"
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
