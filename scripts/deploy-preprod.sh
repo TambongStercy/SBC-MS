@@ -118,6 +118,12 @@ if [ ${#CHANGED_SERVICES[@]} -gt 0 ]; then
       echo "$LOG_PREFIX  ${PM2_NAME[$SERVICE]} not running — starting it for the first time"
       pm2 start ecosystem.preprod.config.js --only "${PM2_NAME[$SERVICE]}"
     fi
+    # Security plan Phase 2: the Blnk sync worker runs user-service's build; restart it
+    # with it (it is started by hand the first time, once BLNK_URL is set).
+    if [ "$SERVICE" = "user-service" ] && pm2 describe blnk-sync-preprod > /dev/null 2>&1; then
+      pm2 restart blnk-sync-preprod --update-env
+      echo "$LOG_PREFIX  blnk-sync-preprod restarted"
+    fi
   done
 fi
 

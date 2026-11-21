@@ -29,6 +29,16 @@ module.exports = {
       }
     },
     {
+      // Security plan Phase 2: posts wallet movements to Blnk (secondary server). Idles
+      // without BLNK_URL / BLNK_API_KEY in user-service/.env. Started by hand the first time.
+      name: 'blnk-sync-preprod',
+      cwd: './user-service',
+      script: 'dist/workers/blnk-sync.worker.js',
+      env: {
+        NODE_ENV: 'preprod'
+      }
+    },
+    {
       name: 'notification-preprod',
       cwd: './notification-service',
       script: 'dist/server.js',
