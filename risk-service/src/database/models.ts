@@ -58,3 +58,51 @@ const RunSchema = new Schema({
     stats: Schema.Types.Mixed,
 }, { collection: 'riskruns', versionKey: false });
 export const RiskRunModel = model('RiskRun', RunSchema);
+
+/**
+ * Security plan Phase 8: KYC level 1.
+ *   kycqueue    one row per member waiting for a check (_id = userId), live hints first;
+ *               `v` grows with every hint, so a hint arriving mid-check makes it run again.
+ *   kycresults  the member's latest level 1: signals and a score only (never the
+ *               email, number or a profile), deleted after KYC_RETENTION_DAYS (TTL).
+ */
+export const KYC_LIVE = 0;
+export const KYC_BACKFILL = 1;
+const KycQueueSchema = new Schema({
+    _id: { type: String },
+    reason: { type: String, required: true }, // signup | contact_change | refresh | manual
+    priority: { type: Number, default: KYC_LIVE },
+    v: { type: Number, default: 0 },
+    enqueuedAt: { type: Date, required: true },
+    nextAt: { type: Date, required: true },
+    attempts: { type: Number, default: 0 },
+    lastError: { type: String, default: null },
+    claimedUntil: { type: Date, default: null },
+    claimToken: { type: String, default: null },
+}, { collection: 'kycqueue', versionKey: false });
+KycQueueSchema.index({ priority: 1, nextAt: 1 });
+KycQueueSchema.index({ claimToken: 1 }, { sparse: true });
+export const KycQueueModel = model('KycQueue', KycQueueSchema);
+
+const KycResultSchema = new Schema({
+    userId: { type: String, required: true },
+    level: { type: Number, default: 1 },
+    /** HMAC of the checked fields + the checks' version: unchanged → no new check. */
+    fingerprint: { type: String, required: true },
+    signals: { type: Schema.Types.Mixed, default: {} },
+    reasons: { type: [String], default: [] },
+    workerScore: { type: Number, default: 0 },
+    score: { type: Number, default: 0 },
+    band: { type: String, default: 'low' },
+    /** HMAC of the mailbox the address really reaches (+tag and Gmail dots dropped). */
+    emailKey: { type: String, default: null },
+    variantAccounts: { type: Number, default: 0 },
+    trigger: { type: String, default: null },
+    checkedAt: { type: Date, required: true },
+    expiresAt: { type: Date, required: true },
+}, { collection: 'kycresults', versionKey: false });
+KycResultSchema.index({ userId: 1 }, { unique: true });
+KycResultSchema.index({ emailKey: 1 }, { sparse: true });
+KycResultSchema.index({ band: 1, score: -1 });
+KycResultSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+export const KycResultModel = model('KycResult', KycResultSchema);

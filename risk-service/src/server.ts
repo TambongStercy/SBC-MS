@@ -6,6 +6,7 @@ import { closeRedis, redis } from './lib/redis';
 import { childLogger } from './lib/logger';
 import { routes } from './api/routes';
 import { flushOutbox } from './services/support.client';
+import { closeUsersDb, startKycLoop, stopKycLoop } from './services/kyc.service';
 
 const log = childLogger('Server');
 
@@ -27,13 +28,16 @@ async function main() {
     await connectDB();
     redis();
     const server = createApp().listen(config.port, () => log.info({ port: config.port }, 'risk-service listening'));
+    startKycLoop();
     const outbox = setInterval(() => { flushOutbox().catch((e) => log.warn({ message: e?.message }, 'outbox flush failed')); }, 30_000);
 
     const shutdown = (signal: string) => {
         log.warn({ signal }, 'shutting down');
         clearInterval(outbox);
+        stopKycLoop();
         server.close(async () => {
             await closeRedis();
+            await closeUsersDb();
             await mongoose.disconnect().catch(() => undefined);
             process.exit(0);
         });
