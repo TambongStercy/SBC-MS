@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { decide, memberView } from '../services/decision.service';
+import { RiskMemberModel } from '../database/models';
 import { redis } from '../lib/redis';
 import { requireService } from './service-auth';
 
@@ -37,6 +38,18 @@ export function routes(): Router {
     r.get('/api/risk/internal/members/:userId', requireService, async (req, res) => {
         if (!ID.test(req.params.userId)) return res.status(400).json({ success: false, message: 'bad userId' });
         return res.json({ success: true, data: await memberView(req.params.userId) });
+    });
+
+    /**
+     * POST /api/risk/internal/members/flags {userIds: string[] (≤ 2000)}:
+     * the members among them that the engine does not simply allow
+     * (require_code / hold), for user-service's nightly dormant-accounts pass.
+     */
+    r.post('/api/risk/internal/members/flags', requireService, async (req, res) => {
+        const ids = Array.isArray(req.body?.userIds) ? req.body.userIds.filter((x: unknown) => typeof x === 'string' && ID.test(x)) : null;
+        if (!ids || ids.length > 2000) return res.status(400).json({ success: false, message: 'userIds: 1 to 2000 ids' });
+        const rows = await RiskMemberModel.find({ userId: { $in: ids }, decision: { $ne: 'allow' } }, { _id: 0, userId: 1, decision: 1, score: 1 }).lean();
+        return res.json({ success: true, data: rows });
     });
 
     return r;

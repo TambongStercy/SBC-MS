@@ -7,6 +7,9 @@ import { adminAccessController } from '../controllers/admin-access.controller';
 import { protectAdminAccounts } from '../middleware/protect-admin-accounts.middleware';
 import { adminLimiter, strictLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
 import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
+import {
+    downloadDormantExport, getDormantExport, getDormantList, getDormantSummary, postDormantChecked, postDormantExport, postDormantFreezeRequest,
+} from '../controllers/dormancy.controller';
 
 const router = Router();
 
@@ -37,6 +40,15 @@ router.delete('/staff/:userId', superAdminOnly, adminAccessController.revokeStaf
 // --- Daily activity (Security plan Phase 11; gateway module: dashboard) ---
 router.get('/activity', getActivityBoard as any);
 router.get('/activity/list', getActivityList as any);
+
+// --- Dormant accounts (Security plan Phase 7; gateway module: finance) ---
+router.get('/dormant-accounts/summary', getDormantSummary as any);
+router.get('/dormant-accounts', getDormantList as any);
+router.post('/dormant-accounts/export', postDormantExport as any); // read-only POST at the gateway
+router.get('/dormant-accounts/exports/:exportId', getDormantExport as any);
+router.get('/dormant-accounts/exports/:exportId/download', downloadDormantExport as any);
+router.post('/dormant-accounts/:userId/checked', postDormantChecked as any);
+router.post('/dormant-accounts/:userId/freeze-request', postDormantFreezeRequest as any);
 
 // --- Dashboard Route ---
 router.get('/dashboard', adminController.getDashboardData as any); // GET /api/admin/dashboard

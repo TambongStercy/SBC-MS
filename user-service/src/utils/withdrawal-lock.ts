@@ -26,7 +26,7 @@ export interface WithdrawalLockStatus {
     locked: boolean;
     /** ISO date, only when locked. */
     until?: string;
-    reason?: WithdrawalLockReason | 'account_frozen';
+    reason?: WithdrawalLockReason | 'account_frozen' | 'dormant_reactivation';
 }
 
 /**
@@ -37,11 +37,20 @@ export interface WithdrawalLockStatus {
 export const FROZEN_UNTIL = '9999-12-31T00:00:00.000Z';
 
 export function withdrawalLockStatus(
-    user: { withdrawalsLockedUntil?: Date | null; withdrawalLockReason?: WithdrawalLockReason | null; frozen?: { at?: Date | null } | null },
+    user: {
+        withdrawalsLockedUntil?: Date | null; withdrawalLockReason?: WithdrawalLockReason | null; frozen?: { at?: Date | null } | null;
+        dormancy?: { holdUntil?: Date | null } | null;
+    },
     now: Date = new Date(),
 ): WithdrawalLockStatus {
     if (user.frozen?.at) return { locked: true, until: FROZEN_UNTIL, reason: 'account_frozen' };
     const until = user.withdrawalsLockedUntil ? new Date(user.withdrawalsLockedUntil) : null;
-    if (!until || until <= now) return { locked: false };
-    return { locked: true, until: until.toISOString(), reason: user.withdrawalLockReason ?? undefined };
+    // Security plan Phase 7: the hold after a dormant account comes back is kept
+    // apart too, so a contact change (which rewrites the timed lock) cannot shorten it.
+    const hold = user.dormancy?.holdUntil ? new Date(user.dormancy.holdUntil) : null;
+    const timed = until && until > now ? until : null;
+    const held = hold && hold > now ? hold : null;
+    if (!timed && !held) return { locked: false };
+    if (held && (!timed || held >= timed)) return { locked: true, until: held.toISOString(), reason: 'dormant_reactivation' };
+    return { locked: true, until: timed!.toISOString(), reason: user.withdrawalLockReason ?? undefined };
 }

@@ -64,6 +64,37 @@ interface IOtp extends Document {
 export type OtpPurpose = 'changeEmail' | 'changePhone' | 'changeMomo' | 'changeCrypto' | 'setupAuthenticator' | 'supportChangeEmail' | 'supportChangePhone';
 
 // Interface defining the User document structure (FIELDS ONLY)
+/** Security plan Phase 7. Only accounts holding money get a status; thresholds in config/dormancy.ts. */
+export const DORMANCY_STATUSES = ['active', 'inactive', 'dormant', 'long_dormant'] as const;
+export type DormancyStatus = typeof DORMANCY_STATUSES[number];
+export interface IDormancy {
+    /** Every member sign-in (a date only, kept for account security). */
+    lastSignInAt?: Date;
+    status?: DormancyStatus;
+    /** Latest of: sign-in, token issue, activity signals, IP update, account creation. */
+    lastSeenAt?: Date;
+    /** Which date gave lastSeenAt: 'signin' | 'token' | 'activity' | 'ip' | 'created'. */
+    basis?: string;
+    /** All six balances in XAF (USD at DORMANCY_XAF_PER_USD). */
+    heldXaf?: number;
+    /** Commissions in the last 90 days but no sign-in for 90+ days. */
+    commissionsNoLogin?: boolean;
+    lastCommissionAt?: Date;
+    lastWithdrawalAt?: Date;
+    authenticator?: boolean;
+    fraudFlag?: boolean;
+    computedAt?: Date;
+    runId?: string;
+    checkedAt?: Date;
+    checkedBy?: string;
+    checkedNote?: string;
+    /** First sign-in after being dormant / long_dormant. */
+    reactivatedAt?: Date;
+    reactivatedFrom?: string;
+    /** Withdrawals held until then (DORMANCY_REACTIVATION_HOLD=on). */
+    holdUntil?: Date;
+}
+
 export interface IUser extends Document {
     _id: Types.ObjectId;
     name: string;
@@ -141,6 +172,8 @@ export interface IUser extends Document {
     };
     lastActiveAt?: Date;
     lastLoginAt?: Date;
+    /** Security plan Phase 7: dormant accounts (services/dormancy.service.ts). */
+    dormancy?: IDormancy;
     ipAddress?: string;
     ipCity?: string;
     ipRegion?: string;
@@ -279,6 +312,30 @@ const UserSchema = new Schema<IUser>(
         },
         lastActiveAt: { type: Date, index: true },
         lastLoginAt: { type: Date },
+        dormancy: {
+            type: {
+                _id: false,
+                lastSignInAt: { type: Date },
+                status: { type: String, enum: DORMANCY_STATUSES },
+                lastSeenAt: { type: Date },
+                basis: { type: String },
+                heldXaf: { type: Number },
+                commissionsNoLogin: { type: Boolean },
+                lastCommissionAt: { type: Date },
+                lastWithdrawalAt: { type: Date },
+                authenticator: { type: Boolean },
+                fraudFlag: { type: Boolean },
+                computedAt: { type: Date },
+                runId: { type: String },
+                checkedAt: { type: Date },
+                checkedBy: { type: String },
+                checkedNote: { type: String, maxlength: 500 },
+                reactivatedAt: { type: Date },
+                reactivatedFrom: { type: String },
+                holdUntil: { type: Date },
+            },
+            default: undefined,
+        },
         ipAddress: { type: String },
         ipCity: { type: String, index: true },
         ipRegion: { type: String },
@@ -527,6 +584,16 @@ UserSchema.pre('updateOne', softDeleteMiddleware); // Be careful with updateOne
 
 
 // --- Model Export ---
+// Security plan Phase 7: the « Comptes dormants » list (status [+ country], biggest first, cursor).
+UserSchema.index(
+    { 'dormancy.status': 1, country: 1, 'dormancy.heldXaf': -1, _id: -1 },
+    { name: 'dormancy_list', partialFilterExpression: { 'dormancy.status': { $exists: true } } },
+);
+UserSchema.index(
+    { 'dormancy.status': 1, 'dormancy.heldXaf': -1, _id: -1 },
+    { name: 'dormancy_list_all', partialFilterExpression: { 'dormancy.status': { $exists: true } } },
+);
+
 const UserModel = model<IUser>('User', UserSchema);
 
 export default UserModel; 

@@ -239,7 +239,7 @@ countries; asking for another country returns `board: null`.
   (desk + e-mail to finance managers, support admins, super managers; ntfy). Audited
   `approval.super_override`.
 - **Fraud cases:** types `self_referral`, `shared_payout_number`, `multi_account`,
-  `abnormal_behavior`, `geo_anomaly`, `dormant_reactivation`; `GET /cases?type=fraud`
+  `abnormal_behavior`, `geo_anomaly`, `dormant_reactivation`, `dormant_review` (Phase 7: freeze asked from the admin's « Comptes dormants »); `GET /cases?type=fraud`
   (`risk.read`) sorted severity then `amount`; acting on one needs `risk.decide`;
   `type=finance` leaves them out. Intake accepts `country` and `amount`.
 - **Member card:** `geo` (declared / usual / last country), `frozen`, `momoNumber`/`momoOperator`

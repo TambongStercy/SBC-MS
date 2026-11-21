@@ -48,6 +48,8 @@ const RULES: Rule[] = [
     { pattern: /^\/api\/users\/admin\/(dashboard|stats)(\/|$)/, module: 'dashboard' },
     // Security plan Phase 11: daily activity board and the lists behind it.
     { pattern: /^\/api\/users\/admin\/activity(\/|$)/, module: 'dashboard' },
+    // Security plan Phase 7: « Comptes dormants » (money held by accounts nobody uses).
+    { pattern: /^\/api\/users\/admin\/dormant-accounts(\/|$)/, module: 'finance' },
 
     // --- payment-service ---
     { pattern: /^\/api\/payments\/admin\/withdrawals(\/|$)/, module: 'withdrawals' },
@@ -94,6 +96,8 @@ const READ_ONLY_POSTS: RegExp[] = [
     /^\/api\/notifications\/push\/admin\/audience$/,
     /^\/api\/relance\/admin\/messages\/preview$/,
     /^\/api\/relance\/admin\/sms-templates\/preview$/,
+    // Builds a CSV of what the list already shows.
+    /^\/api\/users\/admin\/dormant-accounts\/export$/,
 ];
 
 const ADMIN_PATH = /\/admin(\/|$)/i;

@@ -42,6 +42,7 @@ describe('moduleForPath', () => {
     ['/transactions', 'finance'],
     ['/account-transactions', 'finance'],
     ['/user-analytics', 'finance'],
+    ['/comptes-dormants', 'finance'],
     ['/fix-provider-issues', 'payments'],
     ['/fix-moneyfusion-withdrawals', 'payments'],
     ['/fix-feexpay-payments', 'payments'],

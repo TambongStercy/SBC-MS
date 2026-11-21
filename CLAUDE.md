@@ -656,6 +656,34 @@ Preprod worker: pm2 `blnk-sync-preprod`.
 - Checks: `user-service/src/scripts/check-blnk-ledger.ts` (needs local Blnk),
   `payment-service/src/scripts/check-ledger-triple-check.ts`.
 
+### Dormant accounts (Security plan Phase 7, part 1, 2026-11-21)
+
+Design, limits, deploy: `docs/security-plan/phase7-dormant-accounts.md`. Admin « Comptes dormants »
+(`/comptes-dormants`, module finance).
+- **Nightly pass:** user-service `services/dormancy.service.ts` + `jobs/dormancy.job.ts` (03:45 Douala; at start if
+  the snapshot is missing; `DORMANCY_JOB_DISABLED=true` stops it).
+  - **Who gets a status:** every account holding money in any of the six balances gets `dormancy.status`
+    (active < 90 j, inactive, dormant ≥ 180, long_dormant ≥ 365; `DORMANCY_*_DAYS`) and `dormancy.heldXaf`
+    (USD at `DORMANCY_XAF_PER_USD`, 660). The same pass sets the flags and writes one `dormancy_snapshots` doc.
+    The page reads only snapshots for its numbers.
+  - **Flags:** commissions without sign-in; authenticator; fraud (frozen or risk-service `require_code`/`hold`
+    via `POST /api/risk/internal/members/flags`, needs `RISK_SERVICE_URL`).
+- **Last sign of life:** `dormancy.lastSignInAt` is written on every member sign-in (`verify-otp` →
+  `noteSignIn`). Before this release only the stored token's issue time (cleared by logout) and `ipLastUpdated`
+  (set at sign-up, **never at member sign-in**) exist, so the figures are weak until 30 days of sign-ins.
+- **Coming back:** `DORMANCY_REACTIVATION_HOLD=off|log|on`, default **log** (recorded in `dormancy_returns`,
+  nothing held).
+  - With `on`, the first sign-in of a dormant/long_dormant account sets `dormancy.holdUntil` (+72 h).
+  - `withdrawalLockStatus` returns `dormant_reactivation`; it is kept apart from the timed lock, so a contact
+    change can't shorten it.
+  - A new country, new device or recent contact change opens a `dormant_reactivation` case.
+  - A contact change during the hold opens one too.
+- **Actions:** « Vérifié » (note); « Geler… » files a `dormant_review` case in support's « Fraude » queue (the
+  admin never freezes). CSV export is built in the background into GridFS `dormancy_exports`, deleted after 24 h.
+- **Not done:** the reactivation campaign (relance targets sponsors' filleuls only; needs an approved text from
+  Rufus), the four other balances in Blnk.
+- Checks: `user-service/src/scripts/check-dormancy.ts`, `check-dormancy-scale.ts`, admin `DormantAccountsPage.test.tsx`.
+
 ### Fraud engine: risk-service (Security plan Phase 4, part 1, 2026-11-21)
 
 Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `risk-service` on 3013 and

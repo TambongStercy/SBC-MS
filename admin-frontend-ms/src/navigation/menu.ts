@@ -3,6 +3,7 @@ import {
   Activity01Icon,
   Agreement01Icon,
   Analytics01Icon,
+  Moon02Icon,
   Calendar03Icon,
   ChampionIcon,
   ChartIncreaseIcon,
@@ -130,6 +131,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Retraits à valider', path: '/withdrawals/approvals', icon: CheckListIcon },
       { label: 'Historique des retraits', path: '/withdrawals/history', icon: Clock01Icon },
       { label: 'Analyse membres', path: '/user-analytics', icon: Analytics01Icon },
+      { label: 'Comptes dormants', path: '/comptes-dormants', icon: Moon02Icon },
     ],
   },
   {

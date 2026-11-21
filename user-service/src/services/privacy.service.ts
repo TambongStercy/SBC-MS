@@ -40,6 +40,8 @@ export async function exportUserData(userId: string) {
     if (!user) throw httpError(404, 'Utilisateur introuvable.');
     for (const f of SECRET_FIELDS) delete user[f];
     for (const k of Object.keys(user)) if (/secret|otp|token/i.test(k)) delete user[k];
+    // Security plan Phase 7: the member's own sign-in date; the team's review fields (notes, fraud flag) stay internal.
+    if (user.dormancy) user.dormancy = user.dormancy.lastSignInAt ? { lastSignInAt: user.dormancy.lastSignInAt } : undefined;
 
     const subscriptions = await SubscriptionModel.find({ user: new Types.ObjectId(userId) })
         .select('subscriptionType status startDate endDate category duration createdAt').lean();
@@ -81,7 +83,7 @@ export async function deleteOwnAccount(userId: string, password: string) {
         $unset: { token: '' },
     });
     await UserGeoDayModel.deleteMany({ userId: new Types.ObjectId(userId) });
-    await UserModel.updateOne({ _id: userId }, { $unset: { geo: '', lastActiveAt: '', lastLoginAt: '' } });
+    await UserModel.updateOne({ _id: userId }, { $unset: { geo: '', lastActiveAt: '', lastLoginAt: '', dormancy: '' } });
     log.info(`User ${userId} deleted their own account (member request)`);
     return { deleted: true };
 }
