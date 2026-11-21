@@ -2,8 +2,8 @@ import { api, type Page } from './http';
 import type { CaseStatus, CaseType, RecheckResult, Severity, SupportCase } from './types';
 
 export interface CaseFilters {
-  /** One type, or 'finance' for every non-activation type. */
-  type?: CaseType | 'finance' | '';
+  /** One type, 'finance' for every non-activation non-fraud type, or 'fraud' (Phase 5, risk.read). */
+  type?: CaseType | 'finance' | 'fraud' | '';
   status?: CaseStatus | 'active' | '';
   severity?: Severity | '';
   assignee?: string;

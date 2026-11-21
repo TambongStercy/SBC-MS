@@ -15,6 +15,8 @@ import { hasPermission } from '../../../config/permissions';
 import { Approval } from '../../../database/models/approval.model';
 import { badRequest, conflict } from '../../../utils/errors';
 import { periodEndParam } from '../../../utils/dates';
+import { assertInTeam, assertNoConflict } from '../../../services/scope.service';
+import { isFraudCase } from '../../../config/constants';
 
 const router = Router();
 const ref = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.name, roles: a.roles }; };
@@ -140,36 +142,54 @@ async function caseOut(id: string) {
     return presentCase(c, await agentNames([c.assigneeId]), await memberNames([c.subject?.userId]));
 }
 
+// Security plan Phase 5: a country team never opens or acts on another country's case.
+router.param('id', ah(async (req: any, _res: any, next: any) => {
+    if (!req.path.startsWith('/cases/')) return next();
+    const team = agentOf(req).countries;
+    if (!team?.length) return next();
+    const c = await cases.getCase(req.params.id);
+    assertInTeam(c.country ?? null, team, 'Dossier');
+    next();
+}) as any);
+
 /**
  * Activation cases belong to support agents too (CdC §4): on them, activation.check
- * stands for cases.work and finance.recheck. Other cases keep the finance permission.
+ * stands for cases.work and finance.recheck. Fraud cases (Phase 5) need risk.decide to
+ * act on. Other cases keep the finance permission. Nobody acts on a case about their
+ * own member account or its referral tree.
  */
 function caseAccess(financePerm: 'cases.work' | 'finance.recheck') {
     return ah(async (req: any, res: any, next: any) => {
-        const roles = agentOf(req).roles;
-        if (hasPermission(roles, financePerm)) return next();
+        const agent = agentOf(req);
         const c = await cases.getCase(req.params.id);
-        if (c.type === 'activation' && hasPermission(roles, 'activation.check')) return next();
+        await assertNoConflict(agent, c.subject?.userId, { ...reqCtx(req), action: `case.${req.path.split('/').pop()}` });
+        if (isFraudCase(c.type)) return requirePermission('risk.decide')(req, res, next);
+        if (hasPermission(agent.roles, financePerm)) return next();
+        if (c.type === 'activation' && hasPermission(agent.roles, 'activation.check')) return next();
         return requirePermission(financePerm)(req, res, next);
     });
 }
 
-/** type may be 'finance' (every non-activation type); support agents may list activation cases only. */
+/** type may be 'finance' (every non-activation, non-fraud type), 'fraud' (risk.read), or one type; support agents may list activation cases only. */
 router.get('/cases', (req, res, next) => {
     const roles = agentOf(req).roles;
-    if (!hasPermission(roles, 'cases.work') && req.query.type === 'activation' && hasPermission(roles, 'activation.check')) return next();
+    const type = String(req.query.type ?? '');
+    if (type === 'fraud' || isFraudCase(type)) return requirePermission('risk.read')(req, res, next);
+    if (!hasPermission(roles, 'cases.work') && type === 'activation' && hasPermission(roles, 'activation.check')) return next();
     return requirePermission('cases.work')(req, res, next);
 }, ah(async (req, res) => {
     const q = { ...(req.query as Record<string, unknown>) };
-    const r = await cases.listCases(q, agentOf(req).id);
+    const r = await cases.listCases(q, agentOf(req).id, agentOf(req).countries);
     res.json({ success: true, data: { ...r, items: await presentCases(r.items) } });
 }));
 
-/** Activation cases are also visible to support agents (activation.check). */
+/** Activation cases are also visible to support agents (activation.check); fraud cases need risk.read. */
 router.get('/cases/:id', ah(async (req, res, next) => {
     const agent = agentOf(req);
     const c = await cases.getCase(req.params.id);
-    if (!hasPermission(agent.roles, 'cases.work') && !(c.type === 'activation' && hasPermission(agent.roles, 'activation.check'))) {
+    if (isFraudCase(c.type)) {
+        if (!hasPermission(agent.roles, 'risk.read')) return requirePermission('risk.read')(req, res, next);
+    } else if (!hasPermission(agent.roles, 'cases.work') && !(c.type === 'activation' && hasPermission(agent.roles, 'activation.check'))) {
         return requirePermission('cases.work')(req, res, next);
     }
     res.json({ success: true, data: presentCase(c, await agentNames([c.assigneeId]), await memberNames([c.subject?.userId])) });

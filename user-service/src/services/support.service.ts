@@ -9,6 +9,10 @@ import { normalizePhoneNumber, phoneLookupCandidates, isSamePhoneNumber } from '
 import { withdrawalLockFields } from '../utils/withdrawal-lock';
 import { otpMatches, whatsappOtpEnabled } from '../utils/otp.utils';
 import logger from '../utils/logger';
+import { ledgerBalances } from '../jobs/ledger-check.job';
+import { memberAuthService } from './member-auth.service';
+import { MOMO_OPERATOR_PATTERN, isSameMomo, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
+import { normalizeCountryName } from '../utils/phone.utils';
 
 const log = logger.getLogger('SupportService');
 
@@ -59,6 +63,8 @@ const SUPPORT_MEMBER_FIELDS = [
     'name', 'email', 'phoneNumber', 'country', 'city', 'sex', 'language', 'role', 'createdAt',
     'ipLastUpdated', 'isVerified', 'blocked', 'deleted',
     'balance', 'usdBalance', 'reservedBalance', 'debt', 'withdrawalsLockedUntil',
+    // Security plan Phase 5: countries (Phase 1 signals), money frozen, Mobile Money details.
+    'geo', 'frozen', 'momoNumber', 'momoOperator',
 ].join(' ');
 
 export interface SupportMember {
@@ -85,16 +91,24 @@ export interface SupportMember {
     debt: number;
     withdrawalLockedUntil: Date | null;
     subscriptions: { type: string; category: string | null; status: string; startDate: Date | null; endDate: Date | null }[];
+    /** Phase 5: declared / usual / last country. */
+    geo: { declared: string | null; usual: string | null; usualShare: number | null; last: string | null; lastAt: Date | null };
+    /** Phase 5: balance A against B (opening + movements); null before the opening snapshot. */
+    ledger: { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[] | null;
+    frozen: { at: Date; reason: string | null } | null;
+    momoNumber: string | null;
+    momoOperator: string | null;
 }
 
 export async function getSupportDetails(userIds: string[]): Promise<SupportMember[]> {
     const ids = userIds.map(id => new Types.ObjectId(id));
-    const [users, referrals, subscriptions] = await Promise.all([
+    const [users, referrals, subscriptions, ledgers] = await Promise.all([
         usersRaw().find({ _id: { $in: ids } }, { projection: projectionOf(SUPPORT_MEMBER_FIELDS) }).toArray(),
         ReferralModel.find({ referredUser: { $in: ids }, referralLevel: 1 })
             .select('referrer referredUser archived createdAt').sort({ archived: 1, createdAt: -1 }).lean(),
         SubscriptionModel.find({ user: { $in: ids } })
             .select('user subscriptionType category status startDate endDate').sort({ startDate: -1 }).lean(),
+        ledgerBalances(userIds).catch((err: any) => { log.warn(`Ledger balances unavailable: ${err?.message ?? err}`); return new Map(); }),
     ]);
 
     // Direct parrain: the live (non-archived) level-1 referral first.
@@ -152,6 +166,14 @@ export async function getSupportDetails(userIds: string[]): Promise<SupportMembe
             debt: Number(u.debt ?? 0),
             withdrawalLockedUntil: u.withdrawalsLockedUntil ?? null,
             subscriptions: subsOf.get(String(u._id)) ?? [],
+            geo: {
+                declared: u.country ?? null, usual: u.geo?.usualCountry ?? null, usualShare: u.geo?.usualShare ?? null,
+                last: u.geo?.lastCountry ?? null, lastAt: u.geo?.lastCountryAt ?? null,
+            },
+            ledger: ledgers.get(String(u._id)) ?? null,
+            frozen: u.frozen?.at ? { at: u.frozen.at, reason: u.frozen.reason ?? null } : null,
+            momoNumber: u.momoNumber ?? null,
+            momoOperator: u.momoOperator ?? null,
         });
     }
     return out;
@@ -333,4 +355,94 @@ export async function supportContactChange(input: ContactChangeInput, c: Support
     alertContactChange({ userId: user._id, previousEmail: user.email, reason, newValue });
     log.warn(`Support contact-change APPLIED user ${userId} field=${field} to ${tail} approvalId=${approvalId} lockedUntil=${lock.withdrawalsLockedUntil.toISOString()} ${ctx(c)}`);
     return { step, applied: true, withdrawalLockedUntil: lock.withdrawalsLockedUntil };
+}
+
+// ─── Security plan Phase 5: actions approved in support ────────────────────
+
+const assertApproval = (approvalId: unknown) => {
+    if (typeof approvalId !== 'string' || !/^[a-f\d]{24}$/i.test(approvalId)) {
+        throw new SupportError(400, 'INVALID_INPUT', 'approvalId is required.');
+    }
+};
+
+/** Lost phone, after ID + selfie in support and another agent's approval. */
+export async function supportAuthenticatorReset(input: { userId: string; reason: string; approvalId: string }, c: SupportCallContext = {}) {
+    assertApproval(input.approvalId);
+    const user = await UserModel.findById(input.userId).select('_id deleted');
+    if (!user || user.deleted) throw new SupportError(404, 'USER_NOT_FOUND', 'Membre introuvable.');
+    if (!(await memberAuthService.isEnabled(user._id))) {
+        throw new SupportError(409, 'NO_AUTHENTICATOR', 'Ce membre n’a pas d’application d’authentification active.');
+    }
+    const reason = String(input.reason ?? '').slice(0, 300);
+    const r = await memberAuthService.resetBySupport(user._id, `support approval ${input.approvalId}: ${reason}`);
+    log.warn(`Support authenticator reset user ${input.userId} approvalId=${input.approvalId} ${ctx(c)}`);
+    return r;
+}
+
+/**
+ * Freezes or unfreezes the member's money (withdrawals and transfers), after
+ * another agent's approval. One conditional write each way; the member is not
+ * told here (support decides what to say). The lock check reads `frozen`
+ * before the timed lock, so nothing else can lift it.
+ */
+export async function supportFreeze(input: { userId: string; action: 'freeze' | 'unfreeze'; reason: string; approvalId: string }, c: SupportCallContext = {}) {
+    assertApproval(input.approvalId);
+    const id = new Types.ObjectId(input.userId);
+    if (input.action === 'freeze') {
+        const r = await UserModel.updateOne(
+            { _id: id, deleted: { $ne: true }, 'frozen.at': { $exists: false } },
+            { $set: { frozen: { at: new Date(), reason: String(input.reason ?? '').slice(0, 300), approvalId: input.approvalId } } },
+        );
+        if (r.matchedCount !== 1) {
+            const exists = await usersRaw().findOne({ _id: id }, { projection: { _id: 1 } });
+            if (!exists) throw new SupportError(404, 'USER_NOT_FOUND', 'Membre introuvable.');
+            throw new SupportError(409, 'ALREADY_FROZEN', 'L’argent de ce compte est déjà gelé.');
+        }
+        log.warn(`Support FROZE the money of user ${input.userId} approvalId=${input.approvalId} ${ctx(c)}`);
+        return { frozen: true };
+    }
+    const r = await UserModel.updateOne({ _id: id, 'frozen.at': { $exists: true } }, { $unset: { frozen: 1 } });
+    if (r.matchedCount !== 1) throw new SupportError(409, 'NOT_FROZEN', 'L’argent de ce compte n’est pas gelé.');
+    log.warn(`Support UNFROZE the money of user ${input.userId} approvalId=${input.approvalId} ${ctx(c)}`);
+    return { frozen: false };
+}
+
+/**
+ * New Mobile Money number and operator for a member who cannot do it from the
+ * app, after another agent's approval. Same rules as the member's own change:
+ * replacing a number locks withdrawals and alerts the account e-mail.
+ */
+export async function supportMomoChange(input: { userId: string; momoNumber: string; momoOperator: string; approvalId: string }, c: SupportCallContext = {}) {
+    assertApproval(input.approvalId);
+    const operator = normalizeMomoOperator(input.momoOperator);
+    if (!MOMO_OPERATOR_PATTERN.test(operator)) throw new SupportError(400, 'INVALID_VALUE', 'Opérateur Mobile Money invalide.');
+    const user = await UserModel.findById(input.userId).select('email country momoNumber momoOperator deleted');
+    if (!user || user.deleted) throw new SupportError(404, 'USER_NOT_FOUND', 'Membre introuvable.');
+    const country = normalizeCountryName(user.country);
+    const number = normalizeMomoNumber(input.momoNumber, country);
+    if (!number) throw new SupportError(400, 'INVALID_VALUE', 'Numéro Mobile Money invalide pour le pays du membre.');
+    if (user.momoNumber && user.momoOperator && isSameMomo(user, { momoNumber: number, momoOperator: operator }, country)) {
+        throw new SupportError(400, 'SAME_VALUE', 'C’est déjà le numéro Mobile Money du compte.');
+    }
+    const hadNumber = !!user.momoNumber;
+    const lock = hadNumber ? withdrawalLockFields('momo_change') : null;
+    const r = await UserModel.updateOne(
+        { _id: user._id, momoNumber: user.momoNumber ?? null, momoOperator: user.momoOperator ?? null },
+        { $set: { momoNumber: number, momoOperator: operator, ...(lock ?? {}) } },
+    );
+    if (r.modifiedCount !== 1) throw new SupportError(409, 'STATE_CHANGED', 'Le compte a changé entre-temps. Recommencez.');
+    if (lock) alertContactChange({ userId: user._id, previousEmail: user.email, reason: 'momo_change', newValue: number });
+    log.warn(`Support MoMo change user ${input.userId} to •••${number.slice(-3)} ${operator} approvalId=${input.approvalId} lockedUntil=${lock?.withdrawalsLockedUntil.toISOString() ?? '-'} ${ctx(c)}`);
+    return { momoNumber: number, momoOperator: operator, withdrawalsLockedUntil: lock?.withdrawalsLockedUntil ?? null };
+}
+
+/**
+ * Conflict of interest (Phase 5): the same account, or one in the other's
+ * referral tree, up or down (the referrals collection holds levels 1–3).
+ */
+export async function areRelatedMembers(userId: string, otherUserId: string): Promise<boolean> {
+    if (userId === otherUserId) return true;
+    const a = new Types.ObjectId(userId);
+    const b = new Types.ObjectId(otherUserId);
+    return !!(await ReferralModel.exists({ $or: [{ referrer: a, referredUser: b }, { referrer: b, referredUser: a }] }));
 }

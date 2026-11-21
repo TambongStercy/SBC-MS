@@ -1,7 +1,8 @@
 import { Types } from 'mongoose';
 import { Agent } from '../database/models/agent.model';
 import { AgentSession } from '../database/models/agent-session.model';
-import { isRole, permissionsFor, ROLE_LABELS } from '../config/permissions';
+import { isRole, permissionsFor, ROLE_LABELS, SUPER_MANAGER_MAX } from '../config/permissions';
+import { getSupportMember } from './clients/user.client';
 import { badRequest, conflict, notFound } from '../utils/errors';
 import { issueActivation } from './auth/agent-auth.service';
 import { revokeAllSessions } from './auth/session.service';
@@ -22,7 +23,7 @@ export const agentView = (a: any) => ({
     totpEnrolled: Boolean(a.totp?.enrolled), backupCodesLeft: (a.backupCodes ?? []).filter((b: any) => !b.usedAt).length,
     lastLoginAt: a.lastLoginAt ?? null, createdAt: a.createdAt, activeSessions: a.activeSessions ?? 0, activationPending: Boolean(a.activation?.tokenHash && !a.activation?.usedAt),
     activationExpiresAt: a.activation?.expiresAt ?? null, viewsAvailable: Boolean(a.views?.available),
-    countries: a.countries ?? [],
+    countries: a.countries ?? [], memberUserId: a.memberUserId ?? null,
 });
 
 async function sessionCounts(ids: string[]): Promise<Record<string, number>> {
@@ -61,12 +62,20 @@ async function deliverActivation(agent: { email: string; name: string }, url: st
  * never stores it); with delivery 'email' it is emailed to the agent instead.
  * It is never logged and only its hash is stored.
  */
+/** Security plan Phase 5: super_manager is for 1–2 named accounts only. */
+async function assertSuperManagerRoom(roles: string[], exceptId?: string) {
+    if (!roles.includes('super_manager')) return;
+    const others = await Agent.countDocuments({ roles: 'super_manager', status: { $ne: 'disabled' }, ...(exceptId ? { _id: { $ne: exceptId } } : {}) });
+    if (others >= SUPER_MANAGER_MAX) throw conflict(`Il y a déjà ${SUPER_MANAGER_MAX} super responsables : retirez le rôle à l’un d’eux d’abord.`, 'SUPER_MANAGER_LIMIT');
+}
+
 export async function createAgent(body: Record<string, unknown>, by: string) {
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
     if (!EMAIL_RE.test(email)) throw badRequest('Email invalide.', 'BAD_EMAIL');
     if (name.length < 2) throw badRequest('Nom obligatoire.', 'BAD_NAME');
     const roles = parseRoles(body.roles);
+    await assertSuperManagerRoom(roles);
     let agent;
     try {
         agent = await Agent.create({ email, name, roles, status: 'pending', createdBy: Types.ObjectId.isValid(by) ? by : null });
@@ -84,6 +93,7 @@ export async function updateRoles(id: string, rolesIn: unknown, actorId: string)
     if (!Types.ObjectId.isValid(id)) throw notFound();
     const roles = parseRoles(rolesIn);
     if (id === actorId && !roles.includes('support_admin')) throw badRequest('Vous ne pouvez pas retirer votre propre rôle d’administrateur.', 'SELF_DEMOTE');
+    await assertSuperManagerRoom(roles, id);
     const before = await Agent.findByIdAndUpdate(id, { $set: { roles } }).lean();
     if (!before) throw notFound('Agent introuvable.');
     return { before: before.roles, after: roles };
@@ -98,6 +108,24 @@ export async function setCountries(id: string, input: unknown) {
     const before = await Agent.findByIdAndUpdate(id, { $set: { countries } }).lean();
     if (!before) throw notFound('Agent introuvable.');
     return { before: before.countries ?? [], after: countries };
+}
+
+/**
+ * The agent's own SBC member account (Phase 5 conflict rule): they will never be
+ * able to request, approve or work on anything about it or its referral tree.
+ * null = no member account.
+ */
+export async function setMemberAccount(id: string, userId: unknown) {
+    if (!Types.ObjectId.isValid(id)) throw notFound();
+    let value: string | null = null;
+    if (userId !== null && userId !== '') {
+        if (typeof userId !== 'string' || !/^[a-f0-9]{24}$/i.test(userId)) throw badRequest('Identifiant de membre invalide.', 'BAD_MEMBER');
+        if (!(await getSupportMember(userId))) throw badRequest('Membre introuvable.', 'BAD_MEMBER');
+        value = userId;
+    }
+    const before = await Agent.findByIdAndUpdate(id, { $set: { memberUserId: value } }).lean();
+    if (!before) throw notFound('Agent introuvable.');
+    return { before: before.memberUserId ?? null, after: value };
 }
 
 export async function setStatus(id: string, status: unknown, actorId: string) {

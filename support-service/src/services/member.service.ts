@@ -10,6 +10,7 @@ import { memberPayins, memberWithdrawals } from './clients/payment.client';
 import { AgentRef } from '../database/models/approval.model';
 import { createApproval } from './approval.service';
 import { audit } from './audit.service';
+import { teamFilter } from './scope.service';
 
 /** Masking per permission (CONTRACT §4). Balances only for finance or full readers. */
 export function presentMember(m: SupportMember, roles: string[]) {
@@ -26,6 +27,12 @@ export function presentMember(m: SupportMember, roles: string[]) {
         withdrawalLockedUntil: m.withdrawalLockedUntil ?? null,
         subscriptions: m.subscriptions ?? [],
         ...(money ? { balance: m.balance ?? null, usdBalance: m.usdBalance ?? null, reservedBalance: m.reservedBalance ?? null, debt: m.debt ?? null } : {}),
+        // Security plan Phase 5: countries (Phase 1 signals), money frozen, balance A vs B (Phase 2 adds C).
+        geo: m.geo ?? null,
+        frozen: m.frozen ?? null,
+        ...(money ? { ledger: m.ledger ?? null } : {}),
+        momoNumber: m.momoNumber ? (full ? m.momoNumber : maskPhone(m.momoNumber)) : null,
+        momoOperator: m.momoOperator ?? null,
     };
 }
 
@@ -51,7 +58,9 @@ export const withdrawalsWithText = async (userId: string, limit: number) =>
 
 export const payins = (userId: string, limit: number) => memberPayins(userId, limit);
 
-export const memberTickets = (userId: string) => Ticket.find({ memberId: userId }).sort({ createdAt: -1 }).limit(50).lean();
+/** A country team only sees the member's tickets from its countries (Phase 5). */
+export const memberTickets = (userId: string, team?: string[]) =>
+    Ticket.find({ memberId: userId, ...teamFilter(team) }).sort({ createdAt: -1 }).limit(50).lean();
 
 // ---------- Contact change for a member without account access ----------
 
@@ -59,8 +68,9 @@ const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/i;
 
 export async function requestContactChange(userId: string, input: { field?: unknown; newValue?: unknown; reason?: unknown; ticketId?: unknown; evidence?: unknown }, by: AgentRef, ctx: { ip?: string; userAgent?: string }) {
     if (!/^[a-f0-9]{24}$/i.test(userId)) throw notFound('Membre introuvable.');
+    if (input.field === 'momo') return requestMomoChange(userId, input as any, by, ctx);
     const field = input.field === 'email' ? 'email' : input.field === 'phoneNumber' ? 'phoneNumber' : null;
-    if (!field) throw badRequest('Champ inconnu (email ou phoneNumber).', 'BAD_FIELD');
+    if (!field) throw badRequest('Champ inconnu (email, phoneNumber ou momo).', 'BAD_FIELD');
     const raw = typeof input.newValue === 'string' ? input.newValue.trim() : '';
     const newValue = field === 'email' ? raw.toLowerCase() : raw.replace(/[^\d+]/g, '');
     if (field === 'email' ? !EMAIL_RE.test(newValue) : !/^\+?\d{8,15}$/.test(newValue)) throw badRequest('Nouvelle valeur invalide.', 'BAD_VALUE');
@@ -79,10 +89,34 @@ export async function requestContactChange(userId: string, input: { field?: unkn
     }, ctx);
 }
 
+/**
+ * Security plan Phase 5: a new Mobile Money number and operator for a member who
+ * cannot do it from the app (no authenticator, lost phone). Applied by user-service
+ * as soon as another agent approves (no code: a MoMo number cannot receive one);
+ * withdrawals are then locked and the account e-mail is alerted.
+ */
+async function requestMomoChange(userId: string, input: { momoNumber?: unknown; momoOperator?: unknown; reason?: unknown; ticketId?: unknown; evidence?: unknown }, by: AgentRef, ctx: { ip?: string; userAgent?: string }) {
+    const momoNumber = typeof input.momoNumber === 'string' ? input.momoNumber.replace(/[^\d+]/g, '') : '';
+    if (!/^\+?\d{8,15}$/.test(momoNumber)) throw badRequest('Numéro Mobile Money invalide.', 'BAD_VALUE');
+    const momoOperator = typeof input.momoOperator === 'string' ? input.momoOperator.trim().toUpperCase() : '';
+    if (!/^[A-Z0-9_]{2,40}$/.test(momoOperator)) throw badRequest('Choisissez l’opérateur Mobile Money.', 'BAD_OPERATOR');
+    const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 2000) : '';
+    if (reason.length < 20) throw badRequest('Décrivez la vérification d’identité effectuée (20 caractères au moins).', 'REASON_REQUIRED');
+    const evidence = Array.isArray(input.evidence) ? input.evidence.filter((e) => typeof e === 'string').slice(0, 10).map((e) => (e as string).slice(0, 300)) : [];
+    const member = await getSupportMember(userId);
+    if (!member) throw notFound('Membre introuvable.');
+    const open = await Approval.exists({ type: 'contact_change', 'subject.userId': userId, status: { $in: ['pending', 'approved'] } });
+    if (open) throw conflict('Une demande de changement est déjà en cours pour ce membre.', 'ALREADY_PENDING');
+    return createApproval({
+        type: 'contact_change', requestedBy: by, reason, payload: { field: 'momo', momoNumber, momoOperator, evidence },
+        subject: { userId }, ticketId: typeof input.ticketId === 'string' ? input.ticketId : null,
+    }, ctx);
+}
+
 async function approvedContactChange(approvalId: string) {
     if (!Types.ObjectId.isValid(approvalId)) throw notFound('Demande introuvable.');
     const a = await Approval.findById(approvalId).lean();
-    if (!a || a.type !== 'contact_change') throw notFound('Demande introuvable.');
+    if (!a || a.type !== 'contact_change' || (a.payload as { field?: string })?.field === 'momo') throw notFound('Demande introuvable.');
     if (a.status !== 'approved') throw conflict('Cette demande doit d’abord être validée par un responsable.', 'NOT_APPROVED');
     return a;
 }

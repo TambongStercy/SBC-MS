@@ -621,6 +621,14 @@ class PaymentService {
         }
         if (!lock.locked || !lock.until) return;
 
+        // Security plan Phase 5: money frozen by support, until an approved unfreeze (no end date to show).
+        if (lock.reason === 'account_frozen') {
+            log.warn(`Withdrawal refused for user ${userId}: money frozen by support (${audience})`);
+            throw new AppError(audience === 'admin'
+                ? 'L’argent de ce membre est gelé par le support (vérification en cours). Rien ne peut sortir avant le dégel.'
+                : 'Les retraits de votre compte sont suspendus pendant une vérification. Contactez le support depuis « Aide ».', 403);
+        }
+
         const until = new Date(lock.until);
         const what = lock.reason === 'email_change' ? "de l'adresse e-mail"
             : lock.reason === 'phone_change' ? 'du numéro de téléphone'

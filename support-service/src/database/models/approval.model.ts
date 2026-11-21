@@ -1,6 +1,6 @@
 import { Schema, model, Types } from 'mongoose';
 
-export const APPROVAL_TYPES = ['contact_change', 'manual_activation', 'regularization'] as const;
+export const APPROVAL_TYPES = ['contact_change', 'manual_activation', 'regularization', 'authenticator_reset', 'account_freeze'] as const;
 export type ApprovalType = typeof APPROVAL_TYPES[number];
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'executed', 'failed', 'cancelled', 'expired'] as const;
 export type ApprovalStatus = typeof APPROVAL_STATUSES[number];
@@ -15,7 +15,7 @@ export interface IApproval {
     payload: Record<string, unknown>;
     subject: { userId?: string | null; transactionId?: string | null; sessionId?: string | null };
     requiredApprovals: number;
-    approvals: { agent: AgentRef; at: Date; note?: string | null }[];
+    approvals: { agent: AgentRef; at: Date; note?: string | null; override?: boolean }[];
     rejectedBy?: AgentRef | null;
     rejectionReason?: string | null;
     execution?: { at?: Date | null; by?: AgentRef | null; ok?: boolean; code?: string | null; message?: string | null; result?: unknown } | null;
@@ -36,7 +36,7 @@ const ApprovalSchema = new Schema<IApproval>({
     payload: { type: Schema.Types.Mixed, default: {} },
     subject: { userId: String, transactionId: String, sessionId: String },
     requiredApprovals: { type: Number, default: 1, min: 1, max: 3 },
-    approvals: { type: [{ _id: false, agent: AgentRefSchema, at: Date, note: String }], default: [] },
+    approvals: { type: [{ _id: false, agent: AgentRefSchema, at: Date, note: String, override: Boolean }], default: [] },
     rejectedBy: { type: AgentRefSchema, default: null },
     rejectionReason: { type: String, default: null },
     execution: { type: Schema.Types.Mixed, default: null },

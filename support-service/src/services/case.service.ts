@@ -1,5 +1,7 @@
 import { Types, FilterQuery } from 'mongoose';
-import { CASE_SEVERITIES, CASE_STATUSES, CASE_TYPES, CaseSeverity, CaseStatus } from '../config/constants';
+import { CASE_SEVERITIES, CASE_STATUSES, CASE_TYPES, CaseSeverity, CaseStatus, FRAUD_CASE_TYPES, isFraudCase } from '../config/constants';
+import { memberCountry, teamFilter } from './scope.service';
+import { notifyManagers } from './ntfy.service';
 import { Case, ICase } from '../database/models/case.model';
 import { Agent } from '../database/models/agent.model';
 import { badRequest, conflict, notFound } from '../utils/errors';
@@ -14,6 +16,8 @@ const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.
 export interface CaseInput {
     type: unknown; dedupKey: unknown; severity?: unknown; summary: unknown; details?: unknown;
     subject?: { userId?: unknown; transactionId?: unknown; sessionId?: unknown; gateway?: unknown };
+    /** Phase 5: the member's country (else looked up) and the money at stake (XAF). */
+    country?: unknown; amount?: unknown;
 }
 
 /**
@@ -34,17 +38,24 @@ export async function upsertCase(input: CaseInput, source: string): Promise<{ ca
         sessionId: str(input.subject?.sessionId, 100) ?? null, gateway: str(input.subject?.gateway, 40) ?? null,
     };
     const now = new Date();
+    const givenCountry = typeof input.country === 'string' && /^[A-Za-z]{2}$/.test(input.country) ? input.country.toUpperCase() : null;
+    const amountNum = Number(input.amount);
+    const amount = Number.isFinite(amountNum) && amountNum >= 0 ? Math.round(amountNum * 100) / 100 : null;
+    let country: string | null | undefined;
 
     for (let attempt = 0; attempt < 3; attempt++) {
+        // Looked up once, only for a case that may be new (country teams, Phase 5).
+        if (country === undefined) country = givenCountry ?? (await Case.exists({ dedupKey }) ? null : await memberCountry(subject.userId));
         try {
             const res = await Case.findOneAndUpdate(
                 { dedupKey },
                 {
                     $setOnInsert: {
                         type, dedupKey, status: 'open', subject, summary, details: input.details ?? null, source, severity,
+                        severityRank: SEVERITY_RANK[severity], country: country ?? null,
                         checks: [], comments: [], history: [{ at: now, kind: 'opened', by: source }], createdAt: now,
                     },
-                    $set: { lastSeenAt: now },
+                    $set: { lastSeenAt: now, ...(amount !== null ? { amount } : {}) },
                     $inc: { occurrences: 1 },
                 },
                 { upsert: true, new: true, includeResultMetadata: true, setDefaultsOnInsert: false, timestamps: false },
@@ -57,7 +68,7 @@ export async function upsertCase(input: CaseInput, source: string): Promise<{ ca
                 await alertForCase(doc, severity);
             } else if (SEVERITY_RANK[severity] > SEVERITY_RANK[doc.severity as CaseSeverity]) {
                 const r = await Case.updateOne({ _id: doc._id, severity: doc.severity }, {
-                    $set: { severity }, $push: { history: { at: now, kind: 'severity', by: source, from: doc.severity, to: severity } },
+                    $set: { severity, severityRank: SEVERITY_RANK[severity] }, $push: { history: { at: now, kind: 'severity', by: source, from: doc.severity, to: severity } },
                 });
                 if (r.modifiedCount === 1) await alertForCase(doc, severity);
             }
@@ -71,7 +82,9 @@ export async function upsertCase(input: CaseInput, source: string): Promise<{ ca
 }
 
 async function alertForCase(doc: { _id: unknown; type: string; summary: string }, severity: CaseSeverity) {
-    const roles = doc.type === 'activation' ? ['support_agent'] : severity === 'critical' ? ['finance_manager'] : ['finance_agent'];
+    // Fraud cases go to finance managers only (Phase 5); a critical one also rings their phones.
+    const roles = doc.type === 'activation' ? ['support_agent'] : isFraudCase(doc.type) || severity === 'critical' ? ['finance_manager'] : ['finance_agent'];
+    if (isFraudCase(doc.type) && severity === 'critical') notifyManagers({ title: 'Dossier fraude critique', message: doc.summary.slice(0, 300), priority: 5, click: `/cases/${doc._id}` });
     for (const role of roles) {
         await notifyAgents({
             role, kind: `case.${severity}`, title: severity === 'critical' ? 'Dossier critique' : 'Nouveau dossier',
@@ -81,9 +94,12 @@ async function alertForCase(doc: { _id: unknown; type: string; summary: string }
     }
 }
 
-export async function listCases(q: Record<string, unknown>, agentId: string) {
-    const filter: FilterQuery<ICase> = {};
-    if (q.type === 'finance') filter.type = { $ne: 'activation' };
+export async function listCases(q: Record<string, unknown>, agentId: string, team?: string[]) {
+    // Phase 5: a country team sees only its countries' cases.
+    const filter: FilterQuery<ICase> = { ...teamFilter(team) } as FilterQuery<ICase>;
+    const fraud = q.type === 'fraud';
+    if (fraud) filter.type = { $in: FRAUD_CASE_TYPES };
+    else if (q.type === 'finance') filter.type = { $nin: ['activation', ...FRAUD_CASE_TYPES] };
     else if (typeof q.type === 'string' && CASE_TYPES.includes(q.type as any)) filter.type = q.type;
     if (typeof q.status === 'string') {
         if (q.status === 'active') filter.status = { $in: ['open', 'in_progress', 'waiting_provider'] };
@@ -97,7 +113,10 @@ export async function listCases(q: Record<string, unknown>, agentId: string) {
     const page = Math.max(1, parseInt(String(q.page || '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(String(q.limit || '30'), 10) || 30));
     const [items, total] = await Promise.all([
-        Case.find(filter, { checks: 0, comments: 0, history: 0 }).sort({ severity: 1, createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+        // The fraud queue: worst first, then the largest amount (index {status, severityRank, amount}).
+        Case.find(filter, { checks: 0, comments: 0, history: 0 })
+            .sort(fraud ? { severityRank: -1, amount: -1, createdAt: -1 } : { severityRank: -1, createdAt: -1 })
+            .skip((page - 1) * limit).limit(limit).lean(),
         Case.countDocuments(filter),
     ]);
     return { items, total, page, limit };

@@ -56,3 +56,28 @@ export function notifyNewTicket(t: NewTicketNotice): void {
         }
     })();
 }
+
+/**
+ * Security plan Phase 5: an alert for the managers (a super manager approved
+ * alone, a critical fraud case). Same topic as new requests, highest priority.
+ * No phone number or e-mail in the text; the link opens the desk.
+ */
+export function notifyManagers(n: { title: string; message: string; priority?: number; click?: string }): void {
+    if (!ntfyEnabled()) return;
+    void (async () => {
+        try {
+            const res = await fetch(config.ntfy.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(config.ntfy.token ? { Authorization: `Bearer ${config.ntfy.token}` } : {}) },
+                body: JSON.stringify({
+                    topic: config.ntfy.topic, title: n.title, message: n.message.slice(0, 600), priority: n.priority ?? 4,
+                    tags: ['rotating_light'], ...(n.click ? { click: `${config.publicUrl}${n.click}` } : {}),
+                }),
+                signal: AbortSignal.timeout(5000),
+            });
+            if (!res.ok) log.warn('ntfy refused the manager alert', { status: res.status });
+        } catch (err) {
+            log.warn('ntfy unreachable', { message: (err as Error).message });
+        }
+    })();
+}

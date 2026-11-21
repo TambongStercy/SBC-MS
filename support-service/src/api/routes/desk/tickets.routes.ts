@@ -15,10 +15,24 @@ import { Agent } from '../../../database/models/agent.model';
 import { agentNames, memberNames, presentEvents, presentMessage, presentTicket, presentTickets, storedStatus } from '../../presenters';
 import { badRequest, notFound } from '../../../utils/errors';
 import { deskRealtimeToken } from '../../../services/realtime.service';
+import { assertInTeam } from '../../../services/scope.service';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 } });
 const me = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.name }; };
+
+// Security plan Phase 5: a country team never opens or acts on another country's ticket
+// (every /tickets/:id… route below). 404, so the ticket's existence is not disclosed.
+router.param('id', ah(async (req: any, _res: any, next: any) => {
+    if (!req.path.startsWith('/tickets/')) return next();
+    const team = agentOf(req).countries;
+    if (!team?.length) return next();
+    if (!Types.ObjectId.isValid(req.params.id)) throw notFound('Ticket introuvable.');
+    const t = await Ticket.findById(req.params.id, { country: 1 }).lean();
+    if (!t) throw notFound('Ticket introuvable.');
+    assertInTeam(t.country ?? null, team, 'Ticket');
+    next();
+}) as any);
 
 async function ticketOut(id: string) {
     const t = await Ticket.findById(id).lean();
@@ -29,25 +43,25 @@ async function ticketOut(id: string) {
 // Every filter of listDeskTickets except the free text `q`.
 const TICKET_FILTERS = ['queue', 'status', 'priority', 'assignee', 'memberId', 'number', 'slaBreached', 'page', 'limit'] as const;
 
-async function listTickets(filters: Record<string, unknown>, text: unknown, agentId: string) {
+async function listTickets(filters: Record<string, unknown>, text: unknown, agentId: string, team?: string[]) {
     const q: Record<string, unknown> = {};
     for (const k of TICKET_FILTERS) if (filters[k] !== undefined && filters[k] !== null && filters[k] !== '') q[k] = String(filters[k]);
     if (typeof text === 'string' && text.trim()) q.q = text;
     if (typeof q.status === 'string' && q.status !== 'active') q.status = storedStatus(q.status) ?? '__none__';
-    const r = await tickets.listDeskTickets(q, agentId);
+    const r = await tickets.listDeskTickets(q, agentId, team);
     return { ...r, items: await presentTickets(r.items) };
 }
 
 // Filters only: the free text is never read from a URL (see POST /tickets/search).
 router.get('/tickets', requirePermission('tickets.read'), ah(async (req, res) => {
-    res.json({ success: true, data: await listTickets(req.query as Record<string, unknown>, undefined, agentOf(req).id) });
+    res.json({ success: true, data: await listTickets(req.query as Record<string, unknown>, undefined, agentOf(req).id, agentOf(req).countries) });
 }));
 
 // POST, not GET: agents search tickets by a member's email, phone or name, and a
 // query string ends up in the gateway and nginx access logs and the browser history.
 router.post('/tickets/search', requirePermission('tickets.read'), ah(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    res.json({ success: true, data: await listTickets(body, body.q, agentOf(req).id) });
+    res.json({ success: true, data: await listTickets(body, body.q, agentOf(req).id, agentOf(req).countries) });
 }));
 
 // Live updates: a listen-only LiveKit token for the desk room ({ enabled:false } without LiveKit).

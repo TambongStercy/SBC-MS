@@ -5,6 +5,7 @@ import * as members from '../../../services/member.service';
 import { audit } from '../../../services/audit.service';
 import { hasPermission } from '../../../config/permissions';
 import { presentTickets } from '../../presenters';
+import { requestAuthenticatorReset, requestFreeze } from '../../../services/risk.service';
 
 const router = Router();
 const ref = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.name, roles: a.roles }; };
@@ -41,7 +42,19 @@ router.get('/:userId/withdrawals', requirePermission('members.read'), ah(async (
 }));
 
 router.get('/:userId/tickets', requirePermission('members.read', 'tickets.read'), ah(async (req, res) => {
-    res.json({ success: true, data: await presentTickets(await members.memberTickets(req.params.userId)) });
+    res.json({ success: true, data: await presentTickets(await members.memberTickets(req.params.userId, agentOf(req).countries)) });
+}));
+
+// Security plan Phase 5: lost phone (after ID + selfie) → finance manager approves → user-service removes the app.
+router.post('/:userId/authenticator-reset', requirePermission('authenticator.reset.request'), requireReauth, ah(async (req, res) => {
+    const a = await requestAuthenticatorReset(req.params.userId, req.body ?? {}, ref(req), reqCtx(req));
+    res.status(201).json({ success: true, data: { approvalId: String(a._id), status: a.status } });
+}));
+
+// Security plan Phase 5: freeze or unfreeze the member's money (finance managers; another one approves).
+router.post('/:userId/freeze', requirePermission('risk.decide'), requireReauth, ah(async (req, res) => {
+    const a = await requestFreeze(req.params.userId, req.body ?? {}, ref(req), reqCtx(req));
+    res.status(201).json({ success: true, data: { approvalId: String(a._id), status: a.status } });
 }));
 
 // Contact change for a member who lost access: request → approval → code to the new contact → apply.

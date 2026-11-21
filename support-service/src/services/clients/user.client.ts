@@ -9,6 +9,14 @@ export interface SupportMember {
     deleted?: boolean; referrerId?: string; referrerName?: string; balance?: number; usdBalance?: number;
     reservedBalance?: number; debt?: number; withdrawalLockedUntil?: string | null;
     subscriptions?: { type: string; category?: string; status: string; startDate?: string; endDate?: string | null }[];
+    /** Phase 5: declared / usual / last country (Phase 1 signals). */
+    geo?: { declared: string | null; usual: string | null; usualShare: number | null; last: string | null; lastAt: string | null } | null;
+    /** Phase 5: balance A (account) against B (opening + movements), per currency; null before the opening snapshot. */
+    ledger?: { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[] | null;
+    /** Phase 5: money frozen by support (withdrawals and transfers suspended). */
+    frozen?: { at: string; reason: string | null } | null;
+    momoNumber?: string | null;
+    momoOperator?: string | null;
 }
 
 export interface MemberSearchHit { _id: string; name: string; country?: string; role?: string; createdAt?: string }
@@ -51,3 +59,34 @@ export async function contactChange(body: {
     if (isRouteMissing(r)) throw new DependencyError('user', 404);
     return { ok: false, code: r.code, message: r.message };
 }
+
+// ---- Security plan Phase 5 ----
+
+/** Whether two members are the same account or in each other's referral tree (3 levels up or down). Throws when user-service is down (callers fail closed). */
+export async function areRelated(userId: string, otherUserId: string): Promise<boolean> {
+    const r = await serviceRequest<{ related: boolean }>('user', 'POST', `${BASE}/support/related`, { body: { userId, otherUserId } });
+    if (isRouteMissing(r)) throw new DependencyError('user', 404);
+    const data = requireOk('user', r);
+    return !!data?.related;
+}
+
+export interface OwnerActionResult { ok: boolean; code?: string; message?: string; data?: any }
+
+async function ownerAction(path: string, body: Record<string, unknown>): Promise<OwnerActionResult> {
+    const r = await serviceRequest('user', 'POST', `${BASE}${path}`, { body });
+    if (r.ok) return { ok: true, data: r.data };
+    if (isRouteMissing(r)) throw new DependencyError('user', 404);
+    return { ok: false, code: r.code, message: r.message };
+}
+
+/** Removes the member's authenticator app (lost phone), locks withdrawals 72 h and e-mails the member. */
+export const resetMemberAuthenticator = (body: { userId: string; reason: string; approvalId: string }) =>
+    ownerAction('/support/authenticator-reset', body);
+
+/** Freezes (withdrawals and transfers suspended until unfrozen) or unfreezes the member's money. */
+export const freezeMember = (body: { userId: string; action: 'freeze' | 'unfreeze'; reason: string; approvalId: string }) =>
+    ownerAction('/support/freeze', body);
+
+/** Replaces the member's Mobile Money number and operator (locks withdrawals, alerts the account e-mail). */
+export const changeMemberMomo = (body: { userId: string; momoNumber: string; momoOperator: string; approvalId: string }) =>
+    ownerAction('/support/momo-change', body);

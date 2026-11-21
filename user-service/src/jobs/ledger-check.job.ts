@@ -181,3 +181,30 @@ class LedgerCheckJob {
 }
 
 export const ledgerCheckJob = new LedgerCheckJob();
+
+/**
+ * Security plan Phase 5 (support member card): balance A (users.balance /
+ * usdBalance) against balance B (opening snapshot + APPLIED movements since),
+ * per currency. A member without an opening snapshot gets no entry.
+ */
+export async function ledgerBalances(userIdsIn: string[]): Promise<Map<string, { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[]>> {
+    const ids = userIdsIn.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
+    const out = new Map<string, { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[]>();
+    if (!ids.length) return out;
+    const [openings, net, users] = await Promise.all([
+        WalletOpeningBalanceModel.find({ userId: { $in: ids } }).lean(),
+        netSinceSnapshot(ids),
+        UserModel.find({ _id: { $in: ids } }).select('balance usdBalance').lean(),
+    ]);
+    const byId = new Map(users.map((u: any) => [u._id.toString(), u]));
+    for (const o of openings as any[]) {
+        const u: any = byId.get(o.userId.toString());
+        if (!u) continue;
+        const actual = round2(Number((o.currency === 'USD' ? u.usdBalance : u.balance) ?? 0));
+        const expected = round2(o.amount + (net.get(`${o.userId}:${o.currency}`) ?? 0));
+        const list = out.get(o.userId.toString()) ?? [];
+        list.push({ currency: o.currency, actual, expected, matches: Math.abs(actual - expected) <= TOLERANCE });
+        out.set(o.userId.toString(), list);
+    }
+    return out;
+}

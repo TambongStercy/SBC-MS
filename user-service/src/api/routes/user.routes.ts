@@ -85,6 +85,11 @@ serviceRouter.post('/sbclove-details', (req, res) => userController.getSbcloveDe
 serviceRouter.post('/support-details', (req, res) => supportController.details(req, res));
 serviceRouter.post('/support-search', (req, res) => supportController.search(req, res));
 serviceRouter.post('/support/contact-change', (req, res) => supportController.contactChange(req, res));
+// Security plan Phase 5: actions approved in support, and the conflict-of-interest check.
+serviceRouter.post('/support/related', (req, res) => supportController.related(req, res));
+serviceRouter.post('/support/authenticator-reset', (req, res) => supportController.authenticatorReset(req, res));
+serviceRouter.post('/support/freeze', (req, res) => supportController.freeze(req, res));
+serviceRouter.post('/support/momo-change', (req, res) => supportController.momoChange(req, res));
 // SBC Event: resolve an invited team member / juror from an email or phone (masked projection)
 serviceRouter.post('/event-member-lookup', (req, res) => userController.lookupEventMember(req, res));
 // SBCLOVE admin search: which of the given members match a name/email/phone/city term

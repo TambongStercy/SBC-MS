@@ -45,8 +45,13 @@ export const TICKET_SOURCES = ['member', 'assistant', 'system', 'agent', 'public
 export const CASE_TYPES = [
     'activation', 'withdrawal_divergence', 'debit_missing', 'paid_not_debited',
     'duplicate_callback', 'unknown_status', 'amount_mismatch', 'ledger_mismatch',
+    // Security plan Phase 5: fraud cases (opened by the fraud engine, Phase 4), handled by finance managers.
+    'self_referral', 'shared_payout_number', 'multi_account', 'abnormal_behavior', 'geo_anomaly', 'dormant_reactivation',
 ] as const;
 export type CaseType = typeof CASE_TYPES[number];
+/** The « Fraude » queue: risk.read to see, finance managers to handle. */
+export const FRAUD_CASE_TYPES: CaseType[] = ['self_referral', 'shared_payout_number', 'multi_account', 'abnormal_behavior', 'geo_anomaly', 'dormant_reactivation'];
+export const isFraudCase = (type: string) => (FRAUD_CASE_TYPES as string[]).includes(type);
 export const CASE_SEVERITIES = ['info', 'warning', 'critical'] as const;
 export type CaseSeverity = typeof CASE_SEVERITIES[number];
 export const CASE_STATUSES = ['open', 'in_progress', 'waiting_provider', 'resolved', 'closed'] as const;

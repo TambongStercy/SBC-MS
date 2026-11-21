@@ -6,14 +6,15 @@ import type { CaseStatus, Severity, SupportCase } from '../../api/types';
 import { ErrorState } from '../../components/display/ErrorState';
 import { CASE_STATUS, CASE_TYPE, SEVERITY, StatusBadge } from '../../components/display/labels';
 import { EmptyState, Pagination, Panel, ResponsiveList, Select, type ListColumn } from '../../components/ui';
-import { formatRelative } from '../../lib/format';
+import { formatMoney, formatRelative } from '../../lib/format';
 import { CaseDetailSheet } from './CaseDetailSheet';
 
 const PAGE_SIZE = 20;
 const ALL = 'all';
 
 /** Activation cases, or every finance case type. */
-export function CaseList({ scope }: { scope: 'activation' | 'finance' }) {
+/** scope 'fraud' (Security plan Phase 5): the fraud queue, worst first then the largest amount (server order). */
+export function CaseList({ scope }: { scope: 'activation' | 'finance' | 'fraud' }) {
   const [status, setStatus] = useState<CaseStatus | 'active' | typeof ALL>('active');
   const [severity, setSeverity] = useState<Severity | typeof ALL>(ALL);
   const [assignee, setAssignee] = useState<'me' | 'unassigned' | typeof ALL>(ALL);
@@ -21,7 +22,7 @@ export function CaseList({ scope }: { scope: 'activation' | 'finance' }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   const filters: CaseFilters = {
-    type: scope === 'activation' ? 'activation' : 'finance',
+    type: scope,
     status: status === ALL ? '' : status,
     severity: severity === ALL ? '' : severity,
     assignee: assignee === ALL ? undefined : assignee,
@@ -45,7 +46,12 @@ export function CaseList({ scope }: { scope: 'activation' | 'finance' }) {
     },
     { key: 'severity', header: 'Gravité', cell: c => <StatusBadge map={SEVERITY} value={c.severity} /> },
     { key: 'status', header: 'Statut', cell: c => <StatusBadge map={CASE_STATUS} value={c.status} /> },
+    ...(scope === 'fraud' ? [
+      { key: 'amount', header: 'Montant en jeu', numeric: true, cell: (c: SupportCase) => (c.amount != null ? formatMoney(c.amount) : '—') },
+      { key: 'occurrences', header: 'Signalements', numeric: true, cell: (c: SupportCase) => String(c.occurrences ?? 1) },
+    ] : []),
     { key: 'member', header: 'Membre', cell: c => c.subject.memberName || c.subject.userId || '—' },
+    { key: 'country', header: 'Pays', cell: c => c.country ?? '—' },
     { key: 'assignee', header: 'Suivi par', cell: c => c.assignee?.name ?? <span className="text-fg-subtle">Personne</span> },
     { key: 'updated', header: 'Mis à jour', cell: c => formatRelative(c.updatedAt) },
   ];
