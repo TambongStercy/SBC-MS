@@ -6,7 +6,8 @@ const log = logger.getLogger('Database');
 
 const connectDB = async () => {
     try {
-        console.log(`Connecting to MongoDB at ${config.mongodbUri}...`);
+        // Never the full URI: it holds the database password (it ended up in the PM2 logs).
+        console.log(`Connecting to MongoDB at ${String(config.mongodbUri).replace(/\/\/[^@/]*@/, '//***@')}...`);
         await mongoose.connect(config.mongodbUri);
         log.info('MongoDB connected successfully.');
 

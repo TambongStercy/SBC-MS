@@ -22,7 +22,7 @@ async function migrateExistingSubscriptions() {
 
         // Connect to MongoDB
         const mongoUri = config.mongodb.uri || 'mongodb://localhost:27017/sbc_user_dev';
-        log.info(`Connecting to MongoDB: ${mongoUri}`);
+        log.info(`Connecting to MongoDB: ${String(mongoUri).replace(/\/\/[^@/]*@/, '//***@')}`);
 
         await mongoose.connect(mongoUri);
         log.info('Connected to MongoDB successfully');

@@ -52,7 +52,7 @@ const one = async (session: string) => {
 
 const run = async () => {
     await mongoose.connect(config.mongodb.uri);
-    console.log(`Connected to ${config.mongodb.uri}\n`);
+    console.log(`Connected to ${config.mongodb.uri.replace(/\/\/[^@/]*@/, '//***@')}\n`);
 
     if (sessionId) {
         await one(sessionId);
