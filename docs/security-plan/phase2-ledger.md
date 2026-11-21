@@ -85,20 +85,21 @@ It does not run on the main server.
 - **Ports:** Blnk listens on 5101, its worker on 5004, Redis on 127.0.0.1:6390. ufw denies
   everything incoming except 22, 80 and 443. Checked from outside: 5101, 5004, 6390 and 5432
   are all closed.
-- **nginx** `blnk.sniperbusinesscenter.com` → 127.0.0.1:5101:
+- **nginx** `preprod-blnk.sniperbusinesscenter.com` → 127.0.0.1:5101 (`blnk.sniperbusinesscenter.com`
+  is kept for the future prod instance and answers 444 until then):
   - only `207.180.242.122` (the main server) and 127.0.0.1 are allowed; everyone else gets 403;
   - the ACME path is open;
   - HTTPS comes from certbot, and needs the Cloudflare record set to **DNS only** (grey
     cloud). Behind Cloudflare's proxy every caller would be a Cloudflare address.
-- **Main server:** preprod `user-service/.env` gets `BLNK_URL=https://blnk.sniperbusinesscenter.com`
+- **Main server:** preprod `user-service/.env` gets `BLNK_URL=https://preprod-blnk.sniperbusinesscenter.com`
   and `BLNK_API_KEY`; the pm2 process is `blnk-sync-preprod` (ecosystem.preprod.config.js).
   The deploy restarts it with user-service; the first start is by hand.
-- **Prod later:** a second Blnk instance (its own database, port and host name).
+- **Prod later:** a second Blnk instance (its own database, port and key) at `blnk.sniperbusinesscenter.com`.
 
 ## Rollout steps (each one confirmed with Sterling)
 
 1. Blnk, its database and nginx on the secondary server: **done**.
-2. HTTPS (certbot), once the record is DNS only.
+2. HTTPS (certbot): **done** (DNS-only records; wildcard `*` in the zone).
 3. Preprod user-service `.env` and the `blnk-sync-preprod` worker (needs this branch deployed).
 4. Openings: `node dist/scripts/blnk-post-openings.js` (dry run), then `--apply`.
 5. Shadow run: 14 clean nights in a row, with `LEDGER_TRIPLE_CHECK=log` in payment-service.
