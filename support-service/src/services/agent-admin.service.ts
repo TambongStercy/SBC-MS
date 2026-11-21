@@ -22,6 +22,7 @@ export const agentView = (a: any) => ({
     totpEnrolled: Boolean(a.totp?.enrolled), backupCodesLeft: (a.backupCodes ?? []).filter((b: any) => !b.usedAt).length,
     lastLoginAt: a.lastLoginAt ?? null, createdAt: a.createdAt, activeSessions: a.activeSessions ?? 0, activationPending: Boolean(a.activation?.tokenHash && !a.activation?.usedAt),
     activationExpiresAt: a.activation?.expiresAt ?? null, viewsAvailable: Boolean(a.views?.available),
+    countries: a.countries ?? [],
 });
 
 async function sessionCounts(ids: string[]): Promise<Record<string, number>> {
@@ -86,6 +87,17 @@ export async function updateRoles(id: string, rolesIn: unknown, actorId: string)
     const before = await Agent.findByIdAndUpdate(id, { $set: { roles } }).lean();
     if (!before) throw notFound('Agent introuvable.');
     return { before: before.roles, after: roles };
+}
+
+/** Country team (Phase 11 activity panel; Phase 5 will filter tickets and cases too). Empty = every country. */
+export async function setCountries(id: string, input: unknown) {
+    if (!Types.ObjectId.isValid(id)) throw notFound();
+    if (!Array.isArray(input)) throw badRequest('Liste de pays attendue.', 'BAD_COUNTRIES');
+    const countries = [...new Set(input.map((c) => String(c).trim().toUpperCase()))];
+    if (countries.length > 40 || !countries.every((c) => /^[A-Z]{2}$/.test(c))) throw badRequest('Codes pays à deux lettres (CM, BJ…).', 'BAD_COUNTRIES');
+    const before = await Agent.findByIdAndUpdate(id, { $set: { countries } }).lean();
+    if (!before) throw notFound('Agent introuvable.');
+    return { before: before.countries ?? [], after: countries };
 }
 
 export async function setStatus(id: string, status: unknown, actorId: string) {

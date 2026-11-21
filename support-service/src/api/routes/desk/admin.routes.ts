@@ -36,6 +36,13 @@ router.put('/agents/:id/roles', requirePermission('agents.manage'), requireReaut
     res.json({ success: true, data: await admin.getAgentView(req.params.id) });
 }));
 
+/** Country team: `{ countries: ['CM', 'BJ'] }`, [] = every country. */
+router.put('/agents/:id/countries', requirePermission('agents.manage'), requireReauth, ah(async (req, res) => {
+    const r = await admin.setCountries(req.params.id, req.body?.countries);
+    await audit({ actor: actorOf(req), action: 'agent.countries_changed', target: { type: 'agent', id: req.params.id }, before: r.before, after: r.after, reason: reasonOf(req), ...reqCtx(req) });
+    res.json({ success: true, data: await admin.getAgentView(req.params.id) });
+}));
+
 const statusRoute = (status: 'active' | 'disabled') => ah(async (req, res) => {
     const r = await admin.setStatus(req.params.id, status, agentOf(req).id);
     await audit({ actor: actorOf(req), action: 'agent.status_changed', target: { type: 'agent', id: req.params.id }, before: r.before, after: r.after, reason: reasonOf(req), ...reqCtx(req) });

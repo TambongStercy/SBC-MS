@@ -50,3 +50,12 @@ describe('shortcutsFor', () => {
     expect(shortcutPaths({})).toEqual([]);
   });
 });
+
+describe('activePathFor', () => {
+  it('Activité (/) and Vue d’ensemble (/dashboard) are two entries of the dashboard module', async () => {
+    const { activePathFor } = await import('./menu');
+    expect(activePathFor(MENU, '/')).toBe('/');
+    expect(activePathFor(MENU, '/dashboard')).toBe('/dashboard');
+    expect(paths({ dashboard: 'read' })).toEqual(['/', '/dashboard']);
+  });
+});

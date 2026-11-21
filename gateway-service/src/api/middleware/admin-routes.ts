@@ -46,6 +46,8 @@ const RULES: Rule[] = [
     // The Utilisateurs page's own counters.
     { pattern: /^\/api\/users\/admin\/stats\/user-summary$/, module: 'members' },
     { pattern: /^\/api\/users\/admin\/(dashboard|stats)(\/|$)/, module: 'dashboard' },
+    // Security plan Phase 11: daily activity board and the lists behind it.
+    { pattern: /^\/api\/users\/admin\/activity(\/|$)/, module: 'dashboard' },
 
     // --- payment-service ---
     { pattern: /^\/api\/payments\/admin\/withdrawals(\/|$)/, module: 'withdrawals' },

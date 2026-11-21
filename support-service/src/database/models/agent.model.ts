@@ -16,6 +16,8 @@ export interface IAgent {
     lastLoginAt?: Date | null;
     lastLoginIp?: string | null;
     views: { available: boolean; lastAssignedAt?: Date | null; lastSeenAt?: Date | null };
+    /** Country team (ISO codes). Empty = every country. Filters the activity panel (Phase 11). */
+    countries: string[];
     createdBy?: Types.ObjectId | null;
     disabledAt?: Date | null;
     createdAt?: Date;
@@ -50,6 +52,7 @@ const AgentSchema = new Schema<IAgent>({
         lastAssignedAt: { type: Date, default: null },
         lastSeenAt: { type: Date, default: null },
     },
+    countries: { type: [String], default: [] },
     createdBy: { type: Schema.Types.ObjectId, default: null },
     disabledAt: { type: Date, default: null },
 }, { timestamps: true });

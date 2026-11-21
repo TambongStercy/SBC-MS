@@ -65,7 +65,8 @@ export const MENU: MenuGroup[] = [
     id: 'dashboard',
     label: 'Tableau de bord',
     items: [
-      { label: 'Accueil', path: '/', icon: Home01Icon },
+      { label: 'Activité', path: '/', icon: Activity01Icon },
+      { label: 'Vue d’ensemble', path: '/dashboard', icon: Home01Icon },
     ],
   },
   {
@@ -179,7 +180,7 @@ export function menuFor(permissions: Permissions | null): MenuGroup[] {
 export function activePathFor(groups: MenuGroup[], pathname: string): string | undefined {
   return groups
     .flatMap(g => g.items)
-    .filter(i => (i.path === '/' ? pathname === '/' || pathname === '/dashboard' : pathname === i.path || pathname.startsWith(`${i.path}/`)))
+    .filter(i => (i.path === '/' ? pathname === '/' : pathname === i.path || pathname.startsWith(`${i.path}/`)))
     .sort((a, b) => b.path.length - a.path.length)[0]?.path;
 }
 

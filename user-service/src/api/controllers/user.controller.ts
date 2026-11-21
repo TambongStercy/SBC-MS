@@ -28,6 +28,7 @@ import {
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
 import { doualaDay, ingestActivityBatch, ipRange } from '../../services/activity-signals.service';
+import { markSignupCompleted, markSignupWrongCode, recordSignupAttempt, signupContext } from '../../services/signup-attempts.service';
 
 /** Fire-and-forget: one login in the day's signals (headers set by nginx / the gateway). */
 function recordLogin(userId: string, req: Request): void {
@@ -862,6 +863,8 @@ export class UserController {
      * @route POST /api/users/register
      */
     async register(req: Request, res: Response): Promise<void> {
+        // Security plan Phase 11: every sign-up form sent is recorded with its outcome (buffered, after the answer).
+        const signup = signupContext(req);
         try {
             log.info('Registering a new user');
 
@@ -882,11 +885,13 @@ export class UserController {
                 } else {
                     log.warn(`Phone number normalization failed for registration. Raw: ${registrationData.phoneNumber}, Country: ${registrationData.country}`);
                     res.status(400).json({ success: false, message: 'Invalid phone number or country code provided. Please ensure the phone number matches the selected country.' });
+                    recordSignupAttempt(signup, { reason: 'invalid_phone', step: 'form' });
                     return;
                 }
             } else if (registrationData.phoneNumber) { // If phoneNumber is present but not a string or country missing for normalization
                 log.warn(`Phone number provided for registration but country code missing or phone not a string. Raw: ${registrationData.phoneNumber}, Country: ${registrationData.country}`);
                 res.status(400).json({ success: false, message: 'A valid phone number and country code are required for phone number registration.' });
+                recordSignupAttempt(signup, { reason: 'invalid_phone', step: 'form' });
                 return;
             }
             // --- End Phone Number Normalization ---
@@ -899,9 +904,11 @@ export class UserController {
             // this.processUserRecovery(result.userId, registrationData.email, registrationData.phoneNumber);
 
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
+            recordSignupAttempt(signup, { userId: result.userId });
         } catch (error: any) {
             log.error('Error registering a new user', error);
             res.status(400).json({ success: false, message: error.message });
+            recordSignupAttempt(signup, { error });
         }
     }
 
@@ -1032,9 +1039,12 @@ export class UserController {
                 res.status(200).json({ success: true, message: 'Verification successful', data: { token: result.newToken, user: userProfile } });
                 // Security plan Phase 1: a sign-in counts in the day's signals (consenting members only).
                 recordLogin(String(userId), req);
+                // Phase 11: the first code entered completes a sign-up (matches nothing on later sign-ins).
+                markSignupCompleted(String(userId));
             } else {
                 // If invalid or no token generated (e.g., wrong otpType used)
                 this.log.warn(`OTP verification failed for userId: ${userId}`);
+                markSignupWrongCode(String(userId));
                 res.status(401).json({ success: false, message: 'Invalid or expired OTP code' });
             }
         } catch (error: any) {

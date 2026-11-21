@@ -31,6 +31,14 @@ export async function searchMembers(q: string, limit = 20): Promise<MemberSearch
     return requireOk('user', r) ?? [];
 }
 
+/** Security plan Phase 11: the day's activity figures (user-service computes them once for admin and support). */
+export async function getActivityBoard(q: { range?: string; source?: string; countries?: string[] }): Promise<unknown> {
+    const r = await serviceRequest('user', 'GET', `${BASE}/activity/board`, {
+        query: { range: q.range, source: q.source, countries: q.countries?.length ? q.countries.join(',') : undefined },
+    });
+    return requireOk('user', r);
+}
+
 export type ContactChangeStep = 'send-code' | 'apply';
 
 export interface ContactChangeResult { ok: boolean; code?: string; message?: string }

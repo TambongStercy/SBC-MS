@@ -20,6 +20,7 @@ import FixMoneyFusionWithdrawalsPage from './pages/FixMoneyFusionWithdrawalsPage
 import FixCinetPayWithdrawalsPage from './pages/FixCinetPayWithdrawalsPage';
 import FixProviderIssuesPage from './pages/FixProviderIssuesPage';
 import PaymentConversionPage from './pages/PaymentConversionPage';
+import ActivityPage from './pages/ActivityPage';
 import ManualPaymentRecoveryPage from './pages/ManualPaymentRecoveryPage';
 import StorageMonitoringPage from './pages/StorageMonitoringPage';
 import RelanceDashboardPage from './pages/RelanceDashboardPage';
@@ -62,7 +63,8 @@ function App() {
         <Route element={<ProtectedRoute />}>
           {/* Every signed-in page is drawn inside the shell (sidebar, header, phone bars). */}
           <Route element={<AppShell />}>
-            <Route path="/" element={<OverViewPage />} />
+            {/* Security plan Phase 11: the admin opens on the day's activity. */}
+            <Route path="/" element={<ActivityPage />} />
             <Route path="/dashboard" element={<OverViewPage />} />
             <Route path="/users" element={<Users />} />
             <Route path="/partners" element={<Partners />} />

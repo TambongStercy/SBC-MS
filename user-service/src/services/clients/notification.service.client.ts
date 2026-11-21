@@ -100,6 +100,21 @@ class NotificationService {
     }
 
     /**
+     * Security plan Phase 11: what became of these members' sign-in codes
+     * (channel, sent/failed, provider error). Null when notification-service
+     * does not answer, so the caller can wait instead of guessing.
+     */
+    async getOtpDelivery(userIds: string[], since?: Date): Promise<Record<string, { channel: string; status: string; error: string | null; at: string }[]> | null> {
+        try {
+            const { data } = await this.apiClient.post('/notifications/internal/otp-delivery', { userIds, since }, { timeout: 15000 });
+            return data?.success ? (data.data || {}) : null;
+        } catch (error: any) {
+            log.warn(`OTP delivery lookup failed: ${error?.message ?? error}`);
+            return null;
+        }
+    }
+
+    /**
      * Send an OTP code via email or SMS for 2FA
      */
     async sendOtp(data: OtpNotificationRequest): Promise<boolean> {

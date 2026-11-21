@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import UserModel from '../database/models/user.model';
 import { UserGeoDayModel } from '../database/models/user-geo-day.model';
 import logger from '../utils/logger';
+import { trackConnected } from './activity-hll.service';
 
 const log = logger.getLogger('ActivitySignals');
 
@@ -141,6 +142,9 @@ export async function ingestActivityBatch(records: ActivityRecord[]): Promise<{ 
                 },
             };
         }), { ordered: false });
+
+        // Phase 11: live count of connected members (Redis HyperLogLog; never blocks the ingest).
+        trackConnected(kept.map(r => ({ userId: r.userId, day: r.day, country: r.country, sources: r.sources }))).catch(() => undefined);
 
         // The member's latest activity and country: one write per member per batch.
         const latest = new Map<string, ActivityRecord>();

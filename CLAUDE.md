@@ -573,6 +573,48 @@ push), so a hijacker cannot silence it.
 - Checks: `gateway-service/src/scripts/check-activity-signals.ts`,
   `user-service/src/scripts/check-activity-signals.ts`.
 
+### Daily activity board (Security plan Phase 11, 2026-11-21)
+
+Admin « Activité » (`/`, the admin now opens on it; the old overview is
+`/dashboard`, « Vue d’ensemble ») and the support desk home panel show the same
+figures per country, for today / 7 / 30 days, web or app: members connected,
+sign-ups started / completed / failed (with the reason) / in progress,
+activations, unfinished payments. Each admin number opens the list behind it.
+- **Sign-up attempts** (user-service `signup_attempts`, TTL 180 days,
+  `services/signup-attempts.service.ts`): every `POST /users/register` is one
+  attempt with one outcome, written after the answer (1 s buffer). Country =
+  declared (form) else Cloudflare's else `XX`; source from `X-SBC-Client` (the web
+  app sends `app` when installed on the home screen). Email/phone stored masked
+  only. Reasons (`SIGNUP_REASONS`, groups as payments): already used, sponsor code,
+  invalid phone/email/form → member; `server_error` → SBC code. `verify-otp`
+  completes it (and counts wrong codes). After 24 h a never-verified attempt is
+  closed from notification-service's delivery records (`POST
+  /notifications/internal/otp-delivery`, never the code): no channel sent the code
+  → `code_not_received` (provider), else `wrong_code` / `never_verified`. A late
+  verification still turns it completed. So started = completed + failed + in
+  progress, per day and country.
+- **Rollup** (`jobs/activity-rollup.job.ts` → `activity_days`, one doc per Douala
+  day × country; `ACTIVITY_ROLLUP_DISABLED=true` stops it): every minute today's
+  sign-ups + connected; every 5 min activations (first CLASSIQUE/CIBLE
+  subscription, by its `_id` time) and unfinished payments (payment-service `GET
+  /api/internal/activity/payments`, failure groups + waiting + never sent);
+  00:15 Douala yesterday in full. The dashboards only read `activity_days`
+  (`GET /users/admin/activity`, gateway module `dashboard`; support reads
+  `/users/internal/activity/board`), cached 30 s.
+- **Connected members** come from the Phase 1 signals, so they stay at 0 until
+  that collection is switched on (policy 2026-12). Live: Redis HyperLogLog fed by
+  the activity ingest (`activity-hll.service.ts`, needs `REDIS_URL`; without it,
+  or with empty keys, the exact count is used). Exact: from `user_geo_days`, each
+  member once, in the country of most of their requests that day, so country rows
+  add up to the total.
+- **Support:** permission `activity.read` (every role but verifier); an agent's
+  `countries` (Administration → Agents → « Pays suivis ») limits the panel.
+- Not done: session replay link on attempts (field `replayUrl`, the replay branch
+  is not merged), anti-robot reason (sign-up has no robot check yet), payments
+  split web/app (no signal on payment requests).
+- Checks: `user-service/src/scripts/check-activity-dashboard.ts` (local Mongo +
+  Redis), support `src/tests/activity.test.ts`.
+
 ### Member authenticator (Security plan Phase 3, Sterling 2026-11-20)
 
 Rule: a member must set up an authenticator app (Google Authenticator,

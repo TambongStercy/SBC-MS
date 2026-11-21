@@ -167,6 +167,21 @@ class PaymentServiceClient {
     }
 
     /**
+     * Security plan Phase 11: unfinished payments per Douala day and country
+     * (payment-service computes, user-service stores them in activity_days).
+     * Null when payment-service does not answer.
+     */
+    async getActivityPayments(from: string, to: string): Promise<{ rows: { day: string; country: string; failed: number; waiting: number; abandoned: number; groups: Record<string, number> }[] } | null> {
+        try {
+            const { data } = await this.apiClient.get('/internal/activity/payments', { params: { from, to }, timeout: 20000 });
+            return data?.success ? data.data : null;
+        } catch (error: any) {
+            this.log.warn(`Activity payments lookup failed: ${error?.message ?? error}`);
+            return null;
+        }
+    }
+
+    /**
      * Calls the payment service to create a new payment intent.
      */
     async createIntent(payload: CreateIntentPayload): Promise<PaymentIntentData> {

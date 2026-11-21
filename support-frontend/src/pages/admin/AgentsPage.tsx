@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
-  Alert02Icon, Link01Icon, Logout03Icon, MoreVerticalIcon, UserAdd01Icon, UserBlock01Icon, UserCheck01Icon, UserShield01Icon, UserSettings01Icon,
+  Alert02Icon, Globe02Icon, Link01Icon, Logout03Icon, MoreVerticalIcon, UserAdd01Icon, UserBlock01Icon, UserCheck01Icon, UserShield01Icon, UserSettings01Icon,
 } from '@hugeicons/core-free-icons';
 import { agentsApi } from '../../api/admin';
 import { errorMessage } from '../../api/http';
@@ -169,6 +169,59 @@ function RolesDialog({ target, isMe, onClose, onSaved }: { target: AgentAccount 
   );
 }
 
+/** Country team: codes typed as "CM, BJ"; empty = every country. */
+export function parseCountries(text: string): string[] | null {
+  const list = [...new Set(text.split(/[\s,;]+/).map(c => c.trim().toUpperCase()).filter(Boolean))];
+  return list.every(c => /^[A-Z]{2}$/.test(c)) ? list : null;
+}
+
+function CountriesDialog({ target, onClose, onSaved }: { target: AgentAccount | null; onClose: () => void; onSaved: () => void }) {
+  const reauth = useReauth();
+  const [text, setText] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (target) { setText((target.countries ?? []).join(', ')); setError(''); } }, [target]);
+
+  const save = async () => {
+    if (!target) return;
+    const countries = parseCountries(text);
+    if (!countries) { setError('Codes pays à deux lettres, séparés par des virgules (CM, BJ).'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const token = await reauth({ title: `Changer les pays de ${target.name}` });
+      await agentsApi.setCountries(target.id, countries, token);
+      toast.success('Pays mis à jour.');
+      onSaved();
+      onClose();
+    } catch (err) {
+      if (!isReauthCancelled(err)) setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!target} onOpenChange={o => { if (!o) onClose(); }}>
+      {target && (
+        <DialogContent
+          title={`Pays de ${target.name}`}
+          description="L’agent ne voit l’activité que de ces pays. Laissez vide pour tous les pays."
+          footer={<>
+            <Button variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button variant="primary" onClick={save} loading={busy}>Enregistrer</Button>
+          </>}
+        >
+          <Field label="Codes pays" help="Exemple : CM, BJ, CI">
+            <Input value={text} onChange={e => setText(e.target.value)} placeholder="Tous les pays" autoCapitalize="characters" />
+          </Field>
+          {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
 type Pending = { kind: 'disable' | 'revoke'; agent: AgentAccount } | null;
 
 /** Agent accounts: create (activation link shown once), roles, disable, sessions. */
@@ -180,6 +233,7 @@ export default function AgentsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [link, setLink] = useState<{ url: string; name: string } | null>(null);
   const [rolesFor, setRolesFor] = useState<AgentAccount | null>(null);
+  const [countriesFor, setCountriesFor] = useState<AgentAccount | null>(null);
   const [pending, setPending] = useState<Pending>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -217,6 +271,9 @@ export default function AgentsPage() {
         <MenuContent>
           <MenuItem onSelect={() => setRolesFor(a)}>
             <HugeiconsIcon icon={UserSettings01Icon} size={16} aria-hidden="true" /> Changer les rôles
+          </MenuItem>
+          <MenuItem onSelect={() => setCountriesFor(a)}>
+            <HugeiconsIcon icon={Globe02Icon} size={16} aria-hidden="true" /> Pays suivis
           </MenuItem>
           {a.status === 'pending_activation' && (
             <MenuItem onSelect={() => void newLink(a)}>
@@ -256,6 +313,7 @@ export default function AgentsPage() {
       ),
     },
     { key: 'roles', header: 'Rôles', cell: a => <div className="flex flex-wrap justify-end gap-1 md:justify-start">{a.roles.map(r => <Badge key={r} tone="outline">{roleLabel(r)}</Badge>)}</div> },
+    { key: 'countries', header: 'Pays', cell: a => (a.countries?.length ? a.countries.join(', ') : <span className="text-fg-muted">Tous</span>) },
     { key: 'status', header: 'Statut', cell: a => <StatusBadge map={AGENT_STATUS} value={a.status} /> },
     { key: 'totp', header: 'Application 2FA', cell: a => (a.totpEnrolled ? <Badge tone="success">Configurée</Badge> : <Badge tone="warning">Pas encore</Badge>) },
     { key: 'login', header: 'Dernière connexion', cell: a => (a.lastLoginAt ? formatRelative(a.lastLoginAt) : 'Jamais') },
@@ -286,6 +344,7 @@ export default function AgentsPage() {
 
       <CreateAgentDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(a, url) => { setLink({ url, name: a.name }); void refresh(); }} />
       <ActivationLinkDialog link={link?.url ?? null} agentName={link?.name ?? ''} onClose={() => setLink(null)} />
+      <CountriesDialog target={countriesFor} onClose={() => setCountriesFor(null)} onSaved={() => void refresh()} />
       <RolesDialog target={rolesFor} isMe={rolesFor?.id === me.id} onClose={() => setRolesFor(null)} onSaved={() => void refresh()} />
 
       <ReasonDialog

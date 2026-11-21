@@ -12,6 +12,7 @@ import { Button, Metric, PageHeader, Panel, PanelBody, PanelHeader, Skeleton } f
 import { APPROVE_PERMISSIONS, hasAny, roleLabel } from '../lib/permissions';
 import { formatNumber } from '../lib/format';
 import { menuFor } from '../navigation/menu';
+import { ActivityPanel } from '../components/activity/ActivityPanel';
 
 // A tile whose service is down says so instead of loading forever.
 const n = (v: number | undefined, loading: boolean, failed = false) =>
@@ -28,6 +29,7 @@ export default function HomePage() {
   const canCases = perms.has('cases.work');
   const canSupervise = perms.has('views.supervise');
   const canVerify = perms.has('views.verify');
+  const canActivity = perms.has('activity.read');
 
   const mine = useQuery({ queryKey: ['home', 'tickets', 'mine'], queryFn: () => ticketsApi.list({ assignee: 'me', status: 'active', limit: 1 }), enabled: canTickets });
   const unassigned = useQuery({ queryKey: ['home', 'tickets', 'unassigned'], queryFn: () => ticketsApi.list({ assignee: 'unassigned', status: 'active', limit: 1 }), enabled: canTickets });
@@ -88,6 +90,8 @@ export default function HomePage() {
           </Link>
         </>}
       </div>
+
+      {canActivity && <ActivityPanel />}
 
       <Panel className="mt-6">
         <PanelHeader title="Vos espaces" description="Les écrans ouverts à vos rôles." />

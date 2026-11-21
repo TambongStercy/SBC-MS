@@ -30,6 +30,7 @@ export const PERMISSIONS = [
   'export',
   'analytics.read',
   'errors.manage',
+  'activity.read',
   'agents.manage',
   'settings.manage',
   'audit.read',
@@ -55,28 +56,28 @@ export const roleLabel = (r: string) => ROLE_LABEL[r as Role] ?? r;
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   support_agent: [
     'members.read', 'members.contact.request', 'tickets.read', 'tickets.reply',
-    'activation.check', 'activation.manual.request', 'kb.edit',
+    'activation.check', 'activation.manual.request', 'kb.edit', 'activity.read',
   ],
   finance_agent: [
     'members.read', 'tickets.read', 'tickets.reply', 'activation.check', 'activation.manual.request',
-    'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'reports.read',
+    'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'reports.read', 'activity.read',
   ],
   finance_manager: [
     'members.read', 'members.read.full', 'members.contact.approve', 'tickets.read', 'tickets.reply', 'tickets.assign',
     'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'finance.regularize.approve',
-    'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export',
+    'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read',
   ],
   verifier: ['views.verify'],
   views_supervisor: [
     'members.read', 'tickets.read', 'tickets.reply', 'tickets.assign', 'views.verify', 'views.supervise',
-    'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export',
+    'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read',
   ],
   support_admin: [
     'members.read', 'members.read.full', 'members.contact.request', 'members.contact.approve',
     'tickets.read', 'tickets.reply', 'tickets.assign', 'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'views.supervise', 'kb.edit', 'kb.publish', 'templates.manage',
-    'reports.read', 'export', 'analytics.read', 'errors.manage', 'agents.manage', 'settings.manage', 'audit.read',
+    'reports.read', 'export', 'analytics.read', 'errors.manage', 'activity.read', 'agents.manage', 'settings.manage', 'audit.read',
   ],
 };
 

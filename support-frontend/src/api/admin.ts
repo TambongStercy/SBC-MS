@@ -7,6 +7,8 @@ export const agentsApi = {
   create: (body: { name: string; email: string; roles: string[] }, reauthToken: string) =>
     api.post<{ agent: AgentAccount; activationUrl: string }>('/agents', body, { reauthToken }),
   setRoles: (id: string, roles: string[], reauthToken: string) => api.put<AgentAccount>(`/agents/${encodeURIComponent(id)}/roles`, { roles }, { reauthToken }),
+  /** Country team: [] = every country. Filters the activity panel. */
+  setCountries: (id: string, countries: string[], reauthToken: string) => api.put<AgentAccount>(`/agents/${encodeURIComponent(id)}/countries`, { countries }, { reauthToken }),
   disable: (id: string, reason: string, reauthToken: string) => api.post<AgentAccount>(`/agents/${encodeURIComponent(id)}/disable`, { reason }, { reauthToken }),
   enable: (id: string, reauthToken: string) => api.post<AgentAccount>(`/agents/${encodeURIComponent(id)}/enable`, {}, { reauthToken }),
   revokeSessions: (id: string, reauthToken: string) => api.post<{ revoked: number }>(`/agents/${encodeURIComponent(id)}/revoke-sessions`, {}, { reauthToken }),
