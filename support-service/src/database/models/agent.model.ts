@@ -18,6 +18,8 @@ export interface IAgent {
     views: { available: boolean; lastAssignedAt?: Date | null; lastSeenAt?: Date | null };
     /** Country team (ISO codes). Empty = every country. Filters the activity panel (Phase 11). */
     countries: string[];
+    /** The agent's own SBC member account, if any: they may never act on it or its referral tree (Phase 5). */
+    memberUserId?: string | null;
     createdBy?: Types.ObjectId | null;
     disabledAt?: Date | null;
     createdAt?: Date;
@@ -53,6 +55,7 @@ const AgentSchema = new Schema<IAgent>({
         lastSeenAt: { type: Date, default: null },
     },
     countries: { type: [String], default: [] },
+    memberUserId: { type: String, default: null },
     createdBy: { type: Schema.Types.ObjectId, default: null },
     disabledAt: { type: Date, default: null },
 }, { timestamps: true });

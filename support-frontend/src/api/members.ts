@@ -13,6 +13,12 @@ export const membersApi = {
   applyContactChange: (approvalId: string, code: string, reauthToken: string) =>
     api.post<{ ok: boolean }>(`/members/contact-change/${encodeURIComponent(approvalId)}/apply`, { code }, { reauthToken }),
   /** Sensitive: needs a reauth token; creates an approval (double validation). */
-  requestContactChange: (id: string, body: { field: 'email' | 'phoneNumber'; newValue: string; reason: string; ticketId?: string }, reauthToken: string) =>
+  requestContactChange: (id: string, body: { field: 'email' | 'phoneNumber'; newValue: string; reason: string; ticketId?: string } | { field: 'momo'; momoNumber: string; momoOperator: string; reason: string; ticketId?: string }, reauthToken: string) =>
     api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/contact-change`, body, { reauthToken }),
+  /** Security plan Phase 5: lost phone (after ID + selfie); a finance manager approves. */
+  requestAuthenticatorReset: (id: string, reason: string, reauthToken: string) =>
+    api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/authenticator-reset`, { reason }, { reauthToken }),
+  /** Security plan Phase 5: freeze or unfreeze the member's money; another finance manager approves. */
+  requestFreeze: (id: string, action: 'freeze' | 'unfreeze', reason: string, reauthToken: string) =>
+    api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/freeze`, { action, reason }, { reauthToken }),
 };

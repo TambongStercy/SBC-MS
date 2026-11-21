@@ -21,14 +21,22 @@ export const APPROVER_PERMISSION: Record<ApprovalType, Permission> = {
   contact_change: 'members.contact.approve',
   manual_activation: 'activation.manual.approve',
   regularization: 'finance.regularize.approve',
+  authenticator_reset: 'authenticator.reset.approve',
+  account_freeze: 'risk.decide',
 };
 
 /** The payload in plain words; known keys get French labels. */
 const PAYLOAD_LABEL: Record<string, string> = {
   userId: 'Membre', memberName: 'Membre', field: 'Champ', newValue: 'Nouvelle valeur', gateway: 'Prestataire', externalRef: 'Référence prestataire',
   plan: 'Offre', transactionId: 'Retrait', action: 'Action', amount: 'Montant', currency: 'Devise', evidence: 'Preuves', ticketId: 'Ticket', caseId: 'Dossier',
+  momoNumber: 'Nouveau numéro Mobile Money', momoOperator: 'Opérateur',
 };
-const VALUE_LABEL: Record<string, string> = { complete: 'Marquer réussi', fail: 'Marquer échoué', email: 'E-mail', phoneNumber: 'Téléphone' };
+const VALUE_LABEL: Record<string, string> = {
+  complete: 'Marquer réussi', fail: 'Marquer échoué', email: 'E-mail', phoneNumber: 'Téléphone', momo: 'Mobile Money',
+  freeze: 'Geler l’argent', unfreeze: 'Dégeler l’argent',
+};
+/** A super manager validates alone with a written reason (Security plan Phase 5). */
+const OVERRIDE_REASON_MIN = 20;
 
 function payloadValue(v: unknown): string {
   if (v == null || v === '') return '—';
@@ -48,7 +56,7 @@ export default function ApprovalsPage() {
     <>
       <PageHeader
         title="Approbations"
-        description="Les actions sensibles (régularisation, activation manuelle, changement de contact) s’exécutent seulement après validation par une deuxième personne."
+        description="Les actions sensibles (régularisation, activation manuelle, changement de contact ou de Mobile Money, réinitialisation de l’authentificateur, gel de l’argent) s’exécutent seulement après validation par une deuxième personne."
       />
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList aria-label="Approbations" className="mb-4">
@@ -91,6 +99,9 @@ function ApprovalCard({ approval: a, decidable = false }: { approval: Approval; 
   const qc = useQueryClient();
   const [mode, setMode] = useState<'approve' | 'reject' | null>(null);
   const own = a.requestedBy.id === agent.id;
+  const perms = usePermissions();
+  // A super manager decides alone, own requests included (Phase 5); everyone else needs a second person.
+  const alone = perms.has('approvals.override');
   const payload = Object.entries(a.payload ?? {});
 
   const decide = async (kind: 'approve' | 'reject', text: string) => {
@@ -150,19 +161,24 @@ function ApprovalCard({ approval: a, decidable = false }: { approval: Approval; 
         </p>
       )}
 
-      {a.type === 'contact_change' && a.status === 'approved' && <ContactChangeSteps approval={a} />}
+      {a.type === 'contact_change' && a.status === 'approved' && a.payload?.field !== 'momo' && <ContactChangeSteps approval={a} />}
 
       {decidable && a.status === 'pending' && (
         <div className="mt-4 flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
-          {own ? (
+          {own && !alone ? (
             <p className="flex items-center gap-2 text-sm text-fg-muted">
               <HugeiconsIcon icon={InformationCircleIcon} size={16} className="shrink-0 text-info" aria-hidden="true" />
               Vous avez fait cette demande : une autre personne doit la valider.
             </p>
+          ) : alone ? (
+            <p className="flex items-center gap-2 text-sm text-fg-muted">
+              <HugeiconsIcon icon={InformationCircleIcon} size={16} className="shrink-0 text-warning" aria-hidden="true" />
+              Super responsable : vous validez seul. Les autres responsables sont prévenus aussitôt.
+            </p>
           ) : <span />}
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button variant="danger-ghost" disabled={own} onClick={() => setMode('reject')}>Refuser</Button>
-            <Button variant="primary" disabled={own} onClick={() => setMode('approve')}>Valider</Button>
+            <Button variant="primary" disabled={own && !alone} onClick={() => setMode('approve')}>{alone ? 'Valider seul' : 'Valider'}</Button>
           </div>
         </div>
       )}
@@ -170,11 +186,12 @@ function ApprovalCard({ approval: a, decidable = false }: { approval: Approval; 
       <ReasonDialog
         open={mode === 'approve'}
         onOpenChange={o => { if (!o) setMode(null); }}
-        title="Valider la demande"
-        description={a.summary}
-        label="Note (facultative)"
-        required={false}
-        confirmLabel="Valider"
+        title={alone ? 'Valider seul (super responsable)' : 'Valider la demande'}
+        description={alone ? `${a.summary}. Votre motif est envoyé aux autres responsables.` : a.summary}
+        label={alone ? 'Motif (obligatoire)' : 'Note (facultative)'}
+        required={alone}
+        minLength={alone ? OVERRIDE_REASON_MIN : undefined}
+        confirmLabel={alone ? 'Valider seul' : 'Valider'}
         onConfirm={text => decide('approve', text)}
       />
       <ReasonDialog

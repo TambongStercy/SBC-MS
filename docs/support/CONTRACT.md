@@ -59,6 +59,10 @@ All responses: `{ success: boolean, data?: …, message?: string, code?: string 
 | `POST /support-details` | `{ userIds: string[] }` (≤ 100) | `data: SupportMember[]` |
 | `POST /support-search` | `{ q: string, limit?: number }` (≤ 20) — exact `_id`, email, phone (any format, normalised), or name prefix | `data: { _id, name, country, role, createdAt }[]` |
 | `GET /activity/board` | `?range=today\|7d\|30d&source=web\|app\|api&countries=CM,BJ` | Security plan Phase 11: the day's activity board, the same object as the admin `GET /api/users/admin/activity` (rows per country, total, daily series, sign-up failure reasons). Computed by user-service's rollup, never by the caller. |
+| `POST /support/related` | `{ userId, otherUserId }` | Phase 5 conflict rule: `{ related }` = same account, or one in the other's referral tree (levels 1–3, up or down). |
+| `POST /support/authenticator-reset` | `{ userId, reason, approvalId }` | Phase 5: removes the member's authenticator (lost phone), locks withdrawals 72 h, e-mails the member. `409 NO_AUTHENTICATOR` when they have none. |
+| `POST /support/freeze` | `{ userId, action: 'freeze'\|'unfreeze', reason, approvalId }` | Phase 5: `users.frozen` set / removed in one conditional write (`409 ALREADY_FROZEN` / `NOT_FROZEN`). The lock check reads it first (`reason: account_frozen`), so no later contact change can lift it. Withdrawals and transfers are refused until the unfreeze. |
+| `POST /support/momo-change` | `{ userId, momoNumber, momoOperator, approvalId }` | Phase 5: new Mobile Money details (normalised for the member's country), withdrawals locked (`momo_change`) and the account e-mail alerted when a number is replaced. `400 SAME_VALUE` / `INVALID_VALUE`, `409 STATE_CHANGED`. |
 | `POST /support/contact-change` | `{ userId, field: 'email'\|'phoneNumber', newValue, step: 'send-code'\|'apply', code?, approvalId }` | `send-code`: OTP to the **new** contact; `apply`: verifies code, applies `withdrawalLockFields()` and `contact-change-alert` to the old contact. Value used by another account → `400 code=CONTACT_UNAVAILABLE` (neutral message). |
 
 `SupportMember` (never password, otps, tokens, device secrets):
@@ -211,8 +215,35 @@ Modules (all under `/desk`, each route checks a permission server-side; refusals
 Activity (Phase 11): `GET /activity?range&source&country` (`activity.read`) → `{ board, team }`.
 An agent's `countries` (country team, `PUT /agents/:id/countries { countries: ['CM'] }`,
 `agents.manage` + reauth, audited; `[]` = every country) limits the board to those
-countries; asking for another country returns `board: null`. Tickets and cases are not
-filtered by country yet (Security plan Phase 5).
+countries; asking for another country returns `board: null`.
+
+**Phase 5 (support integration):**
+- **Country teams:** tickets and cases carry `country` (the member's declared country,
+  looked up when they open; `node dist/scripts/backfill-country-teams.js [--apply]` fills
+  older ones). An agent with `countries` sees only those in every list, and gets 404 on any
+  `/tickets/:id…` or `/cases/:id…` outside them. Items without a country are for agents
+  without a team.
+- **Conflict of interest:** `PUT /agents/:id/member-account { userId|null }` (`agents.manage`
+  + reauth, audited) links an agent to their own SBC member account. They are then refused
+  (`403 CONFLICT_OF_INTEREST`, audited) any request, approval, rejection, execution or case
+  action about it or its referral tree (user-service `/support/related`, fails closed).
+- **New approvals:** `POST /members/:userId/authenticator-reset { reason (≥ 20) }`
+  (`authenticator.reset.request`, approved by `authenticator.reset.approve`);
+  `POST /members/:userId/freeze { action, reason (≥ 20) }` (`risk.decide`, approved by another
+  `risk.decide`); `POST /members/:userId/contact-change { field: 'momo', momoNumber,
+  momoOperator, reason }` (same permissions as contact changes, applied at approval, no code).
+  Release of a held withdrawal and commission reversal wait for Phase 4 (holds, reversal API).
+- **super_manager** (at most 2 accounts, `409 SUPER_MANAGER_LIMIT`): every finance manager
+  permission plus `approvals.override`: approves alone, own requests included, with the
+  reauth code, a note of 20 characters at least (`400 REASON_REQUIRED`), and an instant alert
+  (desk + e-mail to finance managers, support admins, super managers; ntfy). Audited
+  `approval.super_override`.
+- **Fraud cases:** types `self_referral`, `shared_payout_number`, `multi_account`,
+  `abnormal_behavior`, `geo_anomaly`, `dormant_reactivation`; `GET /cases?type=fraud`
+  (`risk.read`) sorted severity then `amount`; acting on one needs `risk.decide`;
+  `type=finance` leaves them out. Intake accepts `country` and `amount`.
+- **Member card:** `geo` (declared / usual / last country), `frozen`, `momoNumber`/`momoOperator`
+  (masked like the phone), and for money readers `ledger` (balance A against B per currency).
 
 Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend). Lists are
 `{ items, total, page, limit }` unless noted; sensitive routes need `x-reauth-token`.
@@ -299,6 +330,7 @@ a reliable data message on topic `support` after every ticket change
 
 | Permission | support_agent | finance_agent | finance_manager | verifier | views_supervisor | support_admin |
 |---|---|---|---|---|---|---|
+| *(super_manager: every finance_manager permission, plus `approvals.override`)* | | | | | | |
 | `members.read` (masked) | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | `members.read.full` (unmasked contact) | | | ✓ | | | ✓ |
 | `members.contact.request` | ✓ | | | | | ✓ |
@@ -318,9 +350,13 @@ a reliable data message on topic `support` after every ticket change
 | `reports.read` | | ✓ | ✓ | | ✓ | ✓ |
 | `export` | | | ✓ | | ✓ | ✓ |
 | `activity.read` (Phase 11 activity panel) | ✓ | ✓ | ✓ | | ✓ | ✓ |
+| `risk.read` (fraud queue, Phase 5) | | | ✓ | | | ✓ |
+| `risk.decide` (act on fraud cases, freeze / unfreeze) | | | ✓ | | | |
+| `authenticator.reset.request` | ✓ | | | | | ✓ |
+| `authenticator.reset.approve` | | | ✓ | | | |
 | `agents.manage`, `settings.manage`, `audit.read` | | | | | | ✓ |
 
-An approver must differ from the requester. Masking: `+237 6•• •• 34`, `j•••@gmail.com`.
+An approver must differ from the requester (except a super_manager, see above). Masking: `+237 6•• •• 34`, `j•••@gmail.com`.
 
 ## 5. Settings (collection `settings`, editable by `settings.manage`) and defaults
 

@@ -41,6 +41,13 @@ export const CASE_TYPE: Record<CaseType, string> = {
   unknown_status: 'Statut inconnu',
   amount_mismatch: 'Écart de montant',
   ledger_mismatch: 'Écart de registre',
+  // Security plan Phase 5: fraud cases.
+  self_referral: 'Auto-parrainage',
+  shared_payout_number: 'Numéro de retrait partagé',
+  multi_account: 'Comptes multiples',
+  abnormal_behavior: 'Comportement anormal',
+  geo_anomaly: 'Anomalie de pays',
+  dormant_reactivation: 'Compte dormant réactivé',
 };
 
 export const CASE_STATUS: Record<CaseStatus, { label: string; tone: Tone }> = {
@@ -86,6 +93,8 @@ export const APPROVAL_TYPE: Record<ApprovalType, string> = {
   regularization: 'Régularisation de retrait',
   manual_activation: 'Activation manuelle',
   contact_change: 'Changement de contact',
+  authenticator_reset: 'Réinitialisation de l’authentificateur',
+  account_freeze: 'Gel ou dégel de l’argent',
 };
 
 export const APPROVAL_STATUS: Record<ApprovalStatus, { label: string; tone: Tone }> = {

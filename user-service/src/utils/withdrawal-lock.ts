@@ -26,13 +26,21 @@ export interface WithdrawalLockStatus {
     locked: boolean;
     /** ISO date, only when locked. */
     until?: string;
-    reason?: WithdrawalLockReason;
+    reason?: WithdrawalLockReason | 'account_frozen';
 }
 
+/**
+ * Security plan Phase 5: money frozen by support (fraud suspicion), until an
+ * approved unfreeze. Kept apart from the timed lock, so a later email or MoMo
+ * change (which rewrites the lock date) can never lift it.
+ */
+export const FROZEN_UNTIL = '9999-12-31T00:00:00.000Z';
+
 export function withdrawalLockStatus(
-    user: { withdrawalsLockedUntil?: Date | null; withdrawalLockReason?: WithdrawalLockReason | null },
+    user: { withdrawalsLockedUntil?: Date | null; withdrawalLockReason?: WithdrawalLockReason | null; frozen?: { at?: Date | null } | null },
     now: Date = new Date(),
 ): WithdrawalLockStatus {
+    if (user.frozen?.at) return { locked: true, until: FROZEN_UNTIL, reason: 'account_frozen' };
     const until = user.withdrawalsLockedUntil ? new Date(user.withdrawalsLockedUntil) : null;
     if (!until || until <= now) return { locked: false };
     return { locked: true, until: until.toISOString(), reason: user.withdrawalLockReason ?? undefined };

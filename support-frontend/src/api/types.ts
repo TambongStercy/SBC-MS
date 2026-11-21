@@ -97,6 +97,14 @@ export interface SupportMember {
   subscriptions?: MemberSubscription[];
   /** assumed: true when contact fields are masked for this agent. */
   masked?: boolean;
+  /** Security plan Phase 5: declared / usual / last country (Phase 1 signals). */
+  geo?: { declared: string | null; usual: string | null; usualShare: number | null; last: string | null; lastAt: string | null } | null;
+  /** Money frozen by support (withdrawals and transfers suspended). */
+  frozen?: { at: string; reason: string | null } | null;
+  /** Balance A (account) against B (opening + movements), per currency; finance readers only. */
+  ledger?: { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[] | null;
+  momoNumber?: string | null;
+  momoOperator?: string | null;
 }
 
 export interface Payin {
@@ -250,7 +258,9 @@ export interface GuideNode {
 
 export type CaseType =
   | 'activation' | 'withdrawal_divergence' | 'debit_missing' | 'paid_not_debited'
-  | 'duplicate_callback' | 'unknown_status' | 'amount_mismatch' | 'ledger_mismatch';
+  | 'duplicate_callback' | 'unknown_status' | 'amount_mismatch' | 'ledger_mismatch'
+  // Security plan Phase 5: fraud cases (opened by the fraud engine).
+  | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation';
 
 export type CaseStatus = 'open' | 'in_progress' | 'waiting_provider' | 'resolved' | 'closed';
 export type Severity = 'info' | 'warning' | 'critical';
@@ -270,6 +280,10 @@ export interface SupportCase {
   subject: { userId?: string; memberName?: string; transactionId?: string; sessionId?: string; gateway?: string };
   summary: string;
   details?: Record<string, unknown>;
+  /** Member's country (country teams) and the money at stake (fraud queue). */
+  country?: string | null;
+  amount?: number | null;
+  occurrences?: number;
   assignee?: PersonRef | null;
   createdAt: string;
   updatedAt: string;
@@ -305,7 +319,7 @@ export interface FinanceWithdrawal {
 
 // ── Approvals (assumed) ─────────────────────────────────────────────────
 
-export type ApprovalType = 'regularization' | 'manual_activation' | 'contact_change';
+export type ApprovalType = 'regularization' | 'manual_activation' | 'contact_change' | 'authenticator_reset' | 'account_freeze';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | 'expired' | 'cancelled';
 
 export interface Approval {
@@ -427,6 +441,8 @@ export interface AgentAccount {
   activeSessions: number;
   /** Country team (ISO codes); empty = every country. */
   countries?: string[];
+  /** The agent's own SBC member account (they may never act on it or its referral tree). */
+  memberUserId?: string | null;
 }
 
 export interface SettingEntry {

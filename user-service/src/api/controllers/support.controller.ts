@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { isValidObjectId } from 'mongoose';
 import {
     getSupportDetails, searchSupportMembers, supportContactChange, SupportError, SupportCallContext,
-    SUPPORT_DETAILS_MAX_IDS,
+    SUPPORT_DETAILS_MAX_IDS, supportAuthenticatorReset, supportFreeze, supportMomoChange, areRelatedMembers,
 } from '../../services/support.service';
 import logger from '../../utils/logger';
 
@@ -87,6 +87,53 @@ export const supportController = {
             res.status(200).json({ success: true, data });
         } catch (err) {
             handleError(res, err, 'support contact-change');
+        }
+    },
+
+    // ─── Security plan Phase 5 ───
+
+    /** POST /api/users/internal/support/related { userId, otherUserId } → { related } */
+    async related(req: Request, res: Response): Promise<void> {
+        const { userId, otherUserId } = req.body ?? {};
+        if (![userId, otherUserId].every(v => typeof v === 'string' && isValidObjectId(v))) return fail(res, 400, 'INVALID_INPUT', 'userId and otherUserId are required.');
+        try {
+            res.status(200).json({ success: true, data: { related: await areRelatedMembers(userId, otherUserId) } });
+        } catch (err) {
+            handleError(res, err, 'support/related');
+        }
+    },
+
+    /** POST /api/users/internal/support/authenticator-reset { userId, reason, approvalId } */
+    async authenticatorReset(req: Request, res: Response): Promise<void> {
+        const { userId, reason, approvalId } = req.body ?? {};
+        if (typeof userId !== 'string' || !isValidObjectId(userId)) return fail(res, 400, 'INVALID_INPUT', 'userId is invalid.');
+        try {
+            res.status(200).json({ success: true, data: await supportAuthenticatorReset({ userId, reason, approvalId }, callContext(req)) });
+        } catch (err) {
+            handleError(res, err, 'support/authenticator-reset');
+        }
+    },
+
+    /** POST /api/users/internal/support/freeze { userId, action: 'freeze'|'unfreeze', reason, approvalId } */
+    async freeze(req: Request, res: Response): Promise<void> {
+        const { userId, action, reason, approvalId } = req.body ?? {};
+        if (typeof userId !== 'string' || !isValidObjectId(userId)) return fail(res, 400, 'INVALID_INPUT', 'userId is invalid.');
+        if (action !== 'freeze' && action !== 'unfreeze') return fail(res, 400, 'INVALID_INPUT', "action must be 'freeze' or 'unfreeze'.");
+        try {
+            res.status(200).json({ success: true, data: await supportFreeze({ userId, action, reason, approvalId }, callContext(req)) });
+        } catch (err) {
+            handleError(res, err, 'support/freeze');
+        }
+    },
+
+    /** POST /api/users/internal/support/momo-change { userId, momoNumber, momoOperator, approvalId } */
+    async momoChange(req: Request, res: Response): Promise<void> {
+        const { userId, momoNumber, momoOperator, approvalId } = req.body ?? {};
+        if (typeof userId !== 'string' || !isValidObjectId(userId)) return fail(res, 400, 'INVALID_INPUT', 'userId is invalid.');
+        try {
+            res.status(200).json({ success: true, data: await supportMomoChange({ userId, momoNumber, momoOperator, approvalId }, callContext(req)) });
+        } catch (err) {
+            handleError(res, err, 'support/momo-change');
         }
     },
 };

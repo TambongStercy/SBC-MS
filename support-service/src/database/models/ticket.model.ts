@@ -5,6 +5,8 @@ export interface ITicket {
     number: string;
     /** null for a request sent without an account (`source: 'public'`). */
     memberId: string | null;
+    /** Member's country (ISO) when the ticket was opened, for country teams (Phase 5). */
+    country?: string | null;
     memberName?: string | null;
     /** Name, phone and email typed in the form (never proof of identity). */
     contact?: { name: string | null; phone: string | null; email: string | null } | null;
@@ -36,6 +38,7 @@ export interface ITicket {
 const TicketSchema = new Schema<ITicket>({
     number: { type: String, required: true, unique: true },
     memberId: { type: String, default: null },
+    country: { type: String, default: null },
     contact: { type: new Schema({ name: String, phone: String, email: String }, { _id: false }), default: null },
     guestKeyHash: { type: String, default: null, select: false },
     guestKeyEnc: { type: String, default: null, select: false },
@@ -65,6 +68,7 @@ const TicketSchema = new Schema<ITicket>({
 
 TicketSchema.index({ status: 1, queue: 1, priority: 1, createdAt: 1 });
 TicketSchema.index({ memberId: 1, createdAt: -1 });
+TicketSchema.index({ country: 1, status: 1 });
 
 export const Ticket = model<ITicket>('Ticket', TicketSchema, 'tickets');
 

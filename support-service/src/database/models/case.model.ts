@@ -8,6 +8,12 @@ export interface ICase {
     severity: string;
     status: string;
     subject: { userId?: string | null; transactionId?: string | null; sessionId?: string | null; gateway?: string | null };
+    /** Member's country (ISO), for country teams (Phase 5). Null when unknown. */
+    country?: string | null;
+    /** Money at stake (XAF), for the fraud queue's order. */
+    amount?: number | null;
+    /** 0 info, 1 warning, 2 critical: sorts the queues by severity. */
+    severityRank?: number;
     summary: string;
     details?: unknown;
     source: string;
@@ -29,6 +35,9 @@ const CaseSchema = new Schema<ICase>({
     severity: { type: String, enum: CASE_SEVERITIES as unknown as string[], default: 'warning' },
     status: { type: String, enum: CASE_STATUSES as unknown as string[], default: 'open' },
     subject: { userId: String, transactionId: String, sessionId: String, gateway: String },
+    country: { type: String, default: null },
+    amount: { type: Number, default: null },
+    severityRank: { type: Number, default: 1 },
     summary: { type: String, required: true, maxlength: 1000 },
     details: { type: Schema.Types.Mixed, default: null },
     source: { type: String, default: 'unknown' },
@@ -45,5 +54,8 @@ const CaseSchema = new Schema<ICase>({
 CaseSchema.index({ status: 1, severity: 1, createdAt: -1 });
 CaseSchema.index({ type: 1, status: 1 });
 CaseSchema.index({ 'subject.userId': 1 });
+// Fraud queue: worst first, then the largest amount (Security plan Phase 5).
+CaseSchema.index({ status: 1, severityRank: -1, amount: -1 });
+CaseSchema.index({ country: 1, status: 1 });
 
 export const Case = model<ICase>('Case', CaseSchema, 'cases');

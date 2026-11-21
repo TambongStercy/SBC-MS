@@ -104,6 +104,7 @@ export function presentCase(c: any, names: Record<string, { id: string; name: st
         id: String(c._id), type: c.type, status: c.status, severity: c.severity, dedupKey: c.dedupKey,
         subject: { userId: c.subject?.userId ?? undefined, memberName: c.subject?.userId ? members[String(c.subject.userId)] : undefined, transactionId: c.subject?.transactionId ?? undefined, sessionId: c.subject?.sessionId ?? undefined, gateway: c.subject?.gateway ?? undefined },
         summary: c.summary, details: c.details ?? undefined, source: c.source, occurrences: c.occurrences,
+        country: c.country ?? null, amount: c.amount ?? null,
         assignee: c.assigneeId ? names[String(c.assigneeId)] ?? { id: String(c.assigneeId), name: '—' } : null,
         createdAt: iso(c.createdAt), updatedAt: iso(c.updatedAt), ticketId: c.ticketId ? String(c.ticketId) : null,
         checks: (c.checks ?? []).map((x: any) => ({ ...(x.result ?? {}), checkedAt: (x.result?.checkedAt ?? iso(x.at)), requestId: x.result?.requestId ?? x.requestId ?? '' })),
@@ -122,7 +123,11 @@ function approvalSummary(a: any): string {
     switch (a.type) {
         case 'manual_activation': return `Activation manuelle ${p.plan ?? ''} pour le membre ${p.userId ?? ''} (${p.gateway ?? ''}, réf. ${p.externalRef ?? ''})`;
         case 'regularization': return `Régularisation du retrait ${p.transactionId ?? ''} : ${p.action === 'complete' ? 'marquer effectué' : 'marquer échoué'}`;
-        case 'contact_change': return `Changement ${p.field === 'email' ? 'd’email' : 'de téléphone'} pour le membre ${a.subject?.userId ?? ''} → ${p.newValue ?? ''}`;
+        case 'contact_change': return p.field === 'momo'
+            ? `Nouveau Mobile Money pour le membre ${a.subject?.userId ?? ''} → ${p.momoNumber ?? ''} (${p.momoOperator ?? ''})`
+            : `Changement ${p.field === 'email' ? 'd’email' : 'de téléphone'} pour le membre ${a.subject?.userId ?? ''} → ${p.newValue ?? ''}`;
+        case 'authenticator_reset': return `Retirer l’application d’authentification du membre ${a.subject?.userId ?? ''} (téléphone perdu)`;
+        case 'account_freeze': return `${p.action === 'unfreeze' ? 'Dégeler' : 'Geler'} l’argent du membre ${a.subject?.userId ?? ''}`;
         default: return APPROVAL_PERMISSIONS[a.type as keyof typeof APPROVAL_PERMISSIONS]?.label ?? a.type;
     }
 }

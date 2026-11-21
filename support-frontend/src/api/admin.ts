@@ -8,6 +8,8 @@ export const agentsApi = {
     api.post<{ agent: AgentAccount; activationUrl: string }>('/agents', body, { reauthToken }),
   setRoles: (id: string, roles: string[], reauthToken: string) => api.put<AgentAccount>(`/agents/${encodeURIComponent(id)}/roles`, { roles }, { reauthToken }),
   /** Country team: [] = every country. Filters the activity panel. */
+  /** The agent's own SBC member account (Phase 5 conflict rule); null = none. */
+  setMemberAccount: (id: string, userId: string | null, reauthToken: string) => api.put<AgentAccount>(`/agents/${encodeURIComponent(id)}/member-account`, { userId }, { reauthToken }),
   setCountries: (id: string, countries: string[], reauthToken: string) => api.put<AgentAccount>(`/agents/${encodeURIComponent(id)}/countries`, { countries }, { reauthToken }),
   disable: (id: string, reason: string, reauthToken: string) => api.post<AgentAccount>(`/agents/${encodeURIComponent(id)}/disable`, { reason }, { reauthToken }),
   enable: (id: string, reauthToken: string) => api.post<AgentAccount>(`/agents/${encodeURIComponent(id)}/enable`, {}, { reauthToken }),

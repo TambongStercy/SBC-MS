@@ -128,6 +128,8 @@ export interface IUser extends Document {
      */
     withdrawalsLockedUntil?: Date;
     withdrawalLockReason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset';
+    /** Security plan Phase 5: money frozen by support (withdrawals and transfers), until an approved unfreeze. */
+    frozen?: { at: Date; reason?: string | null; approvalId?: string | null } | null;
     /** Security plan Phase 1 (signals), only for members who accepted the policy announcing it. */
     geo?: {
         lastCountry?: string;
@@ -264,6 +266,10 @@ const UserSchema = new Schema<IUser>(
         otpSendLog: { type: [Date], default: undefined },
         withdrawalsLockedUntil: { type: Date },
         withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change', 'momo_change', 'crypto_change', 'authenticator_reset'] },
+        frozen: {
+            type: new Schema({ at: { type: Date, required: true }, reason: { type: String }, approvalId: { type: String } }, { _id: false }),
+            default: undefined,
+        },
         geo: {
             lastCountry: { type: String },
             lastCountryAt: { type: Date },

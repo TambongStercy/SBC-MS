@@ -17,6 +17,7 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger, Textarea, type ListColumn,
 } from '../../components/ui';
 import { formatDate, formatDateTime, formatMoney, formatRelative } from '../../lib/format';
+import { MemberSecurityPanel } from './MemberSecurityPanel';
 
 /** A member's record (masked per role), with payments, withdrawals and tickets. */
 export default function MemberDetailPage() {
@@ -52,6 +53,7 @@ export default function MemberDetailPage() {
             {m.isVerified ? <Badge tone="success">Compte vérifié</Badge> : <Badge tone="neutral">Non vérifié</Badge>}
             {m.blocked && <Badge tone="danger">Bloqué</Badge>}
             {m.deleted && <Badge tone="danger">Supprimé</Badge>}
+            {m.frozen && <Badge tone="danger"><HugeiconsIcon icon={LockIcon} size={12} aria-hidden="true" /> Argent gelé</Badge>}
             {lockedUntil && <Badge tone="warning"><HugeiconsIcon icon={LockIcon} size={12} aria-hidden="true" /> Retraits bloqués jusqu’au {formatDateTime(lockedUntil)}</Badge>}
             {m.role && <Badge tone="outline">{m.role}</Badge>}
           </div>
@@ -98,6 +100,8 @@ export default function MemberDetailPage() {
           <Subscriptions member={m} />
         </div>
       </div>
+
+      <div className="mt-4"><MemberSecurityPanel member={m} /></div>
 
       <Tabs defaultValue="payins" className="mt-6">
         <TabsList aria-label="Historique du membre">
@@ -229,7 +233,7 @@ function TicketsTab({ id }: { id: string }) {
   );
 }
 
-type ContactField = 'email' | 'phoneNumber';
+type ContactField = 'email' | 'phoneNumber' | 'momo';
 
 /**
  * Contact change for a member who lost access to their account: a request
@@ -240,12 +244,13 @@ function ContactChangeDialog({ open, onOpenChange, member }: { open: boolean; on
   const reauth = useReauth();
   const [field, setField] = useState<ContactField>('email');
   const [value, setValue] = useState('');
+  const [operator, setOperator] = useState(member.momoOperator ?? '');
   const [reason, setReason] = useState('');
   const [ticketId, setTicketId] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const reset = () => { setField('email'); setValue(''); setReason(''); setTicketId(''); setError(''); };
+  const reset = () => { setField('email'); setValue(''); setOperator(member.momoOperator ?? ''); setReason(''); setTicketId(''); setError(''); };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -253,11 +258,16 @@ function ContactChangeDialog({ open, onOpenChange, member }: { open: boolean; on
     const v = value.trim();
     if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { setError('Entrez une adresse e-mail valide.'); return; }
     if (field === 'phoneNumber' && v.replace(/\D/g, '').length < 8) { setError('Entrez un numéro complet, avec l’indicatif du pays.'); return; }
+    if (field === 'momo' && v.replace(/\D/g, '').length < 8) { setError('Entrez le numéro Mobile Money complet.'); return; }
+    if (field === 'momo' && !/^[A-Za-z0-9_]{2,40}$/.test(operator.trim())) { setError('Indiquez le code de l’opérateur (ex. MTN_MOMO_CMR).'); return; }
     if (reason.trim().length < 20) { setError('Expliquez la demande et les preuves vérifiées (20 caractères minimum).'); return; }
     setBusy(true);
     try {
       const token = await reauth({ title: 'Confirmer la demande', description: 'Changement de contact d’un membre : entrez le code de votre application d’authentification.' });
-      await membersApi.requestContactChange(member._id, { field, newValue: v, reason: reason.trim(), ...(ticketId.trim() ? { ticketId: ticketId.trim() } : {}) }, token);
+      const extra = ticketId.trim() ? { ticketId: ticketId.trim() } : {};
+      await membersApi.requestContactChange(member._id, field === 'momo'
+        ? { field, momoNumber: v, momoOperator: operator.trim().toUpperCase(), reason: reason.trim(), ...extra }
+        : { field, newValue: v, reason: reason.trim(), ...extra }, token);
       toast.success('Demande envoyée pour double validation.');
       reset();
       onOpenChange(false);
@@ -275,19 +285,26 @@ function ContactChangeDialog({ open, onOpenChange, member }: { open: boolean; on
       {open && (
         <DialogContent
           title="Demander un changement de contact"
-          description={`Pour ${member.name}, qui n’a plus accès à son compte. Un autre agent devra approuver ; ensuite un code est envoyé au nouveau contact, et les retraits sont bloqués 48 h.`}
+          description={field === 'momo'
+            ? `Pour ${member.name}, qui ne peut pas le faire depuis l’application. Le nouveau numéro est appliqué dès qu’un autre agent approuve ; les retraits sont alors bloqués 48 h et l’e-mail du compte est prévenu.`
+            : `Pour ${member.name}, qui n’a plus accès à son compte. Un autre agent devra approuver ; ensuite un code est envoyé au nouveau contact, et les retraits sont bloqués 48 h.`}
         >
           <form onSubmit={submit} className="flex flex-col gap-4">
             <Segmented<ContactField>
               label="Contact à changer"
               value={field}
               onValueChange={f => { setField(f); setValue(''); }}
-              options={[{ value: 'email', label: 'E-mail', icon: Mail01Icon }, { value: 'phoneNumber', label: 'Téléphone', icon: SmartPhone01Icon }]}
+              options={[{ value: 'email', label: 'E-mail', icon: Mail01Icon }, { value: 'phoneNumber', label: 'Téléphone', icon: SmartPhone01Icon }, { value: 'momo', label: 'Mobile Money', icon: SmartPhone01Icon }]}
               fill
             />
-            <Field label={field === 'email' ? 'Nouvelle adresse e-mail' : 'Nouveau numéro (avec indicatif)'} required>
+            <Field label={field === 'email' ? 'Nouvelle adresse e-mail' : field === 'momo' ? 'Nouveau numéro Mobile Money' : 'Nouveau numéro (avec indicatif)'} required>
               <Input type={field === 'email' ? 'email' : 'tel'} autoComplete="off" value={value} onChange={e => setValue(e.target.value)} placeholder={field === 'email' ? 'nom@exemple.com' : '+237 6XX XX XX XX'} />
             </Field>
+            {field === 'momo' && (
+              <Field label="Opérateur" required help="Le code tel qu’enregistré (ex. MTN_MOMO_CMR, ORANGE_CMR).">
+                <Input autoComplete="off" value={operator} onChange={e => setOperator(e.target.value.toUpperCase())} placeholder="MTN_MOMO_CMR" />
+              </Field>
+            )}
             <Field label="Motif et preuves vérifiées" required help="Quelles pièces avez-vous vérifiées ? Au moins deux éléments indépendants.">
               <Textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} />
             </Field>

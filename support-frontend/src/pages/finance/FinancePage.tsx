@@ -21,7 +21,7 @@ import { CaseList } from '../cases/CaseList';
 import { GATEWAYS } from '../cases/ManualActivationDialog';
 import { RegularizationDialog, type RegularizationTarget } from '../cases/RegularizationDialog';
 
-type Tab = 'tableau' | 'retraits' | 'dossiers';
+type Tab = 'tableau' | 'retraits' | 'dossiers' | 'fraude';
 const ALL = 'all';
 const PAGE_SIZE = 20;
 
@@ -43,7 +43,7 @@ export default function FinancePage() {
   const [params, setParams] = useSearchParams();
   const perms = usePermissions();
   const tabParam = params.get('tab') as Tab | null;
-  const tab: Tab = tabParam === 'tableau' || tabParam === 'retraits' || (tabParam === 'dossiers' && perms.has('cases.work'))
+  const tab: Tab = tabParam === 'tableau' || tabParam === 'retraits' || (tabParam === 'dossiers' && perms.has('cases.work')) || (tabParam === 'fraude' && perms.has('risk.read'))
     ? tabParam
     : params.get('ageBucket') || params.get('status') ? 'retraits' : 'tableau';
   const filters: FinanceFilters = {
@@ -93,6 +93,7 @@ export default function FinancePage() {
           <TabsTrigger value="tableau">Tableau de bord</TabsTrigger>
           <TabsTrigger value="retraits">Retraits</TabsTrigger>
           {perms.has('cases.work') && <TabsTrigger value="dossiers">Dossiers</TabsTrigger>}
+          {perms.has('risk.read') && <TabsTrigger value="fraude">Fraude</TabsTrigger>}
         </TabsList>
         <TabsContent value="tableau">
           <Dashboard filters={filters} onBucket={b => update({ tab: 'retraits', ageBucket: b })} onStatus={s => update({ tab: 'retraits', status: s })} />
@@ -109,6 +110,11 @@ export default function FinancePage() {
         {perms.has('cases.work') && (
           <TabsContent value="dossiers">
             <CaseList scope="finance" />
+          </TabsContent>
+        )}
+        {perms.has('risk.read') && (
+          <TabsContent value="fraude">
+            <CaseList scope="fraud" />
           </TabsContent>
         )}
       </Tabs>

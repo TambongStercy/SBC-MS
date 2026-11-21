@@ -31,6 +31,12 @@ export const PERMISSIONS = [
   'analytics.read',
   'errors.manage',
   'activity.read',
+  // Security plan Phase 5.
+  'risk.read',
+  'risk.decide',
+  'authenticator.reset.request',
+  'authenticator.reset.approve',
+  'approvals.override',
   'agents.manage',
   'settings.manage',
   'audit.read',
@@ -38,7 +44,7 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-export const ROLES = ['support_agent', 'finance_agent', 'finance_manager', 'verifier', 'views_supervisor', 'support_admin'] as const;
+export const ROLES = ['support_agent', 'finance_agent', 'finance_manager', 'verifier', 'views_supervisor', 'support_admin', 'super_manager'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -48,6 +54,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   verifier: 'Vérificateur',
   views_supervisor: 'Superviseur des vérifications',
   support_admin: 'Administrateur du support',
+  super_manager: 'Super responsable',
 };
 
 export const roleLabel = (r: string) => ROLE_LABEL[r as Role] ?? r;
@@ -56,7 +63,7 @@ export const roleLabel = (r: string) => ROLE_LABEL[r as Role] ?? r;
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   support_agent: [
     'members.read', 'members.contact.request', 'tickets.read', 'tickets.reply',
-    'activation.check', 'activation.manual.request', 'kb.edit', 'activity.read',
+    'activation.check', 'activation.manual.request', 'kb.edit', 'activity.read', 'authenticator.reset.request',
   ],
   finance_agent: [
     'members.read', 'tickets.read', 'tickets.reply', 'activation.check', 'activation.manual.request',
@@ -67,6 +74,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'finance.regularize.approve',
     'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read',
+    'risk.read', 'risk.decide', 'authenticator.reset.approve',
   ],
   verifier: ['views.verify'],
   views_supervisor: [
@@ -78,8 +86,12 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'tickets.read', 'tickets.reply', 'tickets.assign', 'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'views.supervise', 'kb.edit', 'kb.publish', 'templates.manage',
     'reports.read', 'export', 'analytics.read', 'errors.manage', 'activity.read', 'agents.manage', 'settings.manage', 'audit.read',
+    'risk.read', 'authenticator.reset.request',
   ],
+  super_manager: [], // filled just below
 };
+// The super manager holds every finance manager permission, plus approving alone.
+ROLE_PERMISSIONS.super_manager = [...ROLE_PERMISSIONS.finance_manager, 'approvals.override'];
 
 /** Union of the permissions of several roles (unknown roles give nothing). */
 export function permissionsForRoles(roles: readonly string[]): Permission[] {

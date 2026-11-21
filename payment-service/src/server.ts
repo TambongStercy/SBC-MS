@@ -15,6 +15,7 @@ import { payinArchiveJob } from './jobs/payin-archive.job';
 import { sandboxSweeper } from './jobs/sandbox-sweeper.job';
 import { warnIfMisconfigured } from './services/sandbox.service';
 import path from 'path';
+import { startSupportCaseOutbox } from './services/clients/support.service.client';
 
 // Create Express server
 const app: Application = express();
@@ -146,6 +147,8 @@ async function startServer() {
 
         // Security plan Phase 10: team alerts (provider drop, error spikes, stuck payments).
         paymentAlertsJob.start();
+        // Security plan Phase 5: cases opened while support was down are sent again.
+        startSupportCaseOutbox();
 
         // Security plan Phase 10: abandoned payments move to paymentintents_archive (off by default).
         payinArchiveJob.start();

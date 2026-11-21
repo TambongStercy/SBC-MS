@@ -222,6 +222,54 @@ function CountriesDialog({ target, onClose, onSaved }: { target: AgentAccount | 
   );
 }
 
+/** The agent's own SBC member account: they will never act on it or its referral tree (Phase 5). */
+function MemberAccountDialog({ target, onClose, onSaved }: { target: AgentAccount | null; onClose: () => void; onSaved: () => void }) {
+  const reauth = useReauth();
+  const [text, setText] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (target) { setText(target.memberUserId ?? ''); setError(''); } }, [target]);
+
+  const save = async () => {
+    if (!target) return;
+    const v = text.trim();
+    if (v && !/^[a-f0-9]{24}$/i.test(v)) { setError('Identifiant de membre à 24 caractères (fiche membre → Identifiant).'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const token = await reauth({ title: `Compte membre de ${target.name}` });
+      await agentsApi.setMemberAccount(target.id, v || null, token);
+      toast.success('Compte membre enregistré.');
+      onSaved();
+      onClose();
+    } catch (err) {
+      if (!isReauthCancelled(err)) setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!target} onOpenChange={o => { if (!o) onClose(); }}>
+      {target && (
+        <DialogContent
+          title={`Compte membre de ${target.name}`}
+          description="Si cet agent a un compte SBC, indiquez-le : il ne pourra jamais demander, valider ni traiter quoi que ce soit sur ce compte ou son parrainage. Laissez vide s’il n’en a pas."
+          footer={<>
+            <Button variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button variant="primary" onClick={save} loading={busy}>Enregistrer</Button>
+          </>}
+        >
+          <Field label="Identifiant du membre" help="Sur la fiche du membre, rubrique « Identifiant ».">
+            <Input value={text} onChange={e => setText(e.target.value)} placeholder="Aucun compte membre" className="font-mono" />
+          </Field>
+          {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
 type Pending = { kind: 'disable' | 'revoke'; agent: AgentAccount } | null;
 
 /** Agent accounts: create (activation link shown once), roles, disable, sessions. */
@@ -234,6 +282,7 @@ export default function AgentsPage() {
   const [link, setLink] = useState<{ url: string; name: string } | null>(null);
   const [rolesFor, setRolesFor] = useState<AgentAccount | null>(null);
   const [countriesFor, setCountriesFor] = useState<AgentAccount | null>(null);
+  const [memberFor, setMemberFor] = useState<AgentAccount | null>(null);
   const [pending, setPending] = useState<Pending>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -274,6 +323,9 @@ export default function AgentsPage() {
           </MenuItem>
           <MenuItem onSelect={() => setCountriesFor(a)}>
             <HugeiconsIcon icon={Globe02Icon} size={16} aria-hidden="true" /> Pays suivis
+          </MenuItem>
+          <MenuItem onSelect={() => setMemberFor(a)}>
+            <HugeiconsIcon icon={UserShield01Icon} size={16} aria-hidden="true" /> Compte membre lié
           </MenuItem>
           {a.status === 'pending_activation' && (
             <MenuItem onSelect={() => void newLink(a)}>
@@ -344,6 +396,7 @@ export default function AgentsPage() {
 
       <CreateAgentDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(a, url) => { setLink({ url, name: a.name }); void refresh(); }} />
       <ActivationLinkDialog link={link?.url ?? null} agentName={link?.name ?? ''} onClose={() => setLink(null)} />
+      <MemberAccountDialog target={memberFor} onClose={() => setMemberFor(null)} onSaved={() => void refresh()} />
       <CountriesDialog target={countriesFor} onClose={() => setCountriesFor(null)} onSaved={() => void refresh()} />
       <RolesDialog target={rolesFor} isMe={rolesFor?.id === me.id} onClose={() => setRolesFor(null)} onSaved={() => void refresh()} />
 

@@ -4,8 +4,10 @@
  */
 
 export const ROLES = [
-    'support_agent', 'finance_agent', 'finance_manager', 'verifier', 'views_supervisor', 'support_admin',
+    'support_agent', 'finance_agent', 'finance_manager', 'verifier', 'views_supervisor', 'support_admin', 'super_manager',
 ] as const;
+/** Security plan Phase 5: at most this many agents may hold super_manager (1–2 named accounts). */
+export const SUPER_MANAGER_MAX = 2;
 export type Role = typeof ROLES[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -15,6 +17,7 @@ export const ROLE_LABELS: Record<Role, string> = {
     verifier: 'Vérificateur',
     views_supervisor: 'Superviseur des vérificateurs',
     support_admin: 'Administrateur du support',
+    super_manager: 'Super responsable',
 };
 
 export const PERMISSIONS = [
@@ -27,10 +30,12 @@ export const PERMISSIONS = [
     'kb.edit', 'kb.publish', 'templates.manage',
     'reports.read', 'export', 'analytics.read', 'errors.manage', 'activity.read',
     'agents.manage', 'settings.manage', 'audit.read',
+    // Security plan Phase 5.
+    'risk.read', 'risk.decide', 'authenticator.reset.request', 'authenticator.reset.approve', 'approvals.override',
 ] as const;
 export type Permission = typeof PERMISSIONS[number];
 
-const A = 'support_agent', FA = 'finance_agent', FM = 'finance_manager', V = 'verifier', VS = 'views_supervisor', SA = 'support_admin';
+const A = 'support_agent', FA = 'finance_agent', FM = 'finance_manager', V = 'verifier', VS = 'views_supervisor', SA = 'support_admin', SM = 'super_manager';
 
 const MATRIX: Record<Permission, Role[]> = {
     'members.read': [A, FA, FM, VS, SA],
@@ -63,7 +68,21 @@ const MATRIX: Record<Permission, Role[]> = {
     'agents.manage': [SA],
     'settings.manage': [SA],
     'audit.read': [SA],
+    // Security plan Phase 5. Fraud cases are handled by finance managers (decided); the
+    // support administrator may read them. A support agent asks for an authenticator
+    // reset (after ID + selfie), a finance manager approves it.
+    'risk.read': [FM, SA],
+    'risk.decide': [FM],
+    'authenticator.reset.request': [A, SA],
+    'authenticator.reset.approve': [FM],
+    // super_manager: approves alone (no second approver, own requests included), with an
+    // authenticator code and a written reason on each action, an instant alert to the
+    // other managers, never on their own account or referral tree.
+    'approvals.override': [SM],
 };
+
+// The super manager can do everything a finance manager can (plus approvals.override).
+for (const roles of Object.values(MATRIX)) if (roles.includes(FM) && !roles.includes(SM)) roles.push(SM);
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = ROLES.reduce((acc, role) => {
     acc[role] = PERMISSIONS.filter((p) => MATRIX[p].includes(role));

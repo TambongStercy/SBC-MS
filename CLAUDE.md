@@ -615,6 +615,35 @@ activations, unfinished payments. Each admin number opens the list behind it.
 - Checks: `user-service/src/scripts/check-activity-dashboard.ts` (local Mongo +
   Redis), support `src/tests/activity.test.ts`.
 
+### Support integration (Security plan Phase 5, 2026-11-21)
+
+Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, permissions §4).
+- **Country teams:** tickets and cases carry `country`; an agent's `countries` filters every
+  list and 404s anything else. Backfill: `support-service/dist/scripts/backfill-country-teams.js`
+  (dry run, `--apply`).
+- **Conflict rule:** an agent linked to their own member account (`memberUserId`, Agents →
+  « Compte membre lié ») can never act on it or its referral tree (user-service
+  `/users/internal/support/related`, levels 1–3 up or down; fails closed).
+- **super_manager:** max 2; approves alone with reauth + a 20-character reason; every other
+  manager is alerted (desk, e-mail, ntfy). Rufus/Sterling name the 1–2 accounts.
+- **Freeze** (`users.frozen`, user-service `/support/freeze`): withdrawals and transfers
+  refused (`account_frozen` in the lock check, before the timed lock, so a later contact
+  change cannot lift it; payment-service says « suspendus pendant une vérification »). The
+  member is not told automatically.
+- **Authenticator reset** and **MoMo change** by support: approvals executed by user-service
+  (`/support/authenticator-reset`, `/support/momo-change`), same locks and alerts as the
+  member's own flows.
+- **Fraud queue** (« Finance → Fraude », `risk.read`): six fraud case types, worst first then
+  amount; Phase 4's risk-service will open them (`country`, `amount` accepted at intake).
+- **Case outbox** (user-service and payment-service `support.service.client.ts`): a case
+  refused on the network / 5xx / 429 is kept in `support_case_outbox` and resent every 30 s
+  (1–30 min backoff) until support answers; delivered rows expire after 30 days.
+- **Member card:** declared / usual / last country, frozen, balance A vs B (ledger); C and
+  linked accounts / risk score wait for Phases 2 and 4.
+- Not done (need Phase 4 / 2): release of a held withdrawal, commission reversal approvals.
+- Checks: `user-service/src/scripts/check-support-phase5.ts`, support `src/tests/phase5.test.ts`,
+  support-frontend `MemberSecurityPanel.test.tsx`.
+
 ### Member authenticator (Security plan Phase 3, Sterling 2026-11-20)
 
 Rule: a member must set up an authenticator app (Google Authenticator,

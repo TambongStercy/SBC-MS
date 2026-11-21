@@ -18,7 +18,8 @@ function present(a: any, roles: string[]) {
     if (!a) return a;
     if (a.type !== 'contact_change' || hasPermission(roles, 'members.read.full')) return presentApproval(a);
     const p = { ...a.payload };
-    p.newValue = p.field === 'email' ? maskEmail(p.newValue) : maskPhone(p.newValue);
+    if (p.field === 'momo') p.momoNumber = maskPhone(p.momoNumber);
+    else p.newValue = p.field === 'email' ? maskEmail(p.newValue) : maskPhone(p.newValue);
     return presentApproval({ ...a, payload: p });
 }
 

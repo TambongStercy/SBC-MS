@@ -17,6 +17,7 @@ import { sendEmail } from './clients/notification.client';
 import { publishTicketEvent } from './realtime.service';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { decryptSecret, encryptSecret } from './auth/totp.service';
+import { memberCountry, teamFilter } from './scope.service';
 
 export const formatTicketNumber = (n: number) => `SUP-${String(n).padStart(6, '0')}`;
 
@@ -38,7 +39,7 @@ async function event(ticketId: Types.ObjectId | string, kind: string, by: Actor 
 export async function createTicket(args: {
     memberId: string | null; memberName?: string | null; category: unknown; subject: unknown; body: unknown;
     source: 'member' | 'assistant' | 'system' | 'agent' | 'public'; contact?: TicketContact | null; attachmentIds?: unknown; botConversationId?: Types.ObjectId | null;
-    caseId?: Types.ObjectId | null; priority?: TicketPriority; author: Actor; replay?: unknown;
+    caseId?: Types.ObjectId | null; priority?: TicketPriority; author: Actor; replay?: unknown; country?: string | null;
 }) {
     const category = String(args.category);
     if (!TICKET_CATEGORY_KEYS.includes(category as any)) throw badRequest('Catégorie inconnue.', 'BAD_CATEGORY');
@@ -50,8 +51,10 @@ export async function createTicket(args: {
     const priority = (args.priority ?? cat.defaultPriority) as TicketPriority;
     const number = formatTicketNumber(await nextSeq('ticket'));
     const now = new Date();
+    // Phase 5 country teams: the member's declared country, best effort (null without a member or when user-service is down).
+    const country = args.country !== undefined ? args.country : await memberCountry(args.memberId);
     const ticket = await Ticket.create({
-        number, memberId: args.memberId, memberName: args.memberName ?? args.contact?.name ?? null, contact: args.contact ?? null, subject, category, queue: category, priority,
+        number, memberId: args.memberId, country, memberName: args.memberName ?? args.contact?.name ?? null, contact: args.contact ?? null, subject, category, queue: category, priority,
         status: 'nouveau', source: args.source, sla: slaFor(priority, now), lastMemberMessageAt: args.author.type === 'member' ? now : null,
         botConversationId: args.botConversationId ?? null, caseId: args.caseId ?? null,
         replay: args.author.type === 'member' ? cleanReplay(args.replay, now) : null,
@@ -162,8 +165,9 @@ export async function requesterClose(id: string, r: Requester) {
 
 // ---------- Desk ----------
 
-export async function listDeskTickets(q: Record<string, unknown>, agentId: string) {
-    const filter: FilterQuery<ITicket> = {};
+export async function listDeskTickets(q: Record<string, unknown>, agentId: string, team?: string[]) {
+    // Security plan Phase 5: a country team sees only its countries' tickets.
+    const filter: FilterQuery<ITicket> = { ...teamFilter(team) } as FilterQuery<ITicket>;
     if (typeof q.status === 'string') {
         if (q.status === 'active') filter.status = { $in: OPEN_TICKET_STATUSES };
         else if (TICKET_STATUS_KEYS.includes(q.status as TicketStatus)) filter.status = q.status;

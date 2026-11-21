@@ -17,6 +17,7 @@ import { ledgerCheckJob } from './jobs/ledger-check.job';
 import { conversionRetryJob } from './jobs/conversion-retry.job';
 import { activitySignalsJob } from './jobs/activity-signals.job';
 import { activityRollupJob } from './jobs/activity-rollup.job';
+import { startSupportCaseOutbox } from './services/clients/support.service.client';
 
 // Create Express server
 const app: Express = express();
@@ -101,6 +102,8 @@ async function startServer() {
         conversionRetryJob.start(); // finishes conversions whose credit leg did not land
         activitySignalsJob.start();
         activityRollupJob.start();
+        // Security plan Phase 5: cases opened while support was down are sent again.
+        startSupportCaseOutbox();
 
         // Build the first leaderboard snapshot now, so the first visitor after
         // a deploy is not the one who pays for the cold aggregation.
