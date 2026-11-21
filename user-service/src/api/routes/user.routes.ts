@@ -1,3 +1,4 @@
+import { bindSessionKey, ingestBrowserChecks, sessionKeyFor } from '../../services/session-keys.service';
 import { adminAccessController } from '../controllers/admin-access.controller';
 import { supportController } from '../controllers/support.controller';
 import { Router, Request, Response, NextFunction } from 'express';
@@ -74,6 +75,25 @@ serviceRouter.get('/:userId/ledger-check', async (req, res) => {
 });
 // Security plan Phase 1: aggregated request signals from the gateway.
 serviceRouter.post('/activity/batch', (req, res) => userController.ingestActivityBatch(req, res));
+// Security plan Phase 9 (browser-only access): session keys and log-only check counts, for the gateway.
+serviceRouter.get('/session-keys/:tokenHash', async (req: Request, res: Response) => {
+    try {
+        const k = await sessionKeyFor(req.params.tokenHash);
+        if (!k) { res.status(404).json({ success: false, message: 'No key' }); return; }
+        res.json({ success: true, data: k });
+    } catch (err: any) {
+        logger.getLogger('SessionKeys').error(`Session key lookup failed: ${err?.message ?? err}`);
+        res.status(500).json({ success: false, message: 'Lookup failed' });
+    }
+});
+serviceRouter.post('/browser-checks/batch', async (req: Request, res: Response) => {
+    try {
+        res.json({ success: true, data: await ingestBrowserChecks(req.body?.rows) });
+    } catch (err: any) {
+        logger.getLogger('SessionKeys').error(`Browser checks batch failed: ${err?.message ?? err}`);
+        res.status(500).json({ success: false, message: 'Batch failed' });
+    }
+});
 // Security plan Phase 11: the support desk reads the same activity figures (filtered to the agent's countries).
 serviceRouter.get('/activity/board', getActivityBoard);
 serviceRouter.get('/activity/list', getActivityList);
@@ -225,6 +245,19 @@ router.put('/me/extra-numbers/featured', extraNumbers((userId, req) => setFeatur
 router.get('/me/canal-de-vente', extraNumbers(async userId => ({ link: await ensureCanalLink(userId) })));
 
 // --- Data protection (APDP Benin, deliberation 2026-523): consent, download, erasure ---
+// Security plan Phase 9: a token issued before signing existed gets its browser key once (first binding wins).
+router.post('/me/session-key', async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).user?.userId;
+    const auth = req.header('authorization') || '';
+    if (!userId || !auth.startsWith('Bearer ')) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+    try {
+        const r = await bindSessionKey({ token: auth.slice(7), userId, publicKey: req.body?.publicKey, deviceId: req.header('x-sbc-device'), late: true });
+        res.status(r === 'bound' ? 201 : r === 'exists' ? 409 : 400).json({ success: r === 'bound', data: { status: r } });
+    } catch (err: any) {
+        logger.getLogger('SessionKeys').error(`Late session key for ${userId} failed: ${err?.message ?? err}`);
+        res.status(500).json({ success: false, message: 'Une erreur est survenue.' });
+    }
+});
 router.post('/me/consents', extraNumbers((userId, req) => recordConsents(userId, req.body ?? {}, req.ip)));
 router.get('/me/data-export', async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).user?.userId;

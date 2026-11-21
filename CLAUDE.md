@@ -573,6 +573,29 @@ push), so a hijacker cannot silence it.
 - Checks: `gateway-service/src/scripts/check-activity-signals.ts`,
   `user-service/src/scripts/check-activity-signals.ts`.
 
+### Browser-only access: signed requests (Security plan Phase 9, part 1, 2026-11-21)
+
+Design and outcomes: `docs/security-plan/phase9-browser-only.md`. **Log-only**: nothing is refused.
+- **Web app** (`SBC-WEB-UI/src/utils/requestSigning.ts`):
+  - At sign-in it makes an ECDSA P-256 key pair; the private key is non-extractable, in IndexedDB.
+  - The public key is sent as `devicePublicKey` with `verify-otp`.
+  - Each same-origin `/api` call is signed (`X-SBC-Signature`) in the device-signals `fetch` wrapper.
+  - Signing has a 300 ms budget and never blocks a request.
+- **user-service:**
+  - `session_keys` maps the token's SHA-256 to its public key; rows expire with the token, and
+    logout revokes.
+  - `POST /users/me/session-key` binds a key once for tokens issued before this release (`late`).
+  - Internal routes `GET /users/internal/session-keys/:tokenHash` and
+    `POST /users/internal/browser-checks/batch` (counts into `browser_check_days`).
+- **Gateway** `browser-checks.middleware.ts` (`BROWSER_CHECKS=off|log`, default off):
+  - It checks after `next()`, so members see no delay.
+  - Outcomes: valid / missing / stale / replay / bad_sig / no_key …, plus Origin,
+    Sec-Fetch-Site and tool user-agents.
+  - Counts are flushed every minute. Webhooks, SSO, partners and the support desk are exempt.
+- Report: `user-service/dist/scripts/report-browser-checks.js --days 14`.
+- Checks: `gateway-service/src/scripts/check-browser-checks.ts`,
+  `user-service/src/scripts/check-session-keys.ts`, UI `requestSigning.test.ts`.
+
 ### Daily activity board (Security plan Phase 11, 2026-11-21)
 
 Admin « Activité » (`/`, the admin now opens on it; the old overview is

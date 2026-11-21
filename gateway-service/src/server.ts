@@ -8,6 +8,7 @@ import logger from './utils/logger';
 import { errorHandler } from './api/middleware/error.middleware';
 import { adminAllowlist } from './api/middleware/admin-allowlist.middleware';
 import { activitySignals, startSignalsFlush } from './api/middleware/activity-signals.middleware';
+import { browserChecks, startBrowserChecksFlush } from './api/middleware/browser-checks.middleware';
 
 // Initialize logger
 const log = logger.getLogger('Server');
@@ -37,6 +38,10 @@ app.use(adminAllowlist);
 // Security plan Phase 1: per-member country/device/activity counts (off unless ACTIVITY_SIGNALS_ENABLED=true).
 app.use(activitySignals);
 startSignalsFlush();
+
+// Security plan Phase 9: signed-request / browser checks, log-only (off unless BROWSER_CHECKS=log).
+app.use(browserChecks);
+startBrowserChecksFlush();
 
 // Health check endpoint
 app.get('/health', (req, res) => {

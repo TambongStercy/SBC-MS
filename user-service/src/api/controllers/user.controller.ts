@@ -1,3 +1,4 @@
+import { bindAtSignIn, revokeSessionKey } from '../../services/session-keys.service';
 import { Request, Response } from 'express';
 import { userService } from '../../services/user.service';
 import logger from '../../utils/logger';
@@ -1036,6 +1037,8 @@ export class UserController {
             if (result.isValid && result.newToken) {
                 // If valid and a new token was generated, return it
                 this.log.info(`OTP verification successful for userId: ${userId}`);
+                // Security plan Phase 9: the browser's signing key, bound to this token.
+                await bindAtSignIn(result.newToken, String(userId), req.body?.devicePublicKey, req.header('x-sbc-device'));
                 res.status(200).json({ success: true, message: 'Verification successful', data: { token: result.newToken, user: userProfile } });
                 // Security plan Phase 1: a sign-in counts in the day's signals (consenting members only).
                 recordLogin(String(userId), req);
@@ -1093,6 +1096,9 @@ export class UserController {
                 return;
             }
             await this.userService.logoutUser(req.user.userId);
+            // Security plan Phase 9: this token's browser key stops working.
+            const auth = req.header('authorization') || '';
+            if (auth.startsWith('Bearer ')) await revokeSessionKey(auth.slice(7));
             res.status(200).json({ success: true, message: 'Logout successful' });
         } catch (error: any) {
             log.error("Error in logout", error);
