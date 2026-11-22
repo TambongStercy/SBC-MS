@@ -39,6 +39,14 @@ secondary (Prometheus) ──HTTPS 9101, pinned self-signed cert, Bearer METRICS
 - **Two checks:** nginx lets in only the secondary's IP, and each service checks the token itself
   (constant-time). Without `METRICS_TOKEN`, `/metrics` answers 404.
 
+**Shared machine and database.** The main server's disk, memory and load (from the gateway) and
+MongoDB (from user-service) are the same for prod and preprod.
+- **Labels:** Prometheus relabels them `env="shared"` and keeps the reporting side in `source_env`.
+- **Rules and panels** take the max across sources, so prod's copy (once prod runs this code) never
+  doubles them.
+- **Prod requests and jobs** wait for the full develop → master release (decided 2026-11-22). Until
+  then, the shared panels are the only prod figures.
+
 ## Alerts (to ntfy)
 
 `infra/metrics/make-grafana.py` writes the rules and the dashboard. Edit it, never the generated
@@ -99,8 +107,17 @@ Each step needs Sterling's OK; secrets are generated on the servers and never pr
 - **Templates:** every value is wrapped in `{{ with $values.A }}…{{ end }}`. Grafana also renders
   the text of rules whose query returned nothing, and `humanize*` fails on that empty value.
 
-Open Grafana through a tunnel: `ssh -L 3300:127.0.0.1:3300 ubuntu@169.58.159.177`, then
-http://localhost:3300.
+**Grafana's public address (2026-11-22): https://grafana.sniperbusinesscenter.com**
+- **Serving:** nginx with a Let's Encrypt certificate, from `infra/metrics/nginx-grafana.conf`. The
+  zone's DNS-only wildcard already points at the secondary.
+- **Hardening:**
+  - Grafana's login is the only door, with its brute-force lockout on;
+  - nginx allows 10 login posts a minute per IP (burst 5, then 429);
+  - secure, SameSite=strict cookies; HSTS; sessions of 7 days, or 1 day idle;
+  - no external snapshots, no Gravatar.
+- **Prometheus** stays on 127.0.0.1 only.
+- **Settings** in `/opt/metrics/.env`: `GRAFANA_DOMAIN`, `GRAFANA_ROOT_URL`, `GRAFANA_COOKIE_SECURE`.
+  The root URL also makes the links in the ntfy alerts open the public Grafana.
 
 ## Checks
 

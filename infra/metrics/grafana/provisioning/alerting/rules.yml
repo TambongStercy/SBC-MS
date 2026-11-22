@@ -58,7 +58,7 @@ groups:
       datasourceUid: prometheus
       model:
         refId: A
-        expr: 1 - sbc_host_disk_free_bytes / sbc_host_disk_total_bytes
+        expr: max by (path) (1 - sbc_host_disk_free_bytes / sbc_host_disk_total_bytes)
         instant: true
         range: false
         intervalMs: 30000
@@ -92,7 +92,7 @@ groups:
       datasourceUid: prometheus
       model:
         refId: A
-        expr: 1 - sbc_host_memory_available_bytes / sbc_host_memory_total_bytes
+        expr: max(1 - sbc_host_memory_available_bytes / sbc_host_memory_total_bytes)
         instant: true
         range: false
         intervalMs: 30000
@@ -220,7 +220,7 @@ groups:
     labels:
       severity: critical
     annotations:
-      summary: '{{ $labels.env }} : MongoDB ne répond plus à user-service (serverStatus) depuis 3 min.'
+      summary: MongoDB (prod et preprod) ne répond plus à user-service (serverStatus) depuis 3 min.
     data:
     - refId: A
       relativeTimeRange:
@@ -229,7 +229,7 @@ groups:
       datasourceUid: prometheus
       model:
         refId: A
-        expr: sbc_mongo_up
+        expr: max(sbc_mongo_up)
         instant: true
         range: false
         intervalMs: 30000
@@ -254,7 +254,7 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: '{{ $labels.env }} : cache WiredTiger rempli à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} : les données de travail ne tiennent plus en mémoire.'
+      summary: 'MongoDB (prod et preprod) : cache WiredTiger rempli à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} : les données de travail ne tiennent plus en mémoire.'
     data:
     - refId: A
       relativeTimeRange:
@@ -263,7 +263,7 @@ groups:
       datasourceUid: prometheus
       model:
         refId: A
-        expr: sbc_mongo_cache_bytes{kind="used"} / ignoring(kind) sbc_mongo_cache_bytes{kind="max"}
+        expr: max(sbc_mongo_cache_bytes{kind="used"} / ignoring(kind) sbc_mongo_cache_bytes{kind="max"})
         instant: true
         range: false
         intervalMs: 30000

@@ -1,7 +1,7 @@
 # Metrics stack on the SECONDARY server (/opt/metrics): Prometheus scrapes the SBC services on the
 # main server (nginx-main-metrics.conf) and keeps 30 days; Grafana draws the dashboard and sends
-# the alerts to ntfy. Both listen on 127.0.0.1 only: open Grafana through an SSH tunnel,
-#   ssh -L 3300:127.0.0.1:3300 ubuntu@169.58.159.177   then http://localhost:3300
+# the alerts to ntfy. Both listen on 127.0.0.1 only. Grafana is published by nginx at
+# https://grafana.sniperbusinesscenter.com (nginx-grafana.conf); Prometheus is never published.
 # Secrets (never printed) in /opt/metrics/.env and /opt/metrics/secrets/ (mode 600).
 services:
   prometheus:
@@ -40,6 +40,17 @@ services:
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
       GF_UNIFIED_ALERTING_ENABLED: "true"
+      # Public behind nginx + TLS: links in alerts, secure cookies, HSTS, short sessions.
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-localhost}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3300/}
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SECURITY_STRICT_TRANSPORT_SECURITY: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION: "false"
+      GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION: 7d
+      GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION: 1d
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
     ports: ["127.0.0.1:3300:3300"]
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro

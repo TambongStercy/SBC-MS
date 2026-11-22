@@ -25,9 +25,9 @@ def rule(uid, title, expr, op, value, for_, summary, severity='warning'):
 REQ = 'sbc_http_request_duration_seconds'
 rule('sbc-service-down', 'Service injoignable', 'up{job="sbc"}', 'lt', 1, '3m',
      '{{ $labels.env }} {{ $labels.instance }} : Prometheus ne lit plus ses métriques depuis 3 min (service arrêté, nginx ou réseau).', 'critical')
-rule('sbc-disk', 'Disque presque plein', '1 - sbc_host_disk_free_bytes / sbc_host_disk_total_bytes', 'gt', 0.85, '10m',
+rule('sbc-disk', 'Disque presque plein', 'max by (path) (1 - sbc_host_disk_free_bytes / sbc_host_disk_total_bytes)', 'gt', 0.85, '10m',
      'Serveur principal, {{ $labels.path }} : disque utilisé à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} (seuil 85 %).', 'critical')
-rule('sbc-memory', 'Mémoire presque pleine', '1 - sbc_host_memory_available_bytes / sbc_host_memory_total_bytes', 'gt', 0.90, '10m',
+rule('sbc-memory', 'Mémoire presque pleine', 'max(1 - sbc_host_memory_available_bytes / sbc_host_memory_total_bytes)', 'gt', 0.90, '10m',
      'Serveur principal : mémoire utilisée à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} (seuil 90 %).', 'critical')
 rule('sbc-5xx', 'Erreurs serveur (5xx)',
      f'sum by (env, service) (rate({REQ}_count{{code="5xx"}}[10m])) / sum by (env, service) (rate({REQ}_count[10m]))'
@@ -41,11 +41,11 @@ rule('sbc-money-slow', 'Routes argent lentes',
 rule('sbc-api-slow', 'API lente',
      f'histogram_quantile(0.95, sum by (le, env, service) (rate({REQ}_bucket{{route!="unmatched"}}[10m])))', 'gt', 2, '15m',
      '{{ $labels.env }} {{ $labels.service }} : p95 de {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} depuis 15 min (seuil 2 s).')
-rule('sbc-mongo-down', 'MongoDB ne répond pas', 'sbc_mongo_up', 'lt', 1, '3m',
-     '{{ $labels.env }} : MongoDB ne répond plus à user-service (serverStatus) depuis 3 min.', 'critical')
+rule('sbc-mongo-down', 'MongoDB ne répond pas', 'max(sbc_mongo_up)', 'lt', 1, '3m',
+     'MongoDB (prod et preprod) ne répond plus à user-service (serverStatus) depuis 3 min.', 'critical')
 rule('sbc-mongo-cache', 'Cache MongoDB saturé',
-     'sbc_mongo_cache_bytes{kind="used"} / ignoring(kind) sbc_mongo_cache_bytes{kind="max"}', 'gt', 0.95, '15m',
-     '{{ $labels.env }} : cache WiredTiger rempli à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} : les données de travail ne tiennent plus en mémoire.')
+     'max(sbc_mongo_cache_bytes{kind="used"} / ignoring(kind) sbc_mongo_cache_bytes{kind="max"})', 'gt', 0.95, '15m',
+     'MongoDB (prod et preprod) : cache WiredTiger rempli à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} : les données de travail ne tiennent plus en mémoire.')
 rule('sbc-event-loop', 'Service saturé (boucle d’événements)', 'sbc_nodejs_eventloop_lag_p99_seconds', 'gt', 0.5, '10m',
      '{{ $labels.env }} {{ $labels.service }} : la boucle Node prend {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} de retard (p99).')
 rule('sbc-job-errors', 'Tâche planifiée en échec', 'sum by (env, service, task) (increase(sbc_job_runs_total{result="error"}[30m]))', 'gt', 2, '0s',
@@ -89,11 +89,11 @@ panel('Routes argent : p95', [f'histogram_quantile(0.95, sum by (le, route) (rat
 panel('Routes argent : erreurs 5xx / min', [f'sum by (route) (rate({REQ}_count{{{E},service="payment",code="5xx"}}[5m])) * 60'], 'short', legend='{{route}}')
 panel('Durée des tâches planifiées', [f'sum by (task) (rate(sbc_job_duration_seconds_sum{{{E}}}[15m])) / sum by (task) (rate(sbc_job_duration_seconds_count{{{E}}}[15m]))'], 's', legend='{{task}}')
 panel('Échecs des tâches (1 h)', [f'sum by (service, task) (increase(sbc_job_runs_total{{{E},result="error"}}[1h])) > 0'], 'short', kind='table', legend='{{service}} {{task}}')
-panel('Disque utilisé (serveur principal)', [f'1 - sbc_host_disk_free_bytes{{{E}}} / sbc_host_disk_total_bytes{{{E}}}'], 'percentunit', w=8, legend='{{path}}')
-panel('Mémoire utilisée (serveur principal)', [f'1 - sbc_host_memory_available_bytes{{{E}}} / sbc_host_memory_total_bytes{{{E}}}'], 'percentunit', w=8, legend='mémoire')
-panel('Charge (load 1 min)', [f'sbc_host_load1{{{E}}}'], 'short', w=8, legend='load1')
-panel('Cache MongoDB', [f'sbc_mongo_cache_bytes{{{E}}}'], 'bytes', w=8, legend='{{kind}}')
-panel('Connexions MongoDB', [f'sbc_mongo_connections{{{E},state="current"}}'], 'short', w=8, legend='connexions')
+panel('Disque utilisé (serveur principal, prod + preprod)', ['max by (path) (1 - sbc_host_disk_free_bytes / sbc_host_disk_total_bytes)'], 'percentunit', w=8, legend='{{path}}')
+panel('Mémoire utilisée (serveur principal, prod + preprod)', ['max(1 - sbc_host_memory_available_bytes / sbc_host_memory_total_bytes)'], 'percentunit', w=8, legend='mémoire')
+panel('Charge du serveur principal (load 1 min)', ['max(sbc_host_load1)'], 'short', w=8, legend='load1')
+panel('Cache MongoDB (prod + preprod)', ['max by (kind) (sbc_mongo_cache_bytes)'], 'bytes', w=8, legend='{{kind}}')
+panel('Connexions MongoDB (prod + preprod)', ['max(sbc_mongo_connections{state="current"})'], 'short', w=8, legend='connexions')
 panel('Retard de la boucle Node (p99)', [f'sbc_nodejs_eventloop_lag_p99_seconds{{{E}}}'], 's', w=8)
 panel('Mémoire des services (RSS)', [f'sbc_process_resident_memory_bytes{{{E}}}'], 'bytes')
 panel('Services joignables', [f'up{{job="sbc",{E}}}'], 'short', legend='{{instance}}')
@@ -102,7 +102,7 @@ dash = {
     'uid': 'sbc-overview', 'title': 'SBC : santé des services', 'tags': ['sbc'], 'timezone': 'Africa/Douala',
     'schemaVersion': 39, 'version': 1, 'refresh': '1m', 'time': {'from': 'now-6h', 'to': 'now'},
     'templating': {'list': [{'name': 'env', 'label': 'Environnement', 'type': 'query', 'datasource': DS,
-                             'query': {'query': 'label_values(up{job="sbc"}, env)', 'refId': 'env'},
+                             'query': {'query': 'label_values(up{job="sbc", env!="shared"}, env)', 'refId': 'env'},
                              'current': {'text': 'preprod', 'value': 'preprod'}, 'refresh': 1}]},
     'panels': panels,
 }

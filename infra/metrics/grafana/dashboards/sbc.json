@@ -23,7 +23,7 @@
      "uid": "prometheus"
     },
     "query": {
-     "query": "label_values(up{job=\"sbc\"}, env)",
+     "query": "label_values(up{job=\"sbc\", env!=\"shared\"}, env)",
      "refId": "env"
     },
     "current": {
@@ -364,7 +364,7 @@
   {
    "id": 10,
    "type": "timeseries",
-   "title": "Disque utilisé (serveur principal)",
+   "title": "Disque utilisé (serveur principal, prod + preprod)",
    "description": "",
    "datasource": {
     "type": "prometheus",
@@ -389,7 +389,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "1 - sbc_host_disk_free_bytes{env=\"$env\"} / sbc_host_disk_total_bytes{env=\"$env\"}",
+     "expr": "max by (path) (1 - sbc_host_disk_free_bytes / sbc_host_disk_total_bytes)",
      "legendFormat": "{{path}}"
     }
    ]
@@ -397,7 +397,7 @@
   {
    "id": 11,
    "type": "timeseries",
-   "title": "Mémoire utilisée (serveur principal)",
+   "title": "Mémoire utilisée (serveur principal, prod + preprod)",
    "description": "",
    "datasource": {
     "type": "prometheus",
@@ -422,7 +422,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "1 - sbc_host_memory_available_bytes{env=\"$env\"} / sbc_host_memory_total_bytes{env=\"$env\"}",
+     "expr": "max(1 - sbc_host_memory_available_bytes / sbc_host_memory_total_bytes)",
      "legendFormat": "mémoire"
     }
    ]
@@ -430,7 +430,7 @@
   {
    "id": 12,
    "type": "timeseries",
-   "title": "Charge (load 1 min)",
+   "title": "Charge du serveur principal (load 1 min)",
    "description": "",
    "datasource": {
     "type": "prometheus",
@@ -455,7 +455,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "sbc_host_load1{env=\"$env\"}",
+     "expr": "max(sbc_host_load1)",
      "legendFormat": "load1"
     }
    ]
@@ -463,7 +463,7 @@
   {
    "id": 13,
    "type": "timeseries",
-   "title": "Cache MongoDB",
+   "title": "Cache MongoDB (prod + preprod)",
    "description": "",
    "datasource": {
     "type": "prometheus",
@@ -488,7 +488,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "sbc_mongo_cache_bytes{env=\"$env\"}",
+     "expr": "max by (kind) (sbc_mongo_cache_bytes)",
      "legendFormat": "{{kind}}"
     }
    ]
@@ -496,7 +496,7 @@
   {
    "id": 14,
    "type": "timeseries",
-   "title": "Connexions MongoDB",
+   "title": "Connexions MongoDB (prod + preprod)",
    "description": "",
    "datasource": {
     "type": "prometheus",
@@ -521,7 +521,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "sbc_mongo_connections{env=\"$env\",state=\"current\"}",
+     "expr": "max(sbc_mongo_connections{state=\"current\"})",
      "legendFormat": "connexions"
     }
    ]
