@@ -10,7 +10,7 @@ KEEP_DIR="${KEEP_DIR:-/var/backups/sbc-blnk}"
 REMOTE="${REMOTE:-sbcbackup@169.58.159.177}"
 KEY="${KEY:-/root/.ssh/sbc_backup_pull}"
 R2_PATH="${R2_PATH:-r2:sbc-db-backups/blnk-backups}"
-SSH="${SSH_CMD:-ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes}"
+SSH="${SSH_CMD:-ssh -i $KEY -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/sbc_backup_known_hosts}"
 fail() { sbc_log "BLNK PULL FAILED: $*"; sbc_status_set blnk_offsite "{\"running\": false, \"lastOk\": false, \"lastFailureAt\": $(sbc_now)}"; rm -rf "$tmp"; exit 1; }
 tmp=$(mktemp -d)
 sbc_status_set blnk_offsite "{\"lastRunAt\": $(sbc_now), \"running\": true}"
