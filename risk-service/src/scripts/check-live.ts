@@ -199,10 +199,12 @@ const main = async () => {
     // ---- weekly rebuild ----
     const r = await runLookback({ usersUri: config.sources.usersUri, paymentUri: config.sources.paymentUri, since: null, apply: true, cases: true, kind: 'rebuild', log: () => undefined });
     const sAfter = await mem('S');
-    check('rebuild keeps live reasons (S 30) and re-finds structural ones (H 90 hold)', sAfter?.score === 30 && (await mem('H'))?.score === 90 && r.runId?.startsWith('rebuild-'));
+    check('rebuild keeps live reasons (S 30) and re-finds structural ones (H 90 hold)', sAfter?.score === 30 && (await mem('H'))?.score === 90 && r.runId?.startsWith('rebuild-') === true);
     check('rebuild stores every identifier (shared or not) and files nothing already sent', (await IdentifierModel.countDocuments()) >= 9 && received.length === before, `${await IdentifierModel.countDocuments()}`);
     const sunday = new Date(Date.UTC(2026, 10, 22, 0, 30)); // Sunday 01:30 Douala
-    check('rebuild schedule: due Sunday 01:xx Douala only once a week', !(await live.rebuildDue(sunday)) && (await RiskRunModel.deleteMany({ kind: 'rebuild' })) && await live.rebuildDue(sunday) && !(await live.rebuildDue(new Date(sunday.getTime() + DAY))));
+    const dueAfterRun = await live.rebuildDue(sunday);
+    await RiskRunModel.deleteMany({ kind: 'rebuild' });
+    check('rebuild schedule: due Sunday 01:xx Douala only once a week', !dueAfterRun && await live.rebuildDue(sunday) && !(await live.rebuildDue(new Date(sunday.getTime() + DAY))));
 
     server.close(); fake.close();
     await Promise.all([users.dropDatabase(), payment.dropDatabase(), mongoose.connection.dropDatabase()]);
