@@ -69,7 +69,8 @@ export const RiskRunModel = model('RiskRun', RunSchema);
 /**
  * Security plan Phase 4, part 2: live events.
  *   riskevents   one row per event, from user-service (signup, contact change, authenticator,
- *                dormant account back, ledger mismatch) or read from the payment database by
+ *                dormant account back), payment-service (ledger mismatch), the gateway
+ *                (automation seen: Phase 9) or read from the payment database by
  *                the watcher (withdrawal requested, payment paid). `key` makes each one unique,
  *                so a repeated hint or a second watcher pass adds nothing. Hashes only: never a
  *                number, address or device in clear. Deleted after RISK_EVENT_RETENTION_DAYS.
@@ -77,8 +78,8 @@ export const RiskRunModel = model('RiskRun', RunSchema);
  *   riskcasessent what was last sent to support per case, so an unchanged case is not resent
  *                on every event (support would count each as an occurrence).
  */
-export type RiskEventType = 'signup' | 'contact_change' | 'authenticator_change' | 'dormant_reactivated' | 'balance_mismatch' | 'withdrawal_requested' | 'payin_succeeded';
-export const RISK_EVENT_TYPES: RiskEventType[] = ['signup', 'contact_change', 'authenticator_change', 'dormant_reactivated', 'balance_mismatch', 'withdrawal_requested', 'payin_succeeded'];
+export type RiskEventType = 'signup' | 'contact_change' | 'authenticator_change' | 'dormant_reactivated' | 'balance_mismatch' | 'withdrawal_requested' | 'payin_succeeded' | 'automation_seen';
+export const RISK_EVENT_TYPES: RiskEventType[] = ['signup', 'contact_change', 'authenticator_change', 'dormant_reactivated', 'balance_mismatch', 'withdrawal_requested', 'payin_succeeded', 'automation_seen'];
 const RiskEventSchema = new Schema({
     key: { type: String, required: true },
     type: { type: String, required: true },

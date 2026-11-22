@@ -28,6 +28,7 @@ const EVENT: Record<string, string> = {
   balance_mismatch: 'Écart entre les registres du solde',
   withdrawal_requested: 'Demande de retrait',
   payin_succeeded: 'Paiement reçu',
+  automation_seen: 'Utilisation hors de l’application web',
 };
 const KIND: Record<string, string> = { email: 'e-mail', phone: 'téléphone', momo: 'Mobile Money', crypto: 'portefeuille crypto', setup: 'activée', reset: 'réinitialisée' };
 const USES: Record<string, string> = { payout_number: 'retrait', profile_momo: 'Mobile Money du profil', payin_number: 'paiement', device: 'appareil' };

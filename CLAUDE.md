@@ -595,6 +595,15 @@ Design and outcomes: `docs/security-plan/phase9-browser-only.md`. **Log-only**: 
 - Report: `user-service/dist/scripts/report-browser-checks.js --days 14`.
 - Checks: `gateway-service/src/scripts/check-browser-checks.ts`,
   `user-service/src/scripts/check-session-keys.ts`, UI `requestSigning.test.ts`.
+- **Part 2 (2026-11-22), still log-only:**
+  - **Body check:** the signed body hash is compared with the bytes received (`body`: match /
+    mismatch / unsigned / too_large / unknown). `watchBody` hashes the stream as the proxy reads
+    it: it attaches to the first `data` consumer, never buffers.
+  - **Automation feed:** members seen with a bad signature, replay, changed body or tool
+    user-agent go to risk-service as `automation_seen` every minute (gateway `RISK_SERVICE_URL`),
+    giving the live rule `automation` (20 points, 7 days).
+  - Check: `gateway-service/src/scripts/check-browser-body.ts` (real HTTP through
+    express-http-proxy, both modes).
 
 ### Daily activity board (Security plan Phase 11, 2026-11-21)
 
@@ -719,7 +728,8 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
     on that group's facts.
   - **Live rules** (points until expiry): contact change → withdrawal ≤ 72 h 30; new device +
     new country + new number the same day 40; hosting/VPN network 15; sign-up burst under one
-    sponsor (sponsor 30, recruits 20); dormant back 15; ledger mismatch 30. Score = structural +
+    sponsor (sponsor 30, recruits 20); dormant back 15; ledger mismatch 30; automation seen by
+    the gateway (Phase 9) 20. Score = structural +
     live (`structuralScore`, `liveReasons`).
   - **Weekly rebuild:** Sunday 01:00 Douala.
   - **Support member card « Risque »:** `GET /desk/members/:id/risk` (`risk.read`), needs

@@ -39,6 +39,8 @@ interface IConfig {
         sbcloveServiceUrl: string;
         eventServiceUrl: string;
         supportServiceUrl: string;
+        /** Security plan Phase 9 → 4: automation signals per member go to the fraud engine. Empty = off. */
+        riskServiceUrl: string;
     };
 }
 
@@ -80,7 +82,8 @@ const config: IConfig = {
         // SBC Event / ticketing marketplace. Prod 3011, preprod 6011.
         eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3011',
         // SBC Support (agent desk + member help). Prod 3012, preprod 6012.
-        supportServiceUrl: process.env.SUPPORT_SERVICE_URL || 'http://localhost:3012'
+        supportServiceUrl: process.env.SUPPORT_SERVICE_URL || 'http://localhost:3012',
+        riskServiceUrl: (process.env.RISK_SERVICE_URL || '').replace(/\/+$/, '')
     }
 };
 

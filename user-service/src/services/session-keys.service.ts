@@ -86,7 +86,8 @@ export async function ingestBrowserChecks(rows: unknown): Promise<{ stored: numb
         if (!count) continue;
         const fields: Record<string, unknown> = { tool: r.tool === true };
         for (const d of DIMS) fields[d] = word(r[d]);
-        const key = [...DIMS.map(d => fields[d]), fields.tool ? 'tool' : '-'].join('|');
+        fields.body = r.body === undefined ? 'na' : word(r.body); // gateways before Phase 9 part 2 send none
+        const key = [...DIMS.map(d => fields[d]), fields.body, fields.tool ? 'tool' : '-'].join('|');
         ops.push({ updateOne: { filter: { day: r.day, key }, update: { $inc: { count }, $set: { ...fields, updatedAt: new Date() } }, upsert: true } });
     }
     if (ops.length) await BrowserCheckDayModel.bulkWrite(ops as any, { ordered: false });

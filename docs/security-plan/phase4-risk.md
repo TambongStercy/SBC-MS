@@ -99,6 +99,7 @@ Branch `feature/risk-live-events`. Still silent: scores change, nothing is refus
 | `authenticator_change` {setup, reset} | user-service `member-auth.service` | hint |
 | `dormant_reactivated` | user-service `noteSignIn` (Phase 7) | hint |
 | `balance_mismatch` | payment-service ledger triple check (Phase 2, `log`/`enforce`) | hint, once per difference |
+| `automation_seen` | gateway browser checks (Phase 9 part 2), per member, every minute | hint |
 | `withdrawal_requested` | **risk-service reads the payment database** (new `transactions` by `_id`, every 15 s) | watcher |
 | `payin_succeeded` | **risk-service reads the payment database** (paid intents of the last 24 h, every 5 min) | watcher |
 
@@ -131,6 +132,7 @@ Branch `feature/risk-live-events`. Still silent: scores change, nothing is refus
   | `signup_burst` | ≥ `RISK_SIGNUP_BURST` (5) sign-ups under one sponsor from one network or device in 24 h: sponsor 30, each recruit 20 (+ case) | 30 / 20 | 30 days |
   | `dormant_reactivated` | a dormant account signs in again | 15 | 30 days |
   | `balance_mismatch` | the ledger triple check disagrees | 30 | 30 days |
+  | `automation` | the gateway saw the member's token used outside the web app: invalid signature, replay, body changed after signing, tool user-agent (Phase 9 part 2) | 20 | 7 days |
 
 - Score = structural points (links, referral rules) + live points. Both are kept on
   `riskmembers` (`reasons` + `structuralScore`, `liveReasons`); the score and decision are
