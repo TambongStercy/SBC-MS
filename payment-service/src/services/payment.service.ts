@@ -708,7 +708,7 @@ class PaymentService {
             : lock.reason === 'phone_change' ? 'du numéro de téléphone'
             : lock.reason === 'momo_change' ? 'du numéro Mobile Money'
             : lock.reason === 'crypto_change' ? 'du portefeuille crypto'
-            : lock.reason === 'authenticator_reset' ? 'de l’application d’authentification'
+            : lock.reason === 'authenticator_reset' || lock.reason === 'authenticator_setup' ? 'de l’application d’authentification'
             : "de l'adresse e-mail ou du numéro de téléphone";
         log.warn(`Withdrawal refused for user ${userId}: locked until ${lock.until} after ${lock.reason ?? 'contact change'} (${audience})`);
 

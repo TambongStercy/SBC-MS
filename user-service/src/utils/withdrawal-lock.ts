@@ -12,7 +12,7 @@ import config from '../config';
  * `withdrawalLockFields(...)` to its update. payment-service reads the lock
  * through GET /users/internal/:userId/withdrawal-lock before every payout.
  */
-export type WithdrawalLockReason = 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset';
+export type WithdrawalLockReason = 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset' | 'authenticator_setup';
 
 export function withdrawalLockFields(reason: WithdrawalLockReason, now: Date = new Date(), hoursOverride?: number) {
     const hours = hoursOverride ?? config.withdrawal.lockHoursAfterContactChange;

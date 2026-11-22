@@ -7,11 +7,15 @@ import { memberAuthConfig } from '../config/member-auth';
 import { IMemberAuth, MemberAuthModel } from '../database/models/member-auth.model';
 import UserModel, { IUser } from '../database/models/user.model';
 import { userRepository } from '../database/repositories/user.repository';
-import { AppError, AuthenticatorRequiredError } from '../utils/errors';
+import { AppError, AuthenticatorCodeRequiredError, AuthenticatorRequiredError } from '../utils/errors';
 import logger from '../utils/logger';
 import { otpMatches } from '../utils/otp.utils';
 import { withdrawalLockFields } from '../utils/withdrawal-lock';
 import { riskEvent } from '../utils/risk-event';
+import { incrWindow } from '../utils/redis';
+import { openSupportCase } from './clients/support.service.client';
+import { riskFlags } from './dormancy.service';
+import { isoOfCountryValue } from '../utils/country-filter';
 import { notificationService } from './clients/notification.service.client';
 import { userService } from './user.service';
 
@@ -31,7 +35,7 @@ const log = logger.getLogger('MemberAuth');
  */
 authenticator.options = { window: 1, step: 30, digits: 6 };
 
-export type AuthenticatorAction = 'withdrawal' | 'momo_change' | 'crypto_change';
+export type AuthenticatorAction = 'withdrawal' | 'momo_change' | 'crypto_change' | 'email_change' | 'phone_change' | 'password_reset';
 
 const SETUP_TARGET = 'authenticator';
 const LOCK_STEPS_MS = [15 * 60 * 1000, 60 * 60 * 1000, 24 * 60 * 60 * 1000];
@@ -113,9 +117,55 @@ class MemberAuthService {
         return !!(await MemberAuthModel.exists({ userId, totpSecretEnc: { $ne: null } }));
     }
 
+    /** Plan: the setup routes get their own limit, 5 a minute per member (Redis; fails open). */
+    private async assertSetupRate(userId: string | Types.ObjectId): Promise<void> {
+        const n = await incrWindow(`authsetup:${userId}:${Math.floor(Date.now() / 60_000)}`, 70);
+        if (n !== null && n > memberAuthConfig.setupPerMinute) {
+            throw new AppError('Trop d’essais en une minute : patientez un instant puis recommencez.', 429);
+        }
+    }
+
+    /**
+     * Security plan Phase 3 item 3: a setup that looks like an account takeover goes to
+     * support. Risky = seen from another country than the declared one; the email, phone,
+     * MoMo or crypto wallet changed in the last 7 days; or the fraud engine flags the
+     * account. `log` files a case (Fraude queue) and lets the setup stand.
+     */
+    async reviewSetup(user: IUser, now: Date = new Date()): Promise<string[]> {
+        if (memberAuthConfig.setupReview === 'off') return [];
+        const reasons: string[] = [];
+        const declared = isoOfCountryValue(user.country);
+        const seen = (user as any).geo?.lastCountry || (user as any).ipCountry || null;
+        if (declared && seen && String(seen).toUpperCase() !== declared) reasons.push(`other_country:${String(seen).toUpperCase()}`);
+        const lockReason = (user as any).withdrawalLockReason as string | undefined;
+        const lockUntil = (user as any).withdrawalsLockedUntil ? new Date((user as any).withdrawalsLockedUntil) : null;
+        // a contact/payout change locks 48 h: a lock ending later than 5 days ago means a change in the last 7 days
+        if (lockReason && ['email_change', 'phone_change', 'momo_change', 'crypto_change'].includes(lockReason)
+            && lockUntil && lockUntil.getTime() > now.getTime() - 5 * 86_400_000) reasons.push(`recent_${lockReason}`);
+        const flagged = await riskFlags([String(user._id)]);
+        if (flagged?.has(String(user._id))) reasons.push('fraud_engine_flag');
+        if (!reasons.length) return [];
+        const label: Record<string, string> = {
+            recent_email_change: 'e-mail changé', recent_phone_change: 'téléphone changé', recent_momo_change: 'Mobile Money changé',
+            recent_crypto_change: 'portefeuille crypto changé', fraud_engine_flag: 'compte signalé par le moteur de fraude',
+        };
+        const words = reasons.map(r => r.startsWith('other_country:') ? `connecté depuis ${r.split(':')[1]} (déclaré ${declared})` : label[r] ?? r);
+        const res = await openSupportCase({
+            type: 'abnormal_behavior', dedupKey: `auth_setup:${user._id}:${now.toISOString().slice(0, 10)}`, severity: reasons.includes('fraud_engine_flag') ? 'critical' : 'warning',
+            subject: { userId: String(user._id) },
+            summary: `Application d’authentification activée dans des conditions à vérifier : ${words.join(', ')}. Si le membre ne l’a pas fait lui-même, réinitialisez-la et gelez l’argent.`,
+            details: { rule: 'authenticator_setup_review', reasons, mode: memberAuthConfig.setupReview },
+            country: declared ?? undefined,
+        }).catch(() => null);
+        await MemberAuthModel.updateOne({ userId: user._id }, { $set: { setupReview: { reasons, at: now, caseFiled: !!res } } });
+        log.warn(`Authenticator setup for user ${user._id} sent to review (${reasons.join(', ')}).`);
+        return reasons;
+    }
+
     /** Step 1: the account password, then a code to the account's own e-mail (or WhatsApp). */
     async requestSetup(userId: string | Types.ObjectId, input: { password?: unknown }): Promise<{ sentTo: string }> {
         key();
+        await this.assertSetupRate(userId);
         const user = await activeUser(userId, true);
         if (await this.isEnabled(user._id)) throw new AppError('L’application d’authentification est déjà configurée sur votre compte.', 409);
         if (!userService.canReachOwnerForCode(user)) {
@@ -136,6 +186,7 @@ class MemberAuthService {
     /** Step 2: the code received → a new secret, shown as a QR code. */
     async startSetup(userId: string | Types.ObjectId, input: { code?: unknown }): Promise<{ qrDataUrl: string; secret: string; otpauthUrl: string }> {
         key();
+        await this.assertSetupRate(userId);
         const user = await activeUser(userId);
         if (await this.isEnabled(user._id)) throw new AppError('L’application d’authentification est déjà configurée sur votre compte.', 409);
         const code = typeof input.code === 'string' ? input.code.trim() : '';
@@ -160,6 +211,7 @@ class MemberAuthService {
     /** Step 3: the first code from the app turns it on and returns 10 backup codes (shown once). */
     async confirmSetup(userId: string | Types.ObjectId, input: { code?: unknown }): Promise<{ backupCodes: string[]; enrolledAt: string }> {
         key();
+        await this.assertSetupRate(userId);
         const user = await activeUser(userId);
         const a = await MemberAuthModel.findOne({ userId: user._id });
         if (a?.totpSecretEnc) throw new AppError('L’application d’authentification est déjà configurée sur votre compte.', 409);
@@ -184,9 +236,34 @@ class MemberAuthService {
         if (r.modifiedCount !== 1) throw new AppError('La configuration a déjà été terminée.', 409);
         log.info(`User ${user._id} set up an authenticator app.`);
         riskEvent('authenticator_change', user._id, { kind: 'setup' }); // Phase 4: a withdrawal soon after scores
+        // Plan item 1: withdrawals wait a while after setup (AUTHENTICATOR_SETUP_LOCK_HOURS, 0 = off).
+        // Never shortens a longer lock already running.
+        if (memberAuthConfig.setupLockHours > 0) {
+            const until = new Date(now.getTime() + memberAuthConfig.setupLockHours * 3_600_000);
+            await UserModel.updateOne(
+                { _id: user._id, $or: [{ withdrawalsLockedUntil: null }, { withdrawalsLockedUntil: { $exists: false } }, { withdrawalsLockedUntil: { $lt: until } }] },
+                { $set: { withdrawalsLockedUntil: until, withdrawalLockReason: 'authenticator_setup' } },
+            );
+        }
+        // Plan item 3: a risky setup goes to support (log mode: the setup stands).
+        void this.reviewSetup(user, now).catch(e => log.warn(`Setup review failed for user ${user._id}: ${e?.message ?? e}`));
         alert(user, 'Application d’authentification activée sur votre compte SBC',
             'L’application d’authentification vient d’être activée sur votre compte SBC. Elle vous sera demandée pour chaque retrait et pour changer votre numéro Mobile Money ou votre portefeuille crypto. Si ce n’était pas vous, changez votre mot de passe et contactez immédiatement le support.');
         return { backupCodes: codes, enrolledAt: now.toISOString() };
+    }
+
+    /**
+     * Security plan Phase 3, part 2: email change, phone change and password
+     * reset ask for the code only from members who set up the app (it is not
+     * mandatory for these yet). false = no app, nothing checked; true = checked.
+     * A missing code answers AuthenticatorCodeRequiredError (403), so the app
+     * shows the field; a wrong one counts like any other (lockouts).
+     */
+    async requireCodeIfEnabled(userId: string | Types.ObjectId, rawCode: unknown, action: AuthenticatorAction): Promise<boolean> {
+        if (!(await this.isEnabled(userId))) return false;
+        if (typeof rawCode !== 'string' || !rawCode.trim()) throw new AuthenticatorCodeRequiredError();
+        await this.verifyCode(userId, rawCode, action);
+        return true;
     }
 
     /**

@@ -19,6 +19,7 @@ export interface IMemberAuth extends Document {
     failures: number;
     failuresSince: Date | null;
     lockedUntil: Date | null;
+    setupReview?: { reasons: string[]; at: Date; caseFiled: boolean } | null;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -34,6 +35,8 @@ const MemberAuthSchema = new Schema<IMemberAuth>({
     failures: { type: Number, default: 0 },
     failuresSince: { type: Date, default: null },
     lockedUntil: { type: Date, default: null },
+    /** Phase 3 part 2: why this setup looked risky (support case filed), if it did. */
+    setupReview: { type: { _id: false, reasons: [String], at: Date, caseFiled: Boolean }, default: null },
 }, { timestamps: true });
 
 export const MemberAuthModel = model<IMemberAuth>('MemberAuth', MemberAuthSchema);

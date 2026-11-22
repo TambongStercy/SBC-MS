@@ -41,6 +41,12 @@ router.delete('/staff/:userId', superAdminOnly, adminAccessController.revokeStaf
 router.get('/activity', getActivityBoard as any);
 router.get('/activity/list', getActivityList as any);
 
+// --- Authenticator adoption (Security plan Phase 3 rollout; gateway module: dashboard) ---
+router.get('/security/authenticator-adoption', (async (req: any, res: any) => {
+    const { adoptionHistory } = await import('../../services/authenticator-adoption.service');
+    res.json({ success: true, data: await adoptionHistory(Number(req.query.days) || 30) });
+}) as any);
+
 // --- Dormant accounts (Security plan Phase 7; gateway module: finance) ---
 router.get('/dormant-accounts/summary', getDormantSummary as any);
 router.get('/dormant-accounts', getDormantList as any);
