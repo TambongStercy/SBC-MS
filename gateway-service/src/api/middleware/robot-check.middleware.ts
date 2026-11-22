@@ -6,7 +6,7 @@ import logger from '../../utils/logger';
 import { claimOnce } from '../../utils/redis';
 import { doualaDay } from './activity-signals.middleware';
 import { verifyToken } from './admin-allowlist.middleware';
-import { browserOf, noteRobotAutomation } from './browser-checks.middleware';
+import { browserOf, noteRobotAutomation, noteTorUse } from './browser-checks.middleware';
 
 const log = logger.getLogger('RobotCheck');
 
@@ -200,3 +200,20 @@ export const robotCheck = async (req: Request, res: Response, next: NextFunction
 };
 
 export const _robotBuffer = buffer;
+
+
+/**
+ * Security plan Phase 4 (2026-11-22): a member doing a protected action (the same list: sign-in,
+ * withdrawal, payout or contact change, authenticator setup…) through Tor goes to the fraud engine
+ * (rule tor_network). Cloudflare marks Tor exit nodes with the country T1, which ipGeo keeps.
+ * Always on, whatever ROBOT_CHECK says; no I/O on the request (the feed flushes every minute).
+ */
+export const torSignal = (req: Request, _res: Response, next: NextFunction) => {
+    try {
+        if (header(req, 'x-sbc-geo').trim().toUpperCase() === 'T1' && actionFor(req.method, req.originalUrl)) {
+            const userId = memberOf(req);
+            if (userId) noteTorUse(userId, doualaDay(Date.now()));
+        }
+    } catch { /* a signal never blocks */ }
+    next();
+};

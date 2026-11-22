@@ -11,7 +11,7 @@ import { activitySignals, startSignalsFlush } from './api/middleware/activity-si
 import { ipGeo } from './api/middleware/ip-geo.middleware';
 import { ipGeoStats, startIpGeo } from './services/ip-geo';
 import { browserChecks, startBrowserChecksFlush } from './api/middleware/browser-checks.middleware';
-import { altchaChallenge, robotCheck, startRobotChecksFlush } from './api/middleware/robot-check.middleware';
+import { altchaChallenge, robotCheck, startRobotChecksFlush, torSignal } from './api/middleware/robot-check.middleware';
 import { httpMetrics, metricsHandler } from './utils/metrics';
 import './utils/host-metrics';
 import './utils/backup-metrics';
@@ -61,6 +61,7 @@ startBrowserChecksFlush();
 // Phase 9 rule 3: anti-robot check (ALTCHA, self-hosted) on the sensitive actions
 // (off unless ROBOT_CHECK=log|enforce and ALTCHA_HMAC_KEY is set).
 app.get('/api/altcha/challenge', altchaChallenge);
+app.use(torSignal); // Phase 4: protected actions through Tor → fraud engine
 app.use(robotCheck);
 startRobotChecksFlush();
 

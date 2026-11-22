@@ -55,6 +55,7 @@ const main = async () => {
 
     const app = express();
     app.get('/api/altcha/challenge', rc.altchaChallenge);
+    app.use(rc.torSignal);
     app.use(rc.robotCheck);
     app.use((_req, res) => { res.json({ reached: true }); }); // stands for the proxied service
     const srv = app.listen(0);
@@ -120,6 +121,14 @@ const main = async () => {
     check('member forged answers → fraud-engine feed (robot: 2)', auto?.robot === 2);
     await rc.flushRobotChecks();
     check('flushed to user-service with the service secret, buffer emptied', received.length === rows.length && rc._robotBuffer.size === 0);
+    // Tor (Cloudflare T1) on a protected action by a signed-in member → the fraud-engine feed, whatever ROBOT_CHECK
+    const U2 = '6afffd2affe32a63ea13c482';
+    const m2 = { Authorization: `Bearer ${token({ userId: U2, role: 'user' })}` };
+    await post('/api/transactions/withdrawal/initiate', { ...m2, 'X-SBC-Geo': 'T1' });
+    await post('/api/users/verify-otp', { ...m2, 'X-SBC-Geo': 'T1' }); // not a protected action
+    await post('/api/transactions/withdrawal/initiate', { ...m2, 'X-SBC-Geo': 'CM' });
+    const torRow = [...bc._automationBuffer.values()].find(x => x.userId === U2);
+    check('Tor on a protected action → feed tor: 1 (unprotected route and a normal country ignored)', torRow?.tor === 1, JSON.stringify(torRow));
 
     // ---- enforce ----
     process.env.ROBOT_CHECK = 'enforce';
