@@ -9,6 +9,7 @@ import { flushOutbox } from './services/support.client';
 import { startKycLoop, stopKycLoop } from './services/kyc.service';
 import { closeSources } from './lib/sources';
 import { startLiveLoop, stopLiveLoop } from './services/live.service';
+import { httpMetrics, metricsHandler } from './utils/metrics';
 
 const log = childLogger('Server');
 
@@ -16,6 +17,8 @@ export function createApp() {
     const app = express();
     app.disable('x-powered-by');
     app.set('trust proxy', 'loopback');
+    app.use(httpMetrics);
+    app.get('/metrics', (req, res) => { void metricsHandler(req, res); });
     app.use(express.json({ limit: '64kb' }));
     app.use(routes());
     app.use((_req, res) => res.status(404).json({ success: false, message: 'Not found' }));

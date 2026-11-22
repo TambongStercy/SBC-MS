@@ -4,6 +4,7 @@ import TransactionModel, { ITransaction, TransactionStatus, TransactionType } fr
 import { userServiceClient } from '../services/clients/user.service.client';
 import { openSupportCase, SupportCaseInput } from '../services/clients/support.service.client';
 import { settleCompletedWithdrawal, releaseWithdrawalReservation } from '../services/withdrawal-lifecycle';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('FinanceReconciliation');
 
@@ -156,7 +157,7 @@ class FinanceReconciliationJob {
             if (this.running) return;
             this.running = true;
             try {
-                await runFinanceReconciliation();
+                await timeJob('finance_reconciliation', () => runFinanceReconciliation());
             } catch (err: any) {
                 log.error(`Finance reconciliation failed: ${err?.message ?? err}`);
             } finally {

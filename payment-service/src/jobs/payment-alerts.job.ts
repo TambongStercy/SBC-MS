@@ -4,6 +4,7 @@ import PaymentIntentModel from '../database/models/PaymentIntent';
 import PaymentAlertModel, { PaymentAlertKind } from '../database/models/PaymentAlert';
 import { PaymentStatus } from '../database/interfaces/IPaymentIntent';
 import notificationServiceClient from '../services/clients/notification.service.client';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('PaymentAlerts');
 
@@ -209,7 +210,7 @@ class PaymentAlertsJob {
             if (this.running) return;
             this.running = true;
             try {
-                await runPaymentAlerts();
+                await timeJob('payment_alerts', () => runPaymentAlerts());
             } catch (e: any) {
                 log.error(`Payment alerts run failed: ${e?.message}`);
             } finally {

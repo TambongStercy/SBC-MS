@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import logger from '../utils/logger';
 import PaymentIntentModel from '../database/models/PaymentIntent';
 import { PaymentStatus } from '../database/interfaces/IPaymentIntent';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('PayinArchive');
 
@@ -94,7 +95,7 @@ class PayinArchiveJob {
             if (this.running) return;
             this.running = true;
             try {
-                const r = await archiveAbandoned();
+                const r = await timeJob('payin_archive', () => archiveAbandoned());
                 log.info(`Abandoned payments archived: ${r.moved} moved, ${r.keptBack} picked up meanwhile, ${r.candidates} were eligible.`);
             } catch (e: any) {
                 log.error(`Abandoned-payment archive failed: ${e?.message}`);

@@ -8,6 +8,7 @@ import meRoutes from './api/routes/me.routes';
 import internalRoutes from './api/routes/internal.routes';
 import { health } from './api/routes/health';
 import publicRoutes from './api/routes/public.routes';
+import { httpMetrics, metricsHandler } from './utils/metrics';
 
 /** Everything lives under /api/support (the gateway keeps the path). Same origin: no CORS. */
 export function createApp(): Application {
@@ -15,6 +16,8 @@ export function createApp(): Application {
     app.disable('x-powered-by');
     app.set('trust proxy', true);
     app.use(requestId);
+    app.use(httpMetrics);
+    app.get('/metrics', (req, res) => { void metricsHandler(req, res); });
     app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } }));
     app.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
     app.use(express.json({ limit: '200kb' }));

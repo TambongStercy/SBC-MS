@@ -20,9 +20,15 @@ import { activityRollupJob } from './jobs/activity-rollup.job';
 import { dormancyJob } from './jobs/dormancy.job';
 import { authenticatorAdoptionJob } from './jobs/authenticator-adoption.job';
 import { startSupportCaseOutbox } from './services/clients/support.service.client';
+import { httpMetrics, metricsHandler } from './utils/metrics';
+import './utils/mongo-metrics';
 
 // Create Express server
 const app: Express = express();
+
+// Metrics (Security plan item 10): every request timed by route pattern; /metrics behind METRICS_TOKEN.
+app.use(httpMetrics);
+app.get('/metrics', (req, res) => { void metricsHandler(req, res); });
 const log = logger.getLogger('UserService'); // Create logger instance
 
 

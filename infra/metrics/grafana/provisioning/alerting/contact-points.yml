@@ -1,0 +1,17 @@
+# Alerts go to ntfy (phone notifications). NTFY_URL (e.g. https://ntfy.sh or our own server),
+# NTFY_TOPIC (long and random: on a public server the topic is the only secret) and NTFY_TOKEN
+# (only for a protected topic) come from /opt/metrics/.env. ntfy builds the notification from
+# Grafana's webhook body with its templates (tpl=yes): title, message, and a high priority while firing.
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: ntfy
+    receivers:
+      - uid: sbc-ntfy
+        type: webhook
+        disableResolveMessage: false
+        settings:
+          url: "$NTFY_URL/$NTFY_TOPIC?tpl=yes&t=%7B%7B.title%7D%7D&m=%7B%7B.message%7D%7D&p=%7B%7Bif%20eq%20.status%20%22firing%22%7D%7Dhigh%7B%7Belse%7D%7Ddefault%7B%7Bend%7D%7D&tags=rotating_light"
+          httpMethod: POST
+          authorization_scheme: Bearer
+          authorization_credentials: "$NTFY_TOKEN"
