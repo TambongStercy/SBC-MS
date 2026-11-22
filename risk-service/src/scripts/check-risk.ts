@@ -80,6 +80,32 @@ const main = async () => {
     check('shared-number case: critical (110,000 F), subject = biggest withdrawer, country, no full number', sharedCase?.severity === 'critical' && sharedCase.amount === 110000 && sharedCase.subject.userId === 'A' && sharedCase.country === 'CM' && !JSON.stringify(sharedCase).includes('699000001'));
     check('cases: shared number, self-referral, multi-account (F has 1 quick withdrawal: no case)', r.stats.casesByType.shared_payout_number === 1 && r.stats.casesByType.self_referral === 1 && r.stats.casesByType.multi_account === 1 && !r.stats.casesByType.abnormal_behavior, JSON.stringify(r.stats.casesByType));
     check('identifiers stored hashed with a 3-digit tail', r.identifiers.every(i => /^[a-f0-9]{40}$/.test(i.hash) && i.tail.length === 3));
+    // ---- inactive_recruits (2026-11-22): recruits activated, then never signed in again ----
+    {
+        const now = new Date('2027-02-01T00:00:00Z');
+        const d = (s: string) => new Date(s);
+        const activity = new Map<string, { activatedAt: Date | null; lastSignInAt: Date | null }>();
+        const referrals: { referrer: string; referred: string; level: number }[] = [];
+        // SP1: 6 recruits activated in December, 5 never back, 1 came back → 5/6 silent → flagged
+        for (let i = 0; i < 6; i++) { const r = `SP1r${i}`; referrals.push({ referrer: 'SP1', referred: r, level: 1 }); activity.set(r, { activatedAt: d('2026-12-01'), lastSignInAt: i === 0 ? d('2026-12-20') : d('2026-12-01T05:00:00Z') }); }
+        // SP2: 10 recruits, 4 silent → under 5 and under 70 % → nothing
+        for (let i = 0; i < 10; i++) { const r = `SP2r${i}`; referrals.push({ referrer: 'SP2', referred: r, level: 1 }); activity.set(r, { activatedAt: d('2026-12-01'), lastSignInAt: i < 4 ? null : d('2027-01-10') }); }
+        // SP3: 6 silent recruits activated BEFORE sign-ins were recorded → not judged
+        for (let i = 0; i < 6; i++) { const r = `SP3r${i}`; referrals.push({ referrer: 'SP3', referred: r, level: 1 }); activity.set(r, { activatedAt: d('2026-10-01'), lastSignInAt: null }); }
+        // SP4: 6 silent recruits activated only 10 days ago → too early
+        for (let i = 0; i < 6; i++) { const r = `SP4r${i}`; referrals.push({ referrer: 'SP4', referred: r, level: 1 }); activity.set(r, { activatedAt: d('2027-01-22'), lastSignInAt: null }); }
+        // SP5: level-2 recruits do not count
+        for (let i = 0; i < 6; i++) { const r = `SP5r${i}`; referrals.push({ referrer: 'SP5', referred: r, level: 2 }); activity.set(r, { activatedAt: d('2026-12-01'), lastSignInAt: null }); }
+        const ir = analyse({ identifiers: [], referrals, withdrawals: [], commissions: [], countries: new Map([['SP1', 'CM']]), activity }, { ...cfg, now });
+        const sp = (id: string) => ir.members.find(m => m.userId === id);
+        check('inactive_recruits: 5 of 6 activated recruits never back → sponsor 25 + multi_account case', sp('SP1')?.score === 25 && /5 filleul\(s\) activé\(s\) sur 6/.test(sp('SP1')?.reasons[0]?.detail ?? '')
+            && ir.cases.some(c => c.dedupKey === 'risk:inactive_recruits:SP1' && c.type === 'multi_account' && c.country === 'CM'), JSON.stringify(sp('SP1')?.reasons));
+        check('inactive_recruits: 4 of 10 → nothing; before sign-in tracking → nothing; < 30 days → nothing; level 2 → nothing',
+            !sp('SP2') && !sp('SP3') && !sp('SP4') && !sp('SP5'));
+        const offIr = analyse({ identifiers: [], referrals, withdrawals: [], commissions: [], countries: new Map(), activity }, { ...cfg, now, disabledRules: new Set(['inactive_recruits']) });
+        check('inactive_recruits can be disabled', !offIr.members.some(m => m.userId === 'SP1'));
+    }
+
     const off = analyse(facts(), { ...cfg, disabledRules: new Set(['self_referral']) });
     check('RISK_DISABLED_RULES=self_referral → A scores 40 → require_code', off.members.find(x => x.userId === 'A')?.score === 40 && off.members.find(x => x.userId === 'A')?.decision === 'require_code');
 

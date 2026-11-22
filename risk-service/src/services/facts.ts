@@ -15,7 +15,7 @@ const USD_TO_XAF = 500;
 const oid = (id: string) => (Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null);
 
 export async function collectFacts(coll: CollectionOf, opts: { since?: Date | null; scope?: string[] } = {}): Promise<Facts> {
-    const facts: Facts = { identifiers: [], referrals: [], withdrawals: [], commissions: [], countries: new Map() };
+    const facts: Facts = { identifiers: [], referrals: [], withdrawals: [], commissions: [], countries: new Map(), activity: new Map() };
     const known = new Set<string>();
     const scope = opts.scope ? [...new Set(opts.scope)] : null;
     const oids = scope ? scope.map(oid).filter((x): x is Types.ObjectId => !!x) : [];
@@ -25,9 +25,11 @@ export async function collectFacts(coll: CollectionOf, opts: { since?: Date | nu
 
     // users: profile MoMo, country
     const uq = scope ? { _id: { $in: oids } } : {};
-    for await (const u of coll('users', 'users').find(uq, { projection: { momoNumber: 1, country: 1 } }).batchSize(5000) as any) {
+    for await (const u of coll('users', 'users').find(uq, { projection: { momoNumber: 1, country: 1, lastLoginAt: 1, 'dormancy.lastSignInAt': 1 } }).batchSize(5000) as any) {
         const id = String(u._id);
         known.add(id);
+        const seen = [u.lastLoginAt, u.dormancy?.lastSignInAt].map(d => (d ? new Date(d).getTime() : 0)).reduce((a, b) => Math.max(a, b), 0);
+        facts.activity!.set(id, { activatedAt: null, lastSignInAt: seen ? new Date(seen) : null });
         if (u.country) facts.countries.set(id, String(u.country).toUpperCase());
         const k = phoneKey(u.momoNumber);
         if (k) facts.identifiers.push({ kind: 'profile_momo', value: k, userId: id });
@@ -37,6 +39,15 @@ export async function collectFacts(coll: CollectionOf, opts: { since?: Date | nu
     const rq: any = { referralLevel: { $gte: 1, $lte: 3 }, ...(scope ? { referrer: anyId, referredUser: anyId } : {}) };
     for await (const r of coll('users', 'referrals').find(rq, { projection: { referrer: 1, referredUser: 1, referralLevel: 1 } }).batchSize(10000) as any) {
         if (r.referrer && r.referredUser) facts.referrals.push({ referrer: String(r.referrer), referred: String(r.referredUser), level: r.referralLevel });
+    }
+
+    // first CLASSIQUE/CIBLE activation since member sign-ins are recorded (inactive_recruits)
+    const aq: any = { subscriptionType: { $in: ['CLASSIQUE', 'CIBLE'] }, startDate: { $gte: new Date('2026-11-21T00:00:00Z') }, ...(scope ? { user: anyId } : {}) };
+    for await (const sub of coll('users', 'subscriptions').find(aq, { projection: { user: 1, startDate: 1 } }).batchSize(10000) as any) {
+        const id = String(sub.user);
+        const a = facts.activity!.get(id);
+        const at = new Date(sub.startDate);
+        if (a && (!a.activatedAt || at < a.activatedAt)) a.activatedAt = at;
     }
 
     // devices (only members who consented to the signals)

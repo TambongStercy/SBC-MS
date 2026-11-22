@@ -850,6 +850,12 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
   - self-referral in a linked group: 50;
   - multi-account: 20–40;
   - quick withdrawal: 10.
+  - inactive recruits (2026-11-22): 25. A sponsor whose level-1 recruits were activated (first
+    CLASSIQUE/CIBLE) and never signed in again after the day of activation: at least 5 such
+    recruits, and at least 70 % of those activated 30 days ago or more. Only activations since
+    2026-11-21 count, when member sign-ins started being recorded (`lastLoginAt`,
+    `dormancy.lastSignInAt`), so it can fire from late December 2026 at the earliest. It files a
+    `multi_account` case.
   - Score 40 = `require_code`, 70 = `hold`.
 - **Look-back:** `dist/scripts/lookback.js` (dry run; `--apply`). It only reads the source
   databases. Its cases are sent to support with `alert: false` (new support intake option: filed
