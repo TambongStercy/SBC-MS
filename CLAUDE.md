@@ -799,17 +799,24 @@ Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
 - **user-service** sends a `signup` / `contact_change` event (`utils/risk-event.ts`, Phase 4 part 2;
   was `kyc-hint.ts`) after `register` and in `alertContactChange`; risk-service queues the check
   (not for crypto). `KYC_HINTS_DISABLED=true` or `RISK_EVENTS_DISABLED=true` stops it.
-- **risk-service** `services/kyc.service.ts`: `kycqueue` (one row per member, live first) → one
-  batch a second (`KYC_PER_SECOND`, 50) → `kycresults` (signals, reasons, score, band; HMACs only,
-  TTL 12 months). It reads members **read-only** from `USERS_MONGODB_URI`. A member whose checked fields
-  are unchanged (fingerprint) is not resent. The nightly refresh (02:05 Douala) queues members never
-  checked or changed; backfill rows run 02:00–05:00 only. Off unless `KYC_WORKER_URL`,
-  `KYC_SHARED_SECRET` (≥ 32 chars) and `USERS_MONGODB_URI` are set.
+- **Runs entirely on the secondary server since 2026-11-22** (Sterling). kyc-worker (`app/store.py`)
+  holds the queue (fields deleted once checked, `secure_delete`) and the results (signals, reasons,
+  score, band, HMACs only; 12 months) in its SQLite; **kyc-runner** (second container, `python -m
+  app.runner`) checks one batch a second (`KYC_PER_SECOND`, 50), backfill 02:00–05:00 Douala only,
+  and finds mailbox variants. Signed endpoints: `/v1/enqueue`, `/v1/needed`, `/v1/results`,
+  `/v1/status` (and `/v1/level1`).
+- **risk-service** `services/kyc.service.ts` is only a feeder: `kycqueue` is an outbox (no
+  fields) forwarded every second with the members' fields read **read-only** from
+  `USERS_MONGODB_URI`; the nightly sync (02:05 Douala) sends ids + fingerprints, then the fields
+  of the members the secondary needs. The member view reads `/v1/results` (1.5 s); the old main
+  `kycresults` is kept, no longer written, shown (`source: 'archive'`) only while the secondary
+  has nothing. Off unless `KYC_WORKER_URL`, `KYC_SHARED_SECRET` (≥ 32 chars) and
+  `USERS_MONGODB_URI` are set.
   - Routes: `POST /api/risk/internal/kyc/hint`, `GET /api/risk/internal/kyc/status`, and `kyc` in
     the member view.
 - The score feeds no decision yet (Phase 4 is silent). Level 2 (SEON/Holehe) and level 3 (Smile ID)
   wait for decisions.
-- Checks: `risk-service/src/scripts/check-kyc.ts` (fake worker; `KYC_REAL_WORKER_URL` for the real one).
+- Checks: `risk-service/src/scripts/check-kyc.ts` (fake secondary; `KYC_REAL_WORKER_URL` for a real one), kyc-worker `pytest`.
 
 ### Support integration (Security plan Phase 5, 2026-11-21)
 
