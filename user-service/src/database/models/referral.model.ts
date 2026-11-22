@@ -20,7 +20,8 @@ const ReferralSchema = new Schema<IReferral>(
             type: Schema.Types.ObjectId,
             ref: 'User',
             required: true,
-            index: true,
+            // No single index (Security plan Phase 0 item 5, 2026-11-22): { referrer } is the prefix of
+            // the compound indexes below, so referrer_1 only cost every write.
         },
         referredUser: {
             type: Schema.Types.ObjectId,
@@ -38,7 +39,7 @@ const ReferralSchema = new Schema<IReferral>(
         archived: {
             type: Boolean,
             default: false,
-            index: true,
+            // No single index (same reason): prefix of { archived, referralLevel, createdAt, referrer }.
         },
         archivedAt: {
             type: Date,
