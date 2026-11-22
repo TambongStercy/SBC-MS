@@ -918,6 +918,8 @@ export class UserController {
                 ipRange: ipRange(req.ip),
                 userAgent: String(req.headers['user-agent'] || '').slice(0, 300) || undefined,
                 device: typeof req.headers['x-sbc-device'] === 'string' ? req.headers['x-sbc-device'] : undefined,
+                // network number from the gateway's own lookup (free IP files): hosting/VPN rule
+                asn: Number(req.headers['x-sbc-asn']) || undefined,
             } : {});
         } catch (error: any) {
             log.error('Error registering a new user', error);
