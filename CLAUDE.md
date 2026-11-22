@@ -524,13 +524,18 @@ push), so a hijacker cannot silence it.
   and the money stays reserved. So **the old webhook-simulation pattern (rule 7 above) no
   longer works for MoneyFusion**: use Mark Completed / Mark Failed or the support
   `regularize` route. A provider-confirmed success still completes a FAILED withdrawal (debit
-  once, divergence case).
+  once, divergence case). A real payout webhook (prod, 2026-11-21) is
+  `{event, tokenPay, montant: <our gross>, numeroRetrait: "6XXXXXXXX", moyen, webhook_url,
+  createdAt}`: lowercase `montant`, number in `numeroRetrait`. Until 2026-11-22 the number
+  was not read, so strict mode would have sent every real MoneyFusion payout to review.
 - **MoneyFusion payin webhooks are hints too:** the status answer decides, and a
-  "paid" applies only if its `Montant` ≥ the amount sent (`metadata.mfPayinAmount`,
-  1 F tolerance) and its session matches; otherwise review + case. **Check one
-  real MoneyFusion payin before prod:** the Phase 10 notes call `Montant` "net of
-  its fee"; if MoneyFusion's status answer really reports a net amount, every
-  real payin would go to review. Sandbox payins skip this check.
+  "paid" applies only if `Montant + frais` ≥ the amount sent (`metadata.mfPayinAmount`,
+  1 F tolerance) and its session matches; otherwise review + case. **Checked on prod
+  2026-11-22:** the status answer's `Montant` is net of MoneyFusion's 3% fee (2,150 F →
+  `Montant: 2085.5, frais: 64.5`), so `moneyFusionPayinGross` adds `frais` back
+  (`Montant` alone would have sent every real payin to review). `paidAmount` stays the
+  net `Montant`. Sandbox payins skip this check. Test payloads must use these real
+  shapes (`check-support-money.ts`).
 - **Deploy order:** user-service first (wallet routes `/api/users/internal/wallet/*`), then
   payment-service **immediately after, back to back**. Against an older user-service,
   payment-service refuses withdrawals with a 503 ("mise à jour en cours") — nothing is paid

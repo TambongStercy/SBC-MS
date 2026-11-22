@@ -6,6 +6,7 @@ import * as sandbox from './sandbox.service';
 import { cinetpayPayoutService } from './cinetpay-payout.service';
 import { feexPayPayoutService } from './feexpay-payout.service';
 import nowPaymentsService from './nowpayments.service';
+import { moneyFusionPayinGross } from './moneyfusion.service';
 import { ITransaction } from '../database/models/transaction.model';
 
 const log = logger.getLogger('ProviderVerification');
@@ -107,7 +108,8 @@ export async function verifyPayinAtProvider(gateway: string, ref: string, opts: 
                     : { ...base, result: 'not_found', providerStatus: 'NOT_FOUND' };
             }
             case 'moneyfusion': {
-                const res = await axios.get(`https://www.pay.moneyfusion.net/paiementNotif/${encodeURIComponent(ref)}`, { timeout: 15000 });
+                // www.pay.moneyfusion.net fails the TLS handshake (config.moneyfusion.statusUrl).
+                const res = await axios.get(`${config.moneyfusion.statusUrl}/${encodeURIComponent(ref)}`, { timeout: 15000 });
                 if (res.data?.statut !== true || !res.data?.data) return { ...base, result: 'not_found', providerStatus: 'NOT_FOUND' };
                 const data = res.data.data;
                 const st = String(data.statut ?? data.status ?? '').toLowerCase();
@@ -115,7 +117,8 @@ export async function verifyPayinAtProvider(gateway: string, ref: string, opts: 
                 return {
                     ...base, providerStatus: st || 'unknown',
                     result: ['paid', 'success', 'completed'].includes(st) ? 'confirmed' : ['failure', 'cancelled', 'no paid'].includes(st) ? 'failed' : 'pending',
-                    amount: Number(data.Montant) || undefined,
+                    // Montant is net of MoneyFusion's fee; Montant + frais is what the payer paid.
+                    amount: moneyFusionPayinGross(data) || undefined,
                     details: {
                         personalInfo: info ? { userId: info.userId ?? null, sessionId: info.sessionId ?? null } : null, raw: data,
                         relatedIds: uniq([ref, data.numeroTransaction]),
