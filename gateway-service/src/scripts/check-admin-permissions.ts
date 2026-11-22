@@ -82,9 +82,10 @@ is('OPTIONS', '/api/users/admin/users', null);
 
 // --- middleware ---
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const sign = (userId: string, role: string) => {
+/** asid: the admin session (admin sign-in); null = a member-app token. */
+const sign = (userId: string, role: string, asid: string | null = 'live-session') => {
     const h = b64({ alg: 'HS256', typ: 'JWT' });
-    const p = b64({ userId, id: userId, role, exp: Math.floor(Date.now() / 1000) + 3600 });
+    const p = b64({ userId, id: userId, role, exp: Math.floor(Date.now() / 1000) + 3600, ...(asid ? { asid } : {}) });
     const s = crypto.createHmac('sha256', config.jwt.secret).update(`${h}.${p}`).digest('base64url');
     return `${h}.${p}.${s}`;
 };
@@ -98,11 +99,14 @@ const ACCESS: Record<string, unknown> = {
 };
 let lookups = 0;
 let userServiceDown = false;
+let endedRevoked = false;
 (globalThis as any).fetch = async (url: string) => {
     lookups++;
     if (userServiceDown) throw new Error('ECONNREFUSED');
     const id = decodeURIComponent(url.split('/internal/')[1].split('/')[0]);
-    const data = ACCESS[id];
+    const sid = new URL(url, 'http://x').searchParams.get('sid');
+    const base = ACCESS[id] as Record<string, unknown> | undefined;
+    const data = base && { ...base, session: sid === 'live-session' ? 'active' : sid === 'ended-session' && endedRevoked ? 'revoked' : sid === 'ended-session' ? 'active' : 'missing' };
     return { ok: !!data, status: data ? 200 : 404, json: async () => ({ success: true, data }) };
 };
 
@@ -138,6 +142,20 @@ const call = async (method: string, url: string, token?: string): Promise<number
     await call('GET', '/api/users/admin/users', t('s1', 'staff'));
     await call('GET', '/api/users/admin/users', t('s1', 'staff'));
     check('access cached between calls (one lookup)', lookups === 1);
+
+    // --- admin sessions (authenticator sign-in, 2026-11-19) ---
+    clearAccessCache();
+    check('member-app token of a super admin (no admin session) → 401', await call('GET', '/api/users/admin/users', sign('a1', 'admin', null)) === 401);
+    check('unknown admin session → 401', await call('GET', '/api/users/admin/users', sign('a1', 'admin', 'forged')) === 401);
+    check('member-app token still works on member paths', await call('GET', '/api/users/me', sign('a1', 'admin', null)) === 200);
+    check('sign-in steps need no token', await call('POST', '/api/users/admin/login/totp') === 200 && await call('POST', '/api/users/admin/login/enroll/confirm') === 200);
+    check('own security page readable by any staff session', await call('GET', '/api/users/admin/me/security', t('s2', 'staff')) === 200);
+    check('reset of an authenticator is super admin only', await call('POST', '/api/users/admin/staff/x/reset-authenticator', t('s1', 'staff')) === 403);
+    const ended = sign('a1', 'admin', 'ended-session');
+    check('open session passes', await call('GET', '/api/users/admin/users', ended) === 200);
+    check('sign-out passes', await call('POST', '/api/users/admin/logout', ended) === 200);
+    endedRevoked = true;
+    check('after sign-out the same token is refused at once (cache dropped)', await call('GET', '/api/users/admin/users', ended) === 401);
 
     clearAccessCache(); userServiceDown = true;
     check('user-service down → 503, never open', await call('GET', '/api/users/admin/users', t('s1', 'staff')) === 503);

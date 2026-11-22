@@ -4,6 +4,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth.middlewar
 import { authorize } from '../middleware/rbac.middleware'; // Assuming RBAC middleware exists
 import { UserRole, ADMIN_CAPABLE_ROLES } from '../../database/models/user.model'; // Import UserRole enum
 import { adminAccessController } from '../controllers/admin-access.controller';
+import { adminAuthController, requireAdminSession } from '../controllers/admin-auth.controller';
 import { protectAdminAccounts } from '../middleware/protect-admin-accounts.middleware';
 import { adminLimiter, strictLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
 import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
@@ -15,8 +16,13 @@ const router = Router();
 
 // --- Public Admin Routes (e.g., Login) ---
 // Apply strict limiter to admin login
-router.post('/login', strictLimiter, adminController.loginAdmin);
-router.post('/login/verify-otp', strictLimiter, adminController.verifyAdminLoginOtp);
+// Password, then the authenticator app (first time: the emailed code, then the
+// authenticator is set up). services/admin-auth.service.ts
+router.post('/login', strictLimiter, adminAuthController.login);
+router.post('/login/email-code', strictLimiter, adminAuthController.verifyEmailCode);
+router.post('/login/enroll/start', strictLimiter, adminAuthController.enrollStart);
+router.post('/login/enroll/confirm', strictLimiter, adminAuthController.enrollConfirm);
+router.post('/login/totp', strictLimiter, adminAuthController.completeTotp);
 
 // --- Protected Admin Routes ---
 // Apply authentication and admin authorization middleware AFTER public routes
@@ -26,6 +32,8 @@ router.use(authenticate as any);
 // and whether read or write (config/admin-modules.ts). Team and role changes
 // below stay super-admin only here too.
 router.use(authorize(ADMIN_CAPABLE_ROLES) as any);
+// Only a token from the admin sign-in, on a session that is still open (not a member-app token).
+router.use(requireAdminSession as any);
 router.use(adminLimiter); // Apply general admin limiter to all subsequent routes
 const superAdminOnly = authorize([UserRole.ADMIN]) as any;
 // Changes to an admin-team account (admin, staff, ...) stay super-admin only.
@@ -33,6 +41,10 @@ const notOnAdminAccounts = protectAdminAccounts() as any;
 
 // --- Admin access (per-module rights) ---
 router.get('/me/access', adminAccessController.getMyAccess as any);
+router.post('/logout', adminAuthController.logout as any);
+router.get('/me/security', adminAuthController.mySecurity as any);
+router.post('/me/backup-codes', strictLimiter, adminAuthController.regenerateBackupCodes as any);
+router.post('/staff/:userId/reset-authenticator', superAdminOnly, adminAuthController.resetAuthenticator as any);
 router.get('/staff', superAdminOnly, adminAccessController.listStaff as any);
 router.put('/staff/:userId', superAdminOnly, adminAccessController.setStaffAccess as any);
 router.delete('/staff/:userId', superAdminOnly, adminAccessController.revokeStaff as any);

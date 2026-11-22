@@ -34,7 +34,8 @@ const RULES: Rule[] = [
     // path such as /api/support/desk/.../admin must never fall into the staff gate.
     { pattern: /^\/api\/support(\/|$)/, module: 'public' },
     // --- user-service ---
-    { pattern: /^\/api\/users\/admin\/me\/access$/, module: 'self' },
+    { pattern: /^\/api\/users\/admin\/me\/(access|security|backup-codes)$/, module: 'self' },
+    { pattern: /^\/api\/users\/admin\/logout$/, module: 'self' },
     { pattern: /^\/api\/users\/admin\/staff(\/|$)/, module: 'staff' },
     { pattern: /^\/api\/users\/admin\/users\/[^/]+\/role$/, module: 'staff' },
     { pattern: /^\/api\/users\/admin\/fix-referrals$/, module: 'staff' },

@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { DELEGABLE_MODULES, effectivePermissions, sanitizePermissions } from '../../config/admin-modules';
 import { toPlainPermissions } from '../../services/user.service';
 import logger from '../../utils/logger';
+import { checkSession, revokeAllSessions, securityStatus } from '../../services/admin-auth.service';
 
 const log = logger.getLogger('AdminAccessController');
 
@@ -45,9 +46,13 @@ class AdminAccessController {
                 res.status(404).json({ success: false, message: 'User not found' });
                 return;
             }
+            // ?sid= : the admin session the token carries (admin-auth.service). The
+            // gateway refuses the call unless it is 'active'.
+            const sid = typeof req.query.sid === 'string' ? req.query.sid : '';
+            const session = sid ? await checkSession(userId, sid) : 'missing';
             res.status(200).json({
                 success: true,
-                data: { role: user.role, blocked: !!user.blocked, permissions: (user as any).blocked ? {} : accessOf(user as any) },
+                data: { role: user.role, blocked: !!user.blocked, permissions: (user as any).blocked ? {} : accessOf(user as any), session },
             });
         } catch (error: any) {
             log.error(`Error reading admin access for ${userId}: ${error.message}`);
@@ -75,7 +80,11 @@ class AdminAccessController {
         try {
             const users = await UserModel.find({ role: { $in: ADMIN_CAPABLE_ROLES } })
                 .select(STAFF_FIELDS).sort({ role: 1, name: 1 }).lean();
-            res.status(200).json({ success: true, data: { staff: users.map(staffView), modules: DELEGABLE_MODULES } });
+            const security = await securityStatus(users.map(u => String(u._id)));
+            res.status(200).json({
+                success: true,
+                data: { staff: users.map(u => ({ ...staffView(u), security: security[String(u._id)] })), modules: DELEGABLE_MODULES },
+            });
         } catch (error: any) {
             log.error(`Error listing staff: ${error.message}`);
             res.status(500).json({ success: false, message: 'Error listing staff' });
@@ -135,6 +144,7 @@ class AdminAccessController {
                 return;
             }
             await UserModel.updateOne({ _id: userId }, { $set: { role: UserRole.USER }, $unset: { adminPermissions: 1 } });
+            await revokeAllSessions(userId, `admin access removed by ${req.user?.userId}`);
             log.info(`Admin ${req.user?.userId} revoked admin access of ${user.email}`);
             res.status(200).json({ success: true });
         } catch (error: any) {

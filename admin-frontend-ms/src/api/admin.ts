@@ -18,7 +18,8 @@ export const signInAdmin = async (email: string, password: string) => {
 // Admin Logout
 export const logoutAdmin = async () => {
     try {
-        const response = await apiClient.post('/logout');
+        // Ends the admin session on the server (the token stops working at once).
+        const response = await apiClient.post('/users/admin/logout');
 
         // Clear stored credentials regardless of API response
         localStorage.removeItem('adminToken');
