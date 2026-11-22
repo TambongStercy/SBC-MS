@@ -1,4 +1,4 @@
-# Security plan Phase 9: browser-only access, part 1 (log-only)
+# Security plan Phase 9: browser-only access, parts 1 and 2 (log-only)
 
 Status (2026-11-21): signed requests are built and run in **log-only** mode: every check is
 recorded and nothing is refused.
@@ -60,10 +60,60 @@ gateway.
 shows the share of member requests that would fail, per browser and Android version, with the
 reasons.
 
+## Part 2 (2026-11-22, still log-only)
+
+### Body check
+
+- `b` is now compared with the SHA-256 of the bytes the gateway actually received. Each row
+  gets a `body` dimension:
+
+  | `body` | Meaning |
+  |---|---|
+  | `match` | same bytes as signed (an empty GET signs `sha256('')`) |
+  | `mismatch` | the body was changed after signing |
+  | `unsigned` | an upload signed `UNSIGNED` |
+  | `too_large` | over 1 MB, not hashed |
+  | `unknown` | never read, aborted, or slower than 30 s |
+  | `none` | nothing to compare |
+  | `na` | rows from a gateway before this part |
+
+  It is only computed when the signature itself is valid.
+- **How, without slowing or buffering anything:**
+  - The gateway's proxies stream bodies (`parseReqBody: false` on `/api/users` and others), so
+    the hash is taken from the same stream as it flows.
+  - `watchBody` is installed before `next()`. The first consumer that adds a `data` listener
+    (express-http-proxy's `pipe`, or `raw-body` in buffered mode) gets ours attached in the same
+    synchronous call, so both see every chunk.
+  - Checked over real HTTP in both modes: JSON, chunked and 2 MB bodies arrive byte for byte.
+  - express-http-proxy answers 400 to a chunked body in buffered mode, with or without the check
+    (measured with `BROWSER_CHECKS=off`). This was already the case: the web app never sends
+    chunked bodies.
+- The report (`report-browser-checks.js`) counts a `mismatch` as a would-be refusal and prints
+  the body outcomes.
+
+### Automation signals → fraud engine (plan item 8)
+
+- A member token seen with any of the following is counted per member per Douala day:
+  - an invalid signature;
+  - a replayed request;
+  - a body changed after signing;
+  - a tool user-agent.
+- `missing` signatures are **not** counted: tokens issued before the key binding still race it.
+- Every minute the gateway sends risk-service one `automation_seen` event per member
+  (`RISK_SERVICE_URL` in the gateway `.env`; empty = off). Each request has a 2 s budget; a
+  failed send is dropped.
+- risk-service adds the live reason `automation`: 20 points for 7 days. The reason text sums
+  the member's last 24 h, e.g. « 2 signature(s) invalide(s), 1 requête(s) depuis un outil… ».
+  It shows on the support « Risque » card. Silent: nothing is refused.
+
+### Checks
+
+- `gateway-service/src/scripts/check-browser-body.ts` (real HTTP, both proxy modes, automation feed)
+- `user-service/src/scripts/check-session-keys.ts` (body dimension)
+- `risk-service/src/scripts/check-live.ts` (automation rule)
+
 ## Not done yet (next parts of Phase 9)
 
-- **Body check.** `b` is signed, but not yet compared with the bytes actually sent: the proxies
-  stream bodies. This comes with enforcement.
 - **Enforcement:** sensitive endpoints first, then all of `/api`. It needs the 14 log-only days
   with false refusals under 0.1% per browser family and Android version.
 - **Turnstile** on sign-in, sign-up, withdrawal, contact change and authenticator setup. It

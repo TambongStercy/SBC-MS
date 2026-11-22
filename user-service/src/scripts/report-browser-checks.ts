@@ -7,6 +7,8 @@
  * For signed-in members: share of requests that would fail, per browser
  * family and Android version (the plan's bar: under 0.1% of real browser
  * sessions), and the failure reasons. Tool user-agents are listed apart.
+ * Part 2: among validly signed requests, the body check (signed hash vs the
+ * bytes received): a mismatch would be refused too.
  */
 import mongoose from 'mongoose';
 import config from '../config';
@@ -22,13 +24,18 @@ const main = async () => {
     const rows = await BrowserCheckDayModel.find({ day: { $gte: since }, role: 'member' }).lean();
     const by = new Map<string, { total: number; pass: number; reasons: Record<string, number> }>();
     let tools = 0;
+    const bodies: Record<string, number> = {};
     for (const r of rows) {
         if (r.tool) { tools += r.count ?? 0; continue; }
         const k = `${r.browser}/android ${r.android}/${r.client}`;
         const e = by.get(k) ?? { total: 0, pass: 0, reasons: {} };
         e.total += r.count ?? 0;
-        if (PASS.has(String(r.signature))) e.pass += r.count ?? 0;
-        else e.reasons[String(r.signature)] = (e.reasons[String(r.signature)] ?? 0) + (r.count ?? 0);
+        if (PASS.has(String(r.signature))) {
+            const b = String((r as any).body ?? 'na');
+            bodies[b] = (bodies[b] ?? 0) + (r.count ?? 0);
+            if (b === 'mismatch') e.reasons.body_mismatch = (e.reasons.body_mismatch ?? 0) + (r.count ?? 0);
+            else e.pass += r.count ?? 0;
+        } else e.reasons[String(r.signature)] = (e.reasons[String(r.signature)] ?? 0) + (r.count ?? 0);
         by.set(k, e);
     }
     console.log(`Member requests since ${since} (log-only, nothing refused):\n`);
@@ -36,6 +43,8 @@ const main = async () => {
         const fail = e.total - e.pass;
         console.log(`${k.padEnd(36)} ${String(e.total).padStart(9)}  would fail ${(100 * fail / Math.max(e.total, 1)).toFixed(2).padStart(6)}%  ${JSON.stringify(e.reasons)}`);
     }
+    console.log(`\nBody check on validly signed requests: ${JSON.stringify(bodies)}`);
+    console.log('  (match = same bytes; unsigned = uploads; too_large/unknown/na = not compared; mismatch = changed after signing)');
     console.log(`\nTool user-agents (Postman, curl, scripts…) with a member token: ${tools}`);
     await mongoose.disconnect();
 };

@@ -206,6 +206,15 @@ const main = async () => {
     await RiskRunModel.deleteMany({ kind: 'rebuild' });
     check('rebuild schedule: due Sunday 01:xx Douala only once a week', !dueAfterRun && await live.rebuildDue(sunday) && !(await live.rebuildDue(new Date(sunday.getTime() + DAY))));
 
+    // ---- Phase 9: automation seen by the gateway ----
+    check('automation_seen with no count → 400', (await axios.post(`${url}/api/risk/internal/events`, { type: 'automation_seen', userId: id('G'), badSig: 0 }, { ...auth, validateStatus: () => true })).status === 400);
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'automation_seen', userId: id('G'), badSig: 2, tool: 1 }, { headers: { ...auth.headers, 'x-service-name': 'gateway-service' } });
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'automation_seen', userId: id('G'), bodyMismatch: 1 }, { headers: { ...auth.headers, 'x-service-name': 'gateway-service' } });
+    await live.processEvents(100, new Date());
+    const g = await mem('G');
+    const ar = g?.liveReasons?.find((x: any) => x.rule === 'automation');
+    check('automation: 20 points for 7 days, one reason summing the day (2 signatures, 1 body, 1 tool)', g?.score === 20 && !!ar && /2 signature/.test(ar.detail) && /1 contenu/.test(ar.detail) && /1 requête\(s\) depuis un outil/.test(ar.detail), ar?.detail);
+
     server.close(); fake.close();
     await Promise.all([users.dropDatabase(), payment.dropDatabase(), mongoose.connection.dropDatabase()]);
     setSource('users', null); setSource('payment', null);

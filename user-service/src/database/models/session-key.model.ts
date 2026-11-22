@@ -36,6 +36,8 @@ const BrowserCheckDaySchema = new Schema({
     key: { type: String, required: true }, // all the dimensions below, joined
     group: String, client: String, role: String, browser: String, android: String,
     signature: String, origin: String, fetchSite: String, tool: Boolean,
+    /** Phase 9 part 2: signed body hash vs the bytes received (match / mismatch / unsigned / too_large / unknown / none; `na` = older gateway). */
+    body: String,
     count: { type: Number, default: 0 },
     updatedAt: { type: Date, default: () => new Date() },
 }, { collection: 'browser_check_days', versionKey: false });

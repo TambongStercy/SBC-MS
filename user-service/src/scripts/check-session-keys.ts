@@ -56,9 +56,13 @@ const main = async () => {
     ];
     await s.ingestBrowserChecks(rows);
     await s.ingestBrowserChecks([rows[0]]);
+    // Phase 9 part 2: the body outcome is one more dimension; rows from an older gateway count as 'na'
+    await s.ingestBrowserChecks([{ ...rows[0], body: 'mismatch', count: 1 }]);
     const days = await BrowserCheckDayModel.find({}).lean();
+    check('body outcome kept apart: mismatch row separate; older rows stored as na',
+        (days as any[]).find(d => d.body === 'mismatch')?.count === 1 && (days as any[]).find(d => d.signature === 'valid' && d.body === 'na')?.count === 14);
     check('gateway counts merge with $inc; bad rows dropped; odd values become "other"',
-        days.find(d => d.signature === 'valid')?.count === 14 && days.find(d => d.tool)?.count === 2 && days.some(d => d.group === 'other') && days.length === 3, JSON.stringify(days.map(d => [d.signature, d.count])));
+        (days as any[]).find(d => d.signature === 'valid' && d.body === 'na')?.count === 14 && days.find(d => d.tool)?.count === 2 && days.some(d => d.group === 'other') && days.length === 4, JSON.stringify(days.map(d => [d.signature, d.count])));
 
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

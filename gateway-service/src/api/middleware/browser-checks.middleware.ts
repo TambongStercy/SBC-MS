@@ -25,9 +25,16 @@ const log = logger.getLogger('BrowserChecks');
  * user-agent results. Counts go to user-service `browser_check_days` every
  * minute. The plan's 14 log-only days decide enforcement (a later step).
  *
- * Not checked yet: that `b` matches the body actually sent (the proxies stream
- * bodies; it comes with enforcement). Payment and WhatsApp webhooks, SSO,
- * partner API and the support desk/public routes are exempt (their own checks).
+ * Part 2 (2026-11-22):
+ *   - the body: `b` is compared with the SHA-256 of the bytes actually received
+ *     (`body`: match / mismatch / unsigned / too_large / unknown / none). The
+ *     proxies stream bodies, so the hash is taken from the same stream as it
+ *     flows (`watchBody`), never buffered and never delaying it;
+ *   - automation signals per member (invalid signature, replay, body mismatch,
+ *     tool user-agent with a member token) go to the Phase 4 fraud engine every
+ *     minute (`RISK_SERVICE_URL`), as one `automation_seen` event per member.
+ * Payment and WhatsApp webhooks, SSO, partner API and the support desk/public
+ * routes are exempt (their own checks).
  *
  * BROWSER_CHECKS=off (default) | log.
  */
@@ -40,6 +47,73 @@ const SBC_HOST = /(^|\.)(sniperbuisnesscenter\.com|sniperbusinesscenter\.com)$|^
 const MAX_SKEW_MS = 60_000;
 const FLUSH_MS = 60_000;
 const HARD_CAP = 5_000;
+
+/** Bodies above this are not hashed (`too_large`): uploads are signed UNSIGNED anyway. */
+const MAX_BODY = 1_048_576;
+const BODY_WAIT_MS = 30_000;
+const EMPTY_SHA256 = createHash('sha256').update('').digest('hex');
+
+export type BodyOutcome = 'none' | 'match' | 'mismatch' | 'unsigned' | 'too_large' | 'unknown';
+type BodyHash = { hex: string } | { tooLarge: true } | null;
+
+/**
+ * Hashes the request body as it streams to the proxy, without buffering it or
+ * changing its flow. Installed BEFORE `next()`: the first consumer to add a
+ * 'data' listener (express-http-proxy's pipe or raw-body) gets ours attached
+ * in the same synchronous call, just before its own, so both see every chunk.
+ * Resolves on 'end'; null when the body is never read, aborted, or slower than
+ * BODY_WAIT_MS. Only for requests that carry a hex body hash to compare.
+ */
+export function watchBody(req: Request): Promise<BodyHash> | null {
+    const raw = header(req, 'x-sbc-signature');
+    const m = raw.match(/(?:^|;)b=([a-f0-9]{64})(?:;|$)/);
+    if (!m) return null;
+    const len = Number(header(req, 'content-length') || 0);
+    const chunked = !!header(req, 'transfer-encoding');
+    if (!chunked && !(len > 0)) return Promise.resolve({ hex: EMPTY_SHA256 });
+    if (len > MAX_BODY) return Promise.resolve({ tooLarge: true });
+    return new Promise<BodyHash>((resolve) => {
+        const h = createHash('sha256');
+        let size = 0;
+        let over = false;
+        let done = false;
+        const finish = (v: BodyHash) => { if (!done) { done = true; clearTimeout(timer); resolve(v); } };
+        const timer = setTimeout(() => finish(null), BODY_WAIT_MS);
+        timer.unref?.();
+        const origOn = req.on;
+        const stream = req as any;
+        stream.on = function patched(this: any, ev: string | symbol, fn: (...a: any[]) => void) {
+            if (ev === 'data') {
+                delete stream.on; // once: the first consumer only (back to the prototype's method)
+                try {
+                    origOn.call(req, 'data', (c: Buffer | string) => {
+                        if (over) return;
+                        size += typeof c === 'string' ? Buffer.byteLength(c) : c.length;
+                        if (size > MAX_BODY) { over = true; return; }
+                        try { h.update(c); } catch { over = true; }
+                    });
+                    origOn.call(req, 'end', () => finish(over ? { tooLarge: true } : { hex: h.digest('hex') }));
+                    origOn.call(req, 'aborted', () => finish(null));
+                    origOn.call(req, 'error', () => finish(null));
+                } catch { /* never in the request's way */ }
+            }
+            return origOn.call(this, ev, fn);
+        };
+        // nobody read it: put the method back once the request is over
+        req.once?.('close', () => { if (Object.prototype.hasOwnProperty.call(stream, 'on')) delete stream.on; finish(null); });
+    });
+}
+
+async function bodyOutcome(req: Request, watched: Promise<BodyHash> | null): Promise<BodyOutcome> {
+    const raw = header(req, 'x-sbc-signature');
+    if (/(?:^|;)b=UNSIGNED(?:;|$)/.test(raw)) return 'unsigned';
+    const m = raw.match(/(?:^|;)b=([a-f0-9]{64})(?:;|$)/);
+    if (!m || !watched) return 'none';
+    const got = await watched;
+    if (!got) return 'unknown';
+    if ('tooLarge' in got) return 'too_large';
+    return got.hex === m[1] ? 'match' : 'mismatch';
+}
 
 export type SigOutcome = 'no_token' | 'bad_token' | 'missing' | 'unsupported' | 'malformed' | 'stale' | 'replay' | 'no_key' | 'lookup_failed' | 'bad_sig' | 'valid' | 'valid_late';
 
@@ -111,7 +185,7 @@ async function nonceIsNew(id: string): Promise<boolean> {
 }
 
 /** The signature outcome of one request (exported for the check script). */
-export async function checkSignature(req: Request, now = Date.now()): Promise<{ outcome: SigOutcome; role: string } | null> {
+export async function checkSignature(req: Request, now = Date.now()): Promise<{ outcome: SigOutcome; role: string; userId?: string } | null> {
     const auth = header(req, 'authorization');
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (token && token === config.services.serviceSecret) return null; // service call: not a browser question
@@ -119,36 +193,38 @@ export async function checkSignature(req: Request, now = Date.now()): Promise<{ 
     const claims = verifyToken(token, config.jwt.secret);
     if (!claims) return { outcome: 'bad_token', role: 'anon' };
     const role = ['user', 'tester'].includes(String(claims.role || 'user')) ? 'member' : 'staff';
+    const userId = String(claims.userId || claims.id || '');
+    const r = (outcome: SigOutcome) => ({ outcome, role, userId });
 
     const raw = header(req, 'x-sbc-signature');
-    if (!raw) return { outcome: 'missing', role };
-    if (raw.startsWith('none')) return { outcome: 'unsupported', role };
+    if (!raw) return r('missing');
+    if (raw.startsWith('none')) return r('unsupported');
     const f: Record<string, string> = {};
     for (const part of raw.split(';')) { const i = part.indexOf('='); if (i > 0) f[part.slice(0, i)] = part.slice(i + 1); }
     if (!raw.startsWith('v1;') || !/^\d{13}$/.test(f.t || '') || !/^[A-Za-z0-9_-]{16,64}$/.test(f.n || '')
-        || !/^([a-f0-9]{64}|UNSIGNED)$/.test(f.b || '') || !/^[A-Za-z0-9_-]{80,90}$/.test(f.s || '')) return { outcome: 'malformed', role };
-    if (Math.abs(now - Number(f.t)) > MAX_SKEW_MS) return { outcome: 'stale', role };
+        || !/^([a-f0-9]{64}|UNSIGNED)$/.test(f.b || '') || !/^[A-Za-z0-9_-]{80,90}$/.test(f.s || '')) return r('malformed');
+    if (Math.abs(now - Number(f.t)) > MAX_SKEW_MS) return r('stale');
 
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const k = await keyFor(tokenHash);
-    if (k === 'failed') return { outcome: 'lookup_failed', role };
-    if (!k.key) return { outcome: 'no_key', role };
+    if (k === 'failed') return r('lookup_failed');
+    if (!k.key) return r('no_key');
     const text = `v1\n${req.method.toUpperCase()}\n${req.originalUrl}\n${f.t}\n${f.n}\n${f.b}`;
     let ok = false;
     try { ok = verifySig('sha256', Buffer.from(text), { key: k.key, dsaEncoding: 'ieee-p1363' }, Buffer.from(f.s, 'base64url')); } catch { ok = false; }
-    if (!ok) return { outcome: 'bad_sig', role };
-    if (!(await nonceIsNew(`${tokenHash.slice(0, 24)}:${f.n}`))) return { outcome: 'replay', role };
-    return { outcome: k.late ? 'valid_late' : 'valid', role };
+    if (!ok) return r('bad_sig');
+    if (!(await nonceIsNew(`${tokenHash.slice(0, 24)}:${f.n}`))) return r('replay');
+    return r(k.late ? 'valid_late' : 'valid');
 }
 
 // ---- counts ----
-interface Row { day: string; group: string; client: string; role: string; browser: string; android: string; signature: string; origin: string; fetchSite: string; tool: boolean; count: number }
+interface Row { day: string; group: string; client: string; role: string; browser: string; android: string; signature: string; origin: string; fetchSite: string; body: BodyOutcome; tool: boolean; count: number }
 const buffer = new Map<string, Row>();
 export const browserCheckStats = { checked: 0, flushed: 0, dropped: 0 };
 let timer: NodeJS.Timeout | null = null;
 let flushing = false;
 
-export async function recordBrowserCheck(req: Request, now = Date.now()): Promise<Row | null> {
+export async function recordBrowserCheck(req: Request, now = Date.now(), watched: Promise<BodyHash> | null = null): Promise<Row | null> {
     const path = req.originalUrl;
     if (!path.startsWith('/api/') || EXEMPT.some(r => r.test(path.split('?')[0]))) return null;
     const sig = await checkSignature(req, now);
@@ -157,22 +233,64 @@ export async function recordBrowserCheck(req: Request, now = Date.now()): Promis
     const { browser, android } = browserOf(ua);
     const client = header(req, 'x-sbc-client');
     const fetchSite = header(req, 'sec-fetch-site');
+    // the body matters only once the signature holds (otherwise the request is refused anyway)
+    const body: BodyOutcome = sig.outcome === 'valid' || sig.outcome === 'valid_late' ? await bodyOutcome(req, watched) : 'none';
     const row: Row = {
         day: doualaDay(now), group: groupOf(path), client: client === 'web' || client === 'app' ? client : 'none', role: sig.role,
         browser, android, signature: sig.outcome, origin: originClass(header(req, 'origin')),
         fetchSite: ['same-origin', 'same-site', 'cross-site', 'none'].includes(fetchSite) ? fetchSite : fetchSite ? 'other' : 'absent',
-        tool: TOOL_UA.test(ua), count: 1,
+        body, tool: TOOL_UA.test(ua), count: 1,
     };
-    const key = [row.day, row.group, row.client, row.role, row.browser, row.android, row.signature, row.origin, row.fetchSite, row.tool].join('|');
+    const key = [row.day, row.group, row.client, row.role, row.browser, row.android, row.signature, row.origin, row.fetchSite, row.body, row.tool].join('|');
     const cur = buffer.get(key);
     if (cur) cur.count++;
     else if (buffer.size < HARD_CAP) buffer.set(key, row);
     else browserCheckStats.dropped++;
     browserCheckStats.checked++;
-    if (row.role === 'member' && (row.signature === 'bad_sig' || row.signature === 'replay' || row.tool)) {
-        log.warn(`Browser check ${row.signature}${row.tool ? ' (tool user-agent)' : ''} on ${req.method} ${path.split('?')[0]} [${browser}]`);
+    if (row.role === 'member' && (row.signature === 'bad_sig' || row.signature === 'replay' || row.body === 'mismatch' || row.tool)) {
+        log.warn(`Browser check ${row.signature}${row.body === 'mismatch' ? ' (body changed)' : ''}${row.tool ? ' (tool user-agent)' : ''} on ${req.method} ${path.split('?')[0]} [${browser}]`);
+        noteAutomation(sig.userId, row);
     }
     return row;
+}
+
+// ---- automation signals per member → the fraud engine (plan item 8) ----
+interface Seen { userId: string; day: string; badSig: number; replay: number; bodyMismatch: number; tool: number }
+const automation = new Map<string, Seen>();
+export const automationStats = { sent: 0, dropped: 0 };
+
+function noteAutomation(userId: string | undefined, row: Row) {
+    if (!userId || !/^[a-f0-9]{24}$/i.test(userId)) return;
+    const k = `${userId}|${row.day}`;
+    const e = automation.get(k) ?? { userId, day: row.day, badSig: 0, replay: 0, bodyMismatch: 0, tool: 0 };
+    if (row.signature === 'bad_sig') e.badSig++;
+    if (row.signature === 'replay') e.replay++;
+    if (row.body === 'mismatch') e.bodyMismatch++;
+    if (row.tool) e.tool++;
+    if (automation.has(k) || automation.size < HARD_CAP) automation.set(k, e);
+}
+
+/** One `automation_seen` event per member seen this minute (fire-and-forget, 2 s each). */
+export async function flushAutomation(): Promise<number> {
+    if (!automation.size) return 0;
+    const rows = [...automation.values()];
+    automation.clear();
+    const base = config.services.riskServiceUrl;
+    if (!base) return 0;
+    let sent = 0;
+    for (const e of rows) {
+        try {
+            const r = await fetch(`${base}/api/risk/internal/events`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.services.serviceSecret}`, 'X-Service-Name': 'gateway-service' },
+                body: JSON.stringify({ type: 'automation_seen', userId: e.userId, day: e.day, badSig: e.badSig, replay: e.replay, bodyMismatch: e.bodyMismatch, tool: e.tool }),
+                signal: AbortSignal.timeout(2000),
+            });
+            if (r.ok) sent++; else automationStats.dropped++;
+        } catch { automationStats.dropped++; }
+    }
+    automationStats.sent += sent;
+    return sent;
 }
 
 export async function flushBrowserChecks(): Promise<void> {
@@ -198,16 +316,22 @@ export async function flushBrowserChecks(): Promise<void> {
 }
 
 export const browserChecks = (req: Request, _res: Response, next: NextFunction) => {
+    let watched: Promise<BodyHash> | null = null;
+    if (browserChecksMode() !== 'off' && req.originalUrl.startsWith('/api/')) {
+        try { watched = watchBody(req); } catch { watched = null; }
+    }
     next();
     if (browserChecksMode() === 'off') return;
-    setImmediate(() => { recordBrowserCheck(req).catch(err => log.warn(`Browser check skipped: ${err?.message ?? err}`)); });
+    const at = Date.now();
+    setImmediate(() => { recordBrowserCheck(req, at, watched).catch(err => log.warn(`Browser check skipped: ${err?.message ?? err}`)); });
 };
 
 /** Periodic flush (no shutdown hook, like the activity signals: at most a minute of counts is lost). */
 export function startBrowserChecksFlush(): void {
     if (timer) return;
-    timer = setInterval(() => void flushBrowserChecks(), FLUSH_MS);
+    timer = setInterval(() => { void flushBrowserChecks(); void flushAutomation(); }, FLUSH_MS);
     timer.unref();
 }
 
 export const _browserChecksBuffer = buffer;
+export const _automationBuffer = automation;

@@ -43,6 +43,9 @@ const log = childLogger('Live');
  *                                   sponsor 30, each recruit 20             (30 days)
  *       dormant_reactivated         a dormant account signs in again        15 (30 days)
  *       balance_mismatch            the ledger triple check disagrees       30 (30 days)
+ *       automation                  the gateway saw this member's token used outside the
+ *                                   web app: invalid signature, replayed request, body
+ *                                   changed after signing, tool user-agent (Phase 9)  20 (7 days)
  *   - the decision cache of every member touched is dropped.
  * The weekly rebuild (Sunday 01:00 Douala) reruns the full look-back: it sees
  * what live scoring can't (hubs forming, links through devices, history).
@@ -56,6 +59,7 @@ export const LIVE_POINTS = {
     signup_burst_recruit: 20,
     dormant_reactivated: 15,
     balance_mismatch: 30,
+    automation: 20,
 } as const;
 
 const HOUR = 3_600_000;
@@ -125,8 +129,15 @@ export function hintToEvent(body: any, source: string): EventIn | { error: strin
             return { type, userId, at, source, data: { from: body.from === 'long_dormant' ? 'long_dormant' : 'dormant' } };
         case 'balance_mismatch':
             return { type, userId, at, source, data: { currency: body.currency === 'USD' ? 'USD' : 'XAF' }, key: str(body.key, 200) ? `balance_mismatch:${str(body.key, 200)}` : undefined };
+        case 'automation_seen': {
+            // Phase 9: counts for one member over the gateway's last minute
+            const n = (v: unknown) => Math.min(Math.max(Math.floor(Number(v) || 0), 0), 100_000);
+            const counts = { badSig: n(body.badSig), replay: n(body.replay), bodyMismatch: n(body.bodyMismatch), tool: n(body.tool) };
+            if (!Object.values(counts).some(Boolean)) return { error: 'automation_seen: no count' };
+            return { type, userId, at, source, data: counts };
+        }
         default:
-            return { error: 'type: signup | contact_change | authenticator_change | dormant_reactivated | balance_mismatch' };
+            return { error: 'type: signup | contact_change | authenticator_change | dormant_reactivated | balance_mismatch | automation_seen' };
     }
 }
 
@@ -403,6 +414,20 @@ async function handle(e: any, now: Date): Promise<{ rescore: string[]; touched: 
         case 'balance_mismatch':
             await addLiveReason(userId, { rule: 'balance_mismatch', points: LIVE_POINTS.balance_mismatch, detail: `Les registres du solde ne concordent pas (${e.data?.currency ?? 'XAF'})`, caseType: 'abnormal_behavior' }, 30, now);
             return { rescore: [], touched: [userId] };
+        case 'automation_seen': {
+            // the member's counts over the last 24 h, so the reason says how often
+            const since = new Date(new Date(e.at).getTime() - DAY);
+            const all = await RiskEventModel.find({ userId, type: 'automation_seen', at: { $gte: since } }, { data: 1 }).limit(2000).lean() as any[];
+            const sum = (k: string) => all.reduce((s, x) => s + (Number(x.data?.[k]) || 0), 0);
+            const parts = [
+                sum('badSig') && `${sum('badSig')} signature(s) invalide(s)`,
+                sum('replay') && `${sum('replay')} requête(s) rejouée(s)`,
+                sum('bodyMismatch') && `${sum('bodyMismatch')} contenu(s) modifié(s) après signature`,
+                sum('tool') && `${sum('tool')} requête(s) depuis un outil (Postman, curl, script…)`,
+            ].filter(Boolean);
+            await addLiveReason(userId, { rule: 'automation', points: LIVE_POINTS.automation, detail: `Compte utilisé hors de l’application web en 24 h : ${parts.join(', ')}` }, 7, now);
+            return { rescore: [], touched: [userId] };
+        }
         default:
             return { rescore: [], touched: [] };
     }
