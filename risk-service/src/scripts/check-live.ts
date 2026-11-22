@@ -73,7 +73,7 @@ const main = async () => {
     const auth = { headers: { Authorization: `Bearer ${config.serviceSecret}`, 'x-service-name': 'user-service' } };
 
     const ids: Record<string, Types.ObjectId> = {};
-    for (const k of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'S', 'T', 'Q', 'V', 'W', 'X']) ids[k] = new Types.ObjectId();
+    for (const k of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'S', 'T', 'Q', 'V', 'W', 'X', 'Y', 'Z']) ids[k] = new Types.ObjectId();
     const id = (k: string) => String(ids[k]);
     const recruitsS = Array.from({ length: 5 }, () => new Types.ObjectId());
     const recruitsT = Array.from({ length: 5 }, () => new Types.ObjectId());
@@ -246,6 +246,14 @@ const main = async () => {
     const g = await mem('G');
     const ar = g?.liveReasons?.find((x: any) => x.rule === 'automation');
     check('automation: 20 points for 7 days, one reason summing the day (2 signatures, 1 body, 1 tool)', g?.score === 20 && !!ar && /2 signature/.test(ar.detail) && /1 contenu/.test(ar.detail) && /1 requête\(s\) depuis un outil/.test(ar.detail), ar?.detail);
+
+    // ---- Tor (2026-11-22): its own rule, at sign-up and on protected actions ----
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'signup', userId: id('Y'), tor: true }, auth);
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'automation_seen', userId: id('Z'), tor: 2 }, { headers: { ...auth.headers, 'x-service-name': 'gateway-service' } });
+    for (let i = 0; i < 3; i++) await live.processEvents(100, new Date());
+    const y = await mem('Y'), z = await mem('Z');
+    check('Tor at sign-up → tor_network 20', y?.score === 20 && y?.liveReasons?.some((x: any) => x.rule === 'tor_network' && /Tor/.test(x.detail)), `${y?.score}`);
+    check('Tor on protected actions → tor_network 20, NOT automation', z?.score === 20 && z?.liveReasons?.some((x: any) => x.rule === 'tor_network' && /2 action/.test(x.detail)) && !z?.liveReasons?.some((x: any) => x.rule === 'automation'), JSON.stringify(z?.liveReasons?.map((x: any) => x.rule)));
 
     server.close(); fake.close();
     await Promise.all([users.dropDatabase(), payment.dropDatabase(), mongoose.connection.dropDatabase()]);

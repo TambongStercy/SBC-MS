@@ -45,6 +45,7 @@ const log = childLogger('Live');
  *                                   sponsor 30, each recruit 20             (30 days)
  *       dormant_reactivated         a dormant account signs in again        15 (30 days)
  *       balance_mismatch            the ledger triple check disagrees       30 (30 days)
+ *       tor_network                 sign-up or a protected action through Tor (Cloudflare T1)  20
  *       password_guessing           10 wrong passwords within an hour on the account (Phase 1):
  *                                   someone may be trying to take it over                 15 (7 days)
  *       automation                  the gateway saw this member's token used outside the
@@ -65,6 +66,7 @@ export const LIVE_POINTS = {
     balance_mismatch: 30,
     automation: 20,
     password_guessing: 15,
+    tor_network: 20,
 } as const;
 
 const HOUR = 3_600_000;
@@ -113,6 +115,7 @@ export function hintToEvent(body: any, source: string): EventIn | { error: strin
             const ua = str(body.userAgent, 300);
             const device = str(body.device, 64);
             const asn = Number(body.asn);
+            const tor = body.tor === true;
             return {
                 type, userId, at, source,
                 data: {
@@ -120,6 +123,7 @@ export function hintToEvent(body: any, source: string): EventIn | { error: strin
                     ...(device ? { device: hashOf('device', device) } : {}),
                     // a network number, not personal: kept as is for the hosting/VPN rule
                     ...(Number.isInteger(asn) && asn > 0 && asn < 2 ** 32 ? { asn } : {}),
+                    ...(tor ? { tor: true } : {}),
                 },
             };
         }
@@ -145,7 +149,7 @@ export function hintToEvent(body: any, source: string): EventIn | { error: strin
             // Phase 9: counts for one member over the gateway's last minute (robot = forged or
             // replayed anti-robot answers, ALTCHA, 2026-11-22)
             const n = (v: unknown) => Math.min(Math.max(Math.floor(Number(v) || 0), 0), 100_000);
-            const counts = { badSig: n(body.badSig), replay: n(body.replay), bodyMismatch: n(body.bodyMismatch), tool: n(body.tool), robot: n(body.robot) };
+            const counts = { badSig: n(body.badSig), replay: n(body.replay), bodyMismatch: n(body.bodyMismatch), tool: n(body.tool), robot: n(body.robot), tor: n(body.tor) };
             if (!Object.values(counts).some(Boolean)) return { error: 'automation_seen: no count' };
             return { type, userId, at, source, data: counts };
         }
@@ -401,6 +405,10 @@ async function onSignup(e: any, now: Date): Promise<string[]> {
         await addLiveReason(userId, { rule: 'datacenter_network', points: LIVE_POINTS.datacenter_network, detail: 'Inscription depuis un réseau d’hébergement ou un VPN' }, 7, now);
         touched.push(userId);
     }
+    if (e.data?.tor) {
+        await addLiveReason(userId, { rule: 'tor_network', points: LIVE_POINTS.tor_network, detail: 'Inscription depuis le réseau Tor (adresse masquée)' }, 7, now);
+        touched.push(userId);
+    }
     if (await refreshOwnIdentifiers(userId, now)) touched.push(userId);
     return touched;
 }
@@ -446,7 +454,9 @@ async function handle(e: any, now: Date): Promise<{ rescore: string[]; touched: 
                 sum('tool') && `${sum('tool')} requête(s) depuis un outil (Postman, curl, script…)`,
                 sum('robot') && `${sum('robot')} vérification(s) anti-robot falsifiée(s) ou rejouée(s)`,
             ].filter(Boolean);
-            await addLiveReason(userId, { rule: 'automation', points: LIVE_POINTS.automation, detail: `Compte utilisé hors de l’application web en 24 h : ${parts.join(', ')}` }, 7, now);
+            // Tor is its own rule (2026-11-22): hiding where you connect from is not automation.
+            if (parts.length) await addLiveReason(userId, { rule: 'automation', points: LIVE_POINTS.automation, detail: `Compte utilisé hors de l’application web en 24 h : ${parts.join(', ')}` }, 7, now);
+            if (sum('tor')) await addLiveReason(userId, { rule: 'tor_network', points: LIVE_POINTS.tor_network, detail: `${sum('tor')} action(s) sensible(s) (retrait, changement de numéro, connexion…) depuis le réseau Tor en 24 h` }, 7, now);
             return { rescore: [], touched: [userId] };
         }
         default:

@@ -920,6 +920,8 @@ export class UserController {
                 device: typeof req.headers['x-sbc-device'] === 'string' ? req.headers['x-sbc-device'] : undefined,
                 // network number from the gateway's own lookup (free IP files): hosting/VPN rule
                 asn: Number(req.headers['x-sbc-asn']) || undefined,
+                // Cloudflare marks Tor exit nodes with the country T1 (rule tor_network)
+                tor: String(req.headers['x-sbc-geo'] || '').toUpperCase() === 'T1' || undefined,
             } : {});
         } catch (error: any) {
             log.error('Error registering a new user', error);

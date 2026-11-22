@@ -888,7 +888,15 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
   - **Live rules** (points until expiry): contact change → withdrawal ≤ 72 h 30; new device +
     new country + new number the same day 40; hosting/VPN network 15; sign-up burst under one
     sponsor (sponsor 30, recruits 20); sign-up from a hosting/VPN network 15; dormant back 15; ledger mismatch 30; automation seen by
-    the gateway (Phase 9) 20; 10 wrong passwords in an hour (Phase 1) 15. Score = structural +
+    the gateway (Phase 9) 20; 10 wrong passwords in an hour (Phase 1) 15.
+    **Tor (2026-11-22):** `tor_network` 20 points, 7 days. Cloudflare marks Tor exit nodes with the
+    country `T1`, which the gateway keeps.
+    - **At sign-up:** the event carries `tor`, under the same consent gate as the network number.
+    - **On a protected action** (the robot-check list: sign-in, withdrawal, payout or contact change,
+      authenticator setup): the gateway's always-on `torSignal` adds a `tor` count to the per-minute
+      `automation_seen` feed.
+    - It is its own rule, not `automation`. Checks: risk `check-live.ts`, gateway
+      `check-robot-check.ts`. Score = structural +
     live (`structuralScore`, `liveReasons`).
   - **Weekly rebuild:** Sunday 01:00 Douala.
   - **Support member card « Risque »:** `GET /desk/members/:id/risk` (`risk.read`), needs
