@@ -1,0 +1,7 @@
+/var/log/sbc-backup.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+}

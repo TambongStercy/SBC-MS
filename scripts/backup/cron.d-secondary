@@ -1,0 +1,5 @@
+# /etc/cron.d/sbc-backup on the SECONDARY server (CET). Scripts in /opt/sbc-backup.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 2 * * * root BLNK_DB=blnk_preprod /opt/sbc-backup/blnk-backup.sh >> /var/log/sbc-backup.log 2>&1
+0 4 * * 0 root BLNK_DB=blnk_preprod /opt/sbc-backup/blnk-restore-test.sh >> /var/log/sbc-backup.log 2>&1

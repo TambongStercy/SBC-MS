@@ -1,0 +1,12 @@
+# /etc/cron.d/sbc-backup on the MAIN server (CET). Scripts in /opt/sbc-backup, log /var/log/sbc-backup.log.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# preprod MongoDB (*_preprod), after the prod backup (/root/mongodb-backup.sh, 02:00)
+40 2 * * * root /opt/sbc-backup/mongo-preprod-backup.sh >> /var/log/sbc-backup.log 2>&1
+# Blnk dump pulled off the secondary (its backup runs at 02:30) and copied to R2
+30 3 * * * root /opt/sbc-backup/blnk-pull.sh >> /var/log/sbc-backup.log 2>&1
+# preprod restore test, every Sunday
+30 4 * * 0 root KEEP_DIR=/var/backups/sbc-mongodb-preprod PATTERN='mongodb_preprod_backup_*.tar.gz' R2_PATH=r2:sbc-db-backups/preprod-mongodb-backups KEY_COLLECTIONS='sbc_users_preprod.users sbc_users_preprod.referrals sbc_payment_preprod.transactions sbc_payment_preprod.paymentintents' STATUS_KEY=restore_mongo_preprod MIN_FREE_GB=10 /opt/sbc-backup/mongo-restore-test.sh >> /var/log/sbc-backup.log 2>&1
+# PROD (with Sterling's OK, once the hooks are installed in /root/mongodb-backup.sh): restore test on
+# the first Sunday of the month
+# 30 5 1-7 * * root [ "$(date +\%u)" = 7 ] && /opt/sbc-backup/mongo-restore-test.sh >> /var/log/sbc-backup.log 2>&1
