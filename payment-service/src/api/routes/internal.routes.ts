@@ -223,4 +223,22 @@ router.use('/stats', statsRouter); // Mount stats routes under /internal/stats
 // --- End Admin Stats ---
 
 
+// --- Failure drills (Security plan test strategy step 4, 2026-11-22) ---
+// Runs the exact check every member withdrawal runs first (withdrawal lock, ledger, fraud decision)
+// and says what it decided, without starting any payout. 404 unless DRILLS_ENABLED=true (preprod
+// only). A `hold` still files its fraud case, as a real attempt would: use a member who is not held.
+router.post('/drills/withdrawal-check', async (req, res) => {
+    if (process.env.DRILLS_ENABLED !== 'true') return res.status(404).json({ success: false, message: 'Not found' });
+    const userId = String(req.body?.userId ?? '');
+    if (!Types.ObjectId.isValid(userId)) return res.status(400).json({ success: false, message: 'userId required' });
+    const { default: paymentService } = await import('../../services/payment.service');
+    const t0 = Date.now();
+    try {
+        await paymentService.assertWithdrawalsNotLocked(userId, 'member');
+        return res.json({ success: true, data: { allowed: true, ms: Date.now() - t0 } });
+    } catch (e: any) {
+        return res.json({ success: true, data: { allowed: false, status: e?.statusCode ?? 500, code: e?.code ?? null, message: String(e?.message ?? e).slice(0, 200), ms: Date.now() - t0 } });
+    }
+});
+
 export default router;
