@@ -1,4 +1,4 @@
-import { bindSessionKey, ingestBrowserChecks, sessionKeyFor } from '../../services/session-keys.service';
+import { bindSessionKey, ingestBrowserChecks, ingestRobotChecks, sessionKeyFor } from '../../services/session-keys.service';
 import { adminAccessController } from '../controllers/admin-access.controller';
 import { supportController } from '../controllers/support.controller';
 import { Router, Request, Response, NextFunction } from 'express';
@@ -91,6 +91,14 @@ serviceRouter.post('/browser-checks/batch', async (req: Request, res: Response) 
         res.json({ success: true, data: await ingestBrowserChecks(req.body?.rows) });
     } catch (err: any) {
         logger.getLogger('SessionKeys').error(`Browser checks batch failed: ${err?.message ?? err}`);
+        res.status(500).json({ success: false, message: 'Batch failed' });
+    }
+});
+serviceRouter.post('/robot-checks/batch', async (req: Request, res: Response) => {
+    try {
+        res.json({ success: true, data: await ingestRobotChecks(req.body?.rows) });
+    } catch (err: any) {
+        logger.getLogger('SessionKeys').error(`Robot checks batch failed: ${err?.message ?? err}`);
         res.status(500).json({ success: false, message: 'Batch failed' });
     }
 });

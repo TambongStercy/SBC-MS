@@ -44,3 +44,19 @@ const BrowserCheckDaySchema = new Schema({
 BrowserCheckDaySchema.index({ day: 1, key: 1 }, { unique: true });
 BrowserCheckDaySchema.index({ updatedAt: 1 }, { expireAfterSeconds: 180 * 86400 });
 export const BrowserCheckDayModel = model('BrowserCheckDay', BrowserCheckDaySchema);
+
+/**
+ * Security plan Phase 9 rule 3 (anti-robot check, ALTCHA, 2026-11-22): one document per Douala
+ * day × action × outcome bucket, written by the gateway (counts only, no member id).
+ * Outcomes: valid / missing / malformed / invalid / expired / replay. TTL 180 days.
+ */
+const RobotCheckDaySchema = new Schema({
+    day: { type: String, required: true },
+    key: { type: String, required: true },
+    action: String, outcome: String, client: String, browser: String, android: String, signedIn: Boolean,
+    count: { type: Number, default: 0 },
+    updatedAt: { type: Date, default: () => new Date() },
+}, { collection: 'robot_check_days', versionKey: false });
+RobotCheckDaySchema.index({ day: 1, key: 1 }, { unique: true });
+RobotCheckDaySchema.index({ updatedAt: 1 }, { expireAfterSeconds: 180 * 86400 });
+export const RobotCheckDayModel = model('RobotCheckDay', RobotCheckDaySchema);

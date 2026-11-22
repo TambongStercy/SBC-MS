@@ -653,6 +653,20 @@ Design and outcomes: `docs/security-plan/phase9-browser-only.md`. **Log-only**: 
     giving the live rule `automation` (20 points, 7 days).
   - Check: `gateway-service/src/scripts/check-browser-body.ts` (real HTTP through
     express-http-proxy, both modes).
+- **Part 3 (2026-11-22): anti-robot check, ALTCHA instead of Turnstile** (no keyed services).
+  - **Gateway** `robot-check.middleware.ts` (`ROBOT_CHECK=off|log|enforce` + `ALTCHA_HMAC_KEY`):
+    - `GET /api/altcha/challenge` hands out signed proof-of-work challenges (204 while off).
+    - The answer (`X-SBC-Altcha`) is checked on sign-in, sign-up, password reset, contact and
+      payout changes, authenticator setup, withdrawal initiate, desk login and the public
+      support form: one HMAC, used once.
+    - `log` counts into user-service `robot_check_days` (report:
+      `dist/scripts/report-robot-checks.js`); `enforce` answers 403 `ROBOT_CHECK_FAILED`.
+      **Run it in `log`**: Phase 9 stays log-only (decided 2026-11-22).
+    - A member's forged or replayed answer feeds `automation_seen` (`robot`).
+  - **Apps:** the web app (`utils/robotCheck.ts`) and the desk (`auth/robotCheck.ts`) solve one
+    answer while the page opens (about 1.4 s on a very slow phone) and send it. Turnstile is
+    gone from support-service, both frontends and the desk CSP.
+  - Check: `gateway-service/src/scripts/check-robot-check.ts`.
 
 ### Daily activity board (Security plan Phase 11, 2026-11-21)
 
@@ -691,7 +705,7 @@ activations, unfinished payments. Each admin number opens the list behind it.
 - **Support:** permission `activity.read` (every role but verifier); an agent's
   `countries` (Administration → Agents → « Pays suivis ») limits the panel.
 - Not done: session replay link on attempts (field `replayUrl`, the replay branch
-  is not merged), anti-robot reason (sign-up has no robot check yet), payments
+  is not merged), anti-robot reason (sign-ups refused by the robot check in enforce mode never reach user-service; `robot_check_days` has them), payments
   split web/app (no signal on payment requests).
 - Checks: `user-service/src/scripts/check-activity-dashboard.ts` (local Mongo +
   Redis), support `src/tests/activity.test.ts`.
@@ -774,6 +788,8 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
     `riskreleases`; the member is allowed while the score stays ≤ the score at release. A new
     reason above it holds them again. Ending a release keeps the record (`endedAt`). The other
     answer is the freeze.
+  - **Prod impact (look-back dry run on prod data, 2026-11-22):** 439 members would be held,
+    244 `require_code`. risk-service is not on prod yet; review those holds before enforcing there.
 - Checks: `risk-service/src/scripts/check-risk.ts`, `payment-service/src/scripts/check-risk-silent.ts`
   (silent + enforce), support `src/tests/risk-card.test.ts` (release).
 - **Part 2 (2026-11-22): live events.** Still silent.
@@ -1798,7 +1814,7 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   `SUPPORT_JWT_SECRET` (≠ `JWT_SECRET`), `TOTP_ENC_KEY` (`openssl rand -base64 32`;
   never rotate without re-enrolling every agent), `SERVICE_SECRET`, `JWT_SECRET`
   (same as user-service), `MONGODB_URI`, `SUPPORT_PUBLIC_URL`; then the four
-  service URLs, `TURNSTILE_SECRET`, `DEEPSEEK_API_KEY`, `R2_*` +
+  service URLs, `DEEPSEEK_API_KEY`, `R2_*` +
   `R2_PRIVATE_BUCKET` (default `sbc-support-private`). It refuses to start
   without the required ones. Without the R2 keys (or with the bucket missing) every
   attachment upload answers 503; locally, `R2_ENDPOINT` points at a MinIO instead.
@@ -1807,7 +1823,7 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   `support-service/` by hand, set `SUPPORT_SERVICE_URL` in `gateway-service/.env`
   and `pm2 reload gateway-service --update-env`. Then DNS (Cloudflare, proxied)
   for `support` / `preprod-support`, the vhosts + certificate, a Cloudflare rate
-  rule on `/api/support/desk/auth/*`, the Turnstile site key/secret, the R2
+  rule on `/api/support/desk/auth/*`, the R2
   bucket. Check `curl localhost:3012/health` and `https://support.…/api/support/health`.
 - **First admin:** `cd support-service && node dist/scripts/create-support-admin.js
   --email <email> --name "<name>"` prints a one-time activation link (48 h) to
@@ -1845,7 +1861,7 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   see `docs/support/OPENREPLAY.md`.
 - **Requests without an account:** `POST /api/support/public/tickets` (member app
   `/signaler-un-probleme`, linked from the sign-in page) for people who cannot sign in.
-  Turnstile + hidden field + 3/h and 10/day per IP. The person then chats like a member
+  The gateway's anti-robot check (ALTCHA, see Phase 9 part 3) + hidden field + 3/h and 10/day per IP. The person then chats like a member
   (same WhatsApp-style page) with the request's key (`x-support-guest-key`, kept on the
   device; reply emails carry the link `…/signaler-un-probleme/suivi/<id>#k=<key>`). The
   contact details are unverified: agents must not disclose account details on such a ticket.

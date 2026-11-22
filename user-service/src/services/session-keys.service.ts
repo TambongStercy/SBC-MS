@@ -1,6 +1,6 @@
 import { createHash, createPublicKey } from 'crypto';
 import { Types } from 'mongoose';
-import { BrowserCheckDayModel, SessionKeyModel } from '../database/models/session-key.model';
+import { BrowserCheckDayModel, RobotCheckDayModel, SessionKeyModel } from '../database/models/session-key.model';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('SessionKeys');
@@ -91,5 +91,23 @@ export async function ingestBrowserChecks(rows: unknown): Promise<{ stored: numb
         ops.push({ updateOne: { filter: { day: r.day, key }, update: { $inc: { count }, $set: { ...fields, updatedAt: new Date() } }, upsert: true } });
     }
     if (ops.length) await BrowserCheckDayModel.bulkWrite(ops as any, { ordered: false });
+    return { stored: ops.length };
+}
+
+const ROBOT_DIMS = ['action', 'outcome', 'client', 'browser', 'android'] as const;
+/** Gateway batches of anti-robot outcomes (Phase 9 rule 3): counts merged with $inc. */
+export async function ingestRobotChecks(rows: unknown): Promise<{ stored: number }> {
+    if (!Array.isArray(rows)) return { stored: 0 };
+    const ops = [];
+    for (const r of rows.slice(0, 5000) as any[]) {
+        if (!r || typeof r.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.day)) continue;
+        const count = Math.min(Math.max(Math.floor(Number(r.count) || 0), 0), 1e7);
+        if (!count) continue;
+        const fields: Record<string, unknown> = { signedIn: r.signedIn === true };
+        for (const d of ROBOT_DIMS) fields[d] = word(r[d]);
+        const key = [...ROBOT_DIMS.map(d => fields[d]), fields.signedIn ? 'in' : 'out'].join('|');
+        ops.push({ updateOne: { filter: { day: r.day, key }, update: { $inc: { count }, $set: { ...fields, updatedAt: new Date() } }, upsert: true } });
+    }
+    if (ops.length) await RobotCheckDayModel.bulkWrite(ops as any, { ordered: false });
     return { stored: ops.length };
 }

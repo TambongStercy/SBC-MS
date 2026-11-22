@@ -113,7 +113,6 @@ function load() {
         },
         publicUrl,
         allowedOrigins,
-        turnstileSecret: process.env.TURNSTILE_SECRET || '',
         services: {
             user: ensureNoTrailingSlash(process.env.USER_SERVICE_URL || 'http://localhost:3001'),
             payment: ensureNoTrailingSlash(process.env.PAYMENT_SERVICE_URL || 'http://localhost:3003'),
@@ -172,10 +171,5 @@ function load() {
 export type Config = ReturnType<typeof load>;
 
 const config: Config = load();
-
-if (config.isProd && !config.turnstileSecret) {
-    // eslint-disable-next-line no-console
-    console.warn(JSON.stringify({ level: 'warn', msg: 'TURNSTILE_SECRET is not set: agent login runs without Turnstile' }));
-}
 
 export default config;

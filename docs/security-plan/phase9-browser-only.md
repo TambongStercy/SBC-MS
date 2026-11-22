@@ -116,17 +116,65 @@ reasons.
 
 - **Enforcement:** sensitive endpoints first, then all of `/api`. It needs the 14 log-only days
   with false refusals under 0.1% per browser family and Android version.
-- **Turnstile** on sign-in, sign-up, withdrawal, contact change and authenticator setup. It
-  needs a Turnstile site key for the main domain, and is the fallback for `unsupported`
-  browsers.
+- ~~Turnstile~~: done as ALTCHA (part 3, below).
 - **HttpOnly cookie** session instead of localStorage, with refresh rotation.
 - **Cloudflare settings** (Sterling): Bot Fight Mode, and a WAF rule blocking tool user-agents
   on `/api`.
 - **Admin frontend and support desk** following the same rules.
-- **Feeding automation signals** (bad signatures, tool user-agents) to the Phase 4 fraud engine.
+- ~~Feeding automation signals to the fraud engine~~: done in part 2.
 
 ## Checks
 
 - `gateway-service/src/scripts/check-browser-checks.ts` (signatures made like the web app's)
 - `user-service/src/scripts/check-session-keys.ts` (local Mongo)
 - SBC-WEB-UI `src/utils/requestSigning.test.ts`, `deviceSignals.test.ts`
+
+## Part 3 (2026-11-22): anti-robot check (rule 3), with ALTCHA instead of Turnstile
+
+Decision 2026-11-22: no paid or keyed third-party services. Turnstile needs a Cloudflare key, so
+rule 3 uses **ALTCHA** (`altcha-lib` 2.8.0, MIT, self-hosted proof of work: no third party, no
+cookie, no CDN script).
+
+- **Gateway** `robot-check.middleware.ts`:
+  - `GET /api/altcha/challenge`: a challenge signed with `ALTCHA_HMAC_KEY`, 10 min, `no-store`.
+    It answers 204 while the check is off, so the apps send nothing.
+  - The protected actions (POST), with the action name the counts use:
+    - `login`, `signup`, `password_reset`;
+    - `contact_change` (email, phone);
+    - `payout_change` (MoMo, crypto wallet);
+    - `authenticator_setup`;
+    - `withdrawal` (`/transactions/withdrawal/initiate`);
+    - `desk_login` (support desk);
+    - `public_ticket` (« Signaler un problème » without an account).
+  - **Answer:** `X-SBC-Altcha` = base64 JSON `{challenge, solution}`. It is checked with one HMAC
+    (deterministic mode: the derived key is signed, the server never redoes the work) and
+    accepted once (Redis `SET NX`, else this process's memory).
+  - **Outcomes:** valid / missing / malformed / invalid / expired / replay.
+  - `ROBOT_CHECK=off|log|enforce`. `log` counts into user-service `robot_check_days` (per Douala
+    day × action × outcome × client × browser × Android version; no member id; TTL 180 days),
+    flushed every minute. `enforce` answers 403 `ROBOT_CHECK_FAILED` to anything but `valid`.
+  - A signed-in member who sends a forged or replayed answer feeds the fraud engine through
+    part 2's `automation_seen` (`robot` count). The live rule `automation` names it.
+- **Member web app** (`src/utils/robotCheck.ts`):
+  - One answer is solved ahead of time when a page leading to these actions opens (sign-in,
+    sign-up, forgot password, « Signaler un problème », e-mail/phone change, wallet, profile).
+  - The fetch wrapper adds it to the protected calls; each answer is used once.
+  - On a 403 `ROBOT_CHECK_FAILED`, the wrapper retries once with a fresh answer.
+- **Support desk:** the same on the agent login (`auth/robotCheck.ts`). Turnstile was removed
+  from support-service (agent login and public tickets), support-frontend, the member app's form
+  and the desk CSP. It had never been configured on preprod (no `TURNSTILE_SECRET`).
+- **Cost:** SHA-256, one round per try. The answer is a random number between max/4 and max
+  (`ALTCHA_MAX_COUNTER`, 20,000):
+  - desktop Chrome: 69 ms on average;
+  - Chrome slowed down 20× (a very cheap phone): 1.4 s on average, 2.2 s at worst.
+  - It is solved while the page opens, so the action does not wait.
+- **Limit:** it proves the client did the work, not that a person is there. A headless browser or
+  a paid solving service still passes; rate limits stay. Its value is: no script without running
+  the solver, one answer per action, and the counts.
+- **Rollout:** `log` only. Decided 2026-11-22: Phase 9 stays log-only, never enforced on a date.
+  `enforce` exists if that decision changes. Read `user-service/dist/scripts/report-robot-checks.js
+  --days 14`: `missing` comes from old app versions still open and from scripts.
+- **Checks:**
+  - `gateway-service/src/scripts/check-robot-check.ts` (real HTTP, both modes, 23 checks);
+  - SBC-WEB-UI `src/utils/robotCheck.test.ts`;
+  - support `src/tests/public-tickets.test.ts`, `auth.test.ts`.

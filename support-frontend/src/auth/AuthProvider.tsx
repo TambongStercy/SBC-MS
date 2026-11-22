@@ -6,6 +6,7 @@ import type { Agent } from '../api/types';
 import { permissionsForRoles } from '../lib/permissions';
 import { AuthContext, type AuthContextValue } from './context';
 import { authReducer, initialAuthState } from './machine';
+import { takeRobotAnswer } from './robotCheck';
 
 /** Fills `permissions` from the roles when a response leaves them out. */
 export function normaliseAgent(agent: Agent): Agent {
@@ -48,8 +49,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     throw new ApiError(400, 'Recommencez la connexion.', 'NO_CHALLENGE');
   };
 
-  const login = useCallback(async (email: string, password: string, turnstileToken?: string) => {
-    const r = await authApi.login({ email, password, ...(turnstileToken ? { turnstileToken } : {}) });
+  const login = useCallback(async (email: string, password: string) => {
+    // Anti-robot answer (gateway ALTCHA check). Refused in enforce mode (expired, used):
+    // one retry with a fresh answer.
+    let r;
+    try {
+      r = await authApi.login({ email, password }, (await takeRobotAnswer()) ?? undefined);
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.code !== 'ROBOT_CHECK_FAILED') throw err;
+      r = await authApi.login({ email, password }, (await takeRobotAnswer(15_000)) ?? undefined);
+    }
     dispatch({ type: 'PASSWORD_ACCEPTED', step: r.step, challengeId: r.challengeId });
   }, []);
 

@@ -34,6 +34,8 @@ export interface RequestOptions {
   body?: unknown;
   query?: Query;
   reauthToken?: string;
+  /** Anti-robot answer (X-SBC-Altcha), agent login only. */
+  robotAnswer?: string;
   signal?: AbortSignal;
   /** Return the raw Response (downloads); no envelope parsing. */
   raw?: boolean;
@@ -87,7 +89,7 @@ async function ensureCsrfCookie(): Promise<void> {
   await csrfPrimed;
 }
 
-function headersFor(method: string, body: unknown, reauthToken?: string): Headers {
+function headersFor(method: string, body: unknown, reauthToken?: string, robotAnswer?: string): Headers {
   const h = new Headers({ Accept: 'application/json' });
   if (body !== undefined && !(body instanceof FormData)) h.set('Content-Type', 'application/json');
   if (isMutation(method)) {
@@ -95,6 +97,7 @@ function headersFor(method: string, body: unknown, reauthToken?: string): Header
     if (csrf) h.set(CSRF_HEADER, csrf);
   }
   if (reauthToken) h.set(REAUTH_HEADER, reauthToken);
+  if (robotAnswer) h.set('X-SBC-Altcha', robotAnswer);
   return h;
 }
 
@@ -104,7 +107,7 @@ async function send(method: string, path: string, opts: RequestOptions): Promise
   return fetch(buildUrl(path, opts.query), {
     method,
     credentials: 'include',
-    headers: headersFor(method, opts.body, opts.reauthToken),
+    headers: headersFor(method, opts.body, opts.reauthToken, opts.robotAnswer),
     body,
     signal: opts.signal,
   });

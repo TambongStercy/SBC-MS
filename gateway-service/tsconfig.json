@@ -8,7 +8,18 @@
         "esModuleInterop": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "baseUrl": ".",
+        "paths": {
+            "altcha-lib": [
+                "node_modules/altcha-lib/dist/cjs/v2/index.d.ts",
+                "node_modules/altcha-lib/dist/esm/v2/index.d.ts"
+            ],
+            "altcha-lib/algorithms/sha": [
+                "node_modules/altcha-lib/dist/cjs/v2/algorithms/sha.d.ts",
+                "node_modules/altcha-lib/dist/esm/v2/algorithms/sha.d.ts"
+            ]
+        }
     },
     "ts-node": {
         "swc": true

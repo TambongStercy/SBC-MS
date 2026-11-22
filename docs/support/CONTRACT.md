@@ -198,7 +198,7 @@ Idle 30 min, absolute 12 h.
 | Route | Body | Result |
 |---|---|---|
 | `GET /desk/auth/csrf` | — | 204; sets the readable `sbc_sup_csrf` cookie (`Path=/`) when missing (sign-in needs it too) |
-| `POST /desk/auth/login` | `{ email, password, turnstileToken? }` | `{ step: 'totp'\|'enroll', challengeId }` — same error and timing whatever the reason |
+| `POST /desk/auth/login` | `{ email, password }` (anti-robot: the gateway's ALTCHA check, header `X-SBC-Altcha`) | `{ step: 'totp'\|'enroll', challengeId }` — same error and timing whatever the reason |
 | `POST /desk/auth/totp` | `{ challengeId, code? , backupCode? }` | sets cookies, `{ agent }` |
 | `POST /desk/auth/enroll/start` | `{ challengeId }` | `{ otpauthUrl, qrDataUrl }` |
 | `POST /desk/auth/enroll/confirm` | `{ challengeId, code }` | sets cookies, `{ agent, backupCodes: string[10] }` (shown once) |
@@ -302,7 +302,7 @@ escalations), activation check 10/h. A refusal is HTTP 429 with `code: 'RATE_LIM
 
 | Route | Notes |
 |---|---|
-| `POST /public/tickets` `{ contact: { name, phone, email }, category, subject, message, turnstileToken?, website? }` | For people who cannot sign in. All three contact fields required (email: the reply is sent there). Text only, no files. Turnstile required when `TURNSTILE_SECRET` is set (`TURNSTILE_FAILED`); `website` is a hidden field: filled ⇒ fake 201, nothing stored; 3/hour and 10/day per IP (counted after the contact check). → `{ number }` only. The ticket has `memberId: null`, `source: 'public'`; agent replies (not internal notes) are emailed to `contact.email`. |
+| `POST /public/tickets` `{ contact: { name, phone, email }, category, subject, message, turnstileToken?, website? }` | For people who cannot sign in. All three contact fields required (email: the reply is sent there). Text only, no files. Anti-robot: the gateway's ALTCHA check (`X-SBC-Altcha`, `ROBOT_CHECK`; 403 `ROBOT_CHECK_FAILED` in enforce mode); `website` is a hidden field: filled ⇒ fake 201, nothing stored; 3/hour and 10/day per IP (counted after the contact check). → `{ number }` only. The ticket has `memberId: null`, `source: 'public'`; agent replies (not internal notes) are emailed to `contact.email`. |
 
 Creating answers `{ id, number, key }`: the person then **chats with the agent like a member**, sending the key as `Authorization: SupportKey <key>` (browsers: no extra CORS header) or `x-support-guest-key` (wrong or missing key ⇒ 404; 30 failures/hour per IP ⇒ 429):
 
@@ -391,7 +391,7 @@ Defaults pending SBC (Rufus) validation — CdC §15.1. All are settings, not co
 base64, required), `SERVICE_SECRET` (required), `JWT_SECRET` (member tokens, required),
 `USER_SERVICE_URL`, `PAYMENT_SERVICE_URL`, `ADVERTISING_SERVICE_URL`,
 `NOTIFICATION_SERVICE_URL`, `SUPPORT_PUBLIC_URL`, `SUPPORT_ALLOWED_ORIGINS`,
-`TURNSTILE_SECRET` (optional; login skips Turnstile when unset, logs a warning in prod),
+(the anti-robot check is the gateway's: `ROBOT_CHECK`, `ALTCHA_HMAC_KEY`),
 `DEEPSEEK_API_KEY` (optional), `DEEPSEEK_MODEL` (default `deepseek-chat`),
 `NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN` (optional; a phone notification per new request: number, category, priority, name, title, start of the message, link to the desk; never a phone or email),
 `OPENREPLAY_DASHBOARD_URL` (optional; self-hosted OpenReplay dashboard, replays on tickets are off without it),

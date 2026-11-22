@@ -18,7 +18,6 @@ process.env.NOTIFICATION_SERVICE_URL = 'http://127.0.0.1:9';
 process.env.RISK_SERVICE_URL = 'http://127.0.0.1:9';
 process.env.DEEPSEEK_API_KEY = 'test-deepseek-key';
 process.env.DEEPSEEK_BASE_URL = 'http://deepseek.test';
-process.env.TURNSTILE_SECRET = '';
 process.env.LOGIN_MIN_MS = '60';
 process.env.JOBS_ENABLED = 'false';
 process.env.LOG_LEVEL = 'silent';

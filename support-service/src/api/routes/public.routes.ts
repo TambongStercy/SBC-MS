@@ -3,7 +3,6 @@ import multer from 'multer';
 import { ah } from '../middleware/async';
 import * as tickets from '../../services/ticket.service';
 import { cleanContact } from '../../services/contact.service';
-import { verifyTurnstile } from '../../services/auth/turnstile.service';
 import { hit } from '../../lib/rate-limit';
 import { auditSafe } from '../../services/audit.service';
 import { badRequest, notFound, tooMany } from '../../utils/errors';
@@ -14,8 +13,8 @@ import { guestRealtimeToken } from '../../services/realtime.service';
 /**
  * « Signaler un problème » without an account (`/api/support/public/*`), for
  * people who cannot sign in. Text only (no files: nothing would own them).
- * Abuse guards: Turnstile (when TURNSTILE_SECRET is set), a hidden field bots
- * fill, and limits per IP. The contact details are not proof of identity: the
+ * Abuse guards: the gateway's anti-robot check (ALTCHA, action `public_ticket`), a
+ * hidden field bots fill, and limits per IP. The contact details are not proof of identity: the
  * desk shows the request as « sans compte, non vérifié ».
  *
  * The person then chats with the agent like a member: creating the request gives
@@ -38,9 +37,6 @@ router.post('/tickets', ah(async (req, res) => {
     for (const [key, max, win] of [['hour', 3, 3600], ['day', 10, 24 * 3600]] as const) {
         const r = await hit(`public:ticket:${key}:${ip}`, max, win);
         if (!r.allowed) throw tooMany('Vous avez envoyé plusieurs demandes. Réessayez plus tard.', r.retryAfterSec);
-    }
-    if (!(await verifyTurnstile(typeof b.turnstileToken === 'string' ? b.turnstileToken : undefined, ip))) {
-        throw badRequest('La vérification anti-robot a échoué. Rechargez la page et réessayez.', 'TURNSTILE_FAILED');
     }
     const t = await tickets.createTicket({
         memberId: null, contact, category: b.category, subject: b.subject, body: b.message ?? b.body,

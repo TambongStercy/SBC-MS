@@ -3,7 +3,7 @@ import type { Agent, EnrollStart, LoginResult } from './types';
 
 /** CONTRACT.md §3.1 — /desk/auth/*. */
 export const authApi = {
-  login: (body: { email: string; password: string; turnstileToken?: string }) => api.post<LoginResult>('/auth/login', body),
+  login: (body: { email: string; password: string }, robotAnswer?: string) => api.post<LoginResult>('/auth/login', body, robotAnswer ? { robotAnswer } : {}),
   totp: (body: { challengeId: string; code?: string; backupCode?: string }) => api.post<{ agent: Agent }>('/auth/totp', body),
   enrollStart: (challengeId: string) => api.post<EnrollStart>('/auth/enroll/start', { challengeId }),
   enrollConfirm: (challengeId: string, code: string) =>
