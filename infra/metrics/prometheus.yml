@@ -32,6 +32,18 @@ scrape_configs:
         regex: /[a-z]+/([a-z]+)
         target_label: instance
         replacement: $1
+    metric_relabel_configs:
+      # The main server's disk/memory/load (from gateway) and MongoDB (from user-service) are the
+      # same machine and database for prod and preprod: env="shared", the reporting side kept in
+      # source_env so a prod and a preprod copy never collide.
+      - source_labels: [__name__, env]
+        regex: (sbc_host_.*|sbc_mongo_.*);(.*)
+        target_label: source_env
+        replacement: $2
+      - source_labels: [__name__]
+        regex: sbc_host_.*|sbc_mongo_.*
+        target_label: env
+        replacement: shared
 
   - job_name: prometheus
     static_configs:

@@ -39,6 +39,14 @@ secondary (Prometheus) ──HTTPS 9101, pinned self-signed cert, Bearer METRICS
 - **Two checks:** nginx lets in only the secondary's IP, and each service checks the token itself
   (constant-time). Without `METRICS_TOKEN`, `/metrics` answers 404.
 
+**Shared machine and database.** The main server's disk, memory and load (from the gateway) and
+MongoDB (from user-service) are the same for prod and preprod.
+- **Labels:** Prometheus relabels them `env="shared"` and keeps the reporting side in `source_env`.
+- **Rules and panels** take the max across sources, so prod's copy (once prod runs this code) never
+  doubles them.
+- **Prod requests and jobs** wait for the full develop → master release (decided 2026-11-22). Until
+  then, the shared panels are the only prod figures.
+
 ## Alerts (to ntfy)
 
 `infra/metrics/make-grafana.py` writes the rules and the dashboard. Edit it, never the generated
