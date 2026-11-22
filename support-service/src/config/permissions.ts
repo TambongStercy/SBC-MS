@@ -32,6 +32,8 @@ export const PERMISSIONS = [
     'agents.manage', 'settings.manage', 'audit.read',
     // Security plan Phase 5.
     'risk.read', 'risk.decide', 'authenticator.reset.request', 'authenticator.reset.approve', 'approvals.override',
+    // KYC level 3 (2026-11-22).
+    'identity.review',
 ] as const;
 export type Permission = typeof PERMISSIONS[number];
 
@@ -79,6 +81,9 @@ const MATRIX: Record<Permission, Role[]> = {
     // authenticator code and a written reason on each action, an instant alert to the
     // other managers, never on their own account or referral tree.
     'approvals.override': [SM],
+    // KYC level 3 (decided 2026-11-22): any support agent reviews an ID document + selfie.
+    // The verifiers (WhatsApp views only) are left out.
+    'identity.review': [A, FA, FM, VS, SA],
 };
 
 // The super manager can do everything a finance manager can (plus approvals.override).

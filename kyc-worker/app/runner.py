@@ -4,6 +4,9 @@ Every second it takes up to KYC_PER_SECOND members from the queue (live ones fir
 backfill ones only between KYC_NIGHT_FROM and KYC_NIGHT_TO, Douala time), runs
 level 1, finds the other accounts whose address reaches the same mailbox, and
 stores the result. Once a day it deletes results older than KYC_RETENTION_DAYS.
+Level 3 (when KYC_L3_KEY is set): it runs the automatic checks (app/l3_checks.py) on new
+ID + selfie submissions, and every hour deletes images past their date (30 days after the
+decision) and records past 12 months.
 The main server only submits members (POST /v1/enqueue) and reads results.
 """
 from __future__ import annotations
@@ -18,6 +21,8 @@ from typing import Callable, Optional
 
 from .checks import level1
 from .dns_cache import DomainCache
+from .l3_checks import analyse, load_engine
+from .l3_store import L3Store
 from .store import Store, band
 
 log = logging.getLogger("kyc-runner")
@@ -105,6 +110,25 @@ def run_batch(store: Store, cache: DomainCache, s: Settings, now: Optional[float
     return out
 
 
+def run_l3(l3: L3Store, engine, limit: int = 2, now: Optional[float] = None) -> int:
+    """Checks up to `limit` pending level 3 requests. Returns how many."""
+    done = 0
+    while done < limit:
+        rid = l3.next_pending()
+        if not rid:
+            break
+        rec = l3.get(rid)
+        try:
+            scores, face = analyse(l3.images(rid), engine, l3.other_faces(rec["ref"]), l3.same_image_elsewhere(rid))
+        except Exception as e:  # never leaves a request pending forever
+            log.warning("level3 check failed: %s", type(e).__name__)
+            scores, face = {"engine": "error", "hints": ["check_failed"]}, None
+        l3.save_scores(rid, scores, now, face=face, ref=rec["ref"])
+        log.info("level3 request %s checked: %s", rid, ",".join(scores.get("hints") or []) or "no hint")
+        done += 1
+    return done
+
+
 def main() -> None:
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(message)s")
     secret = os.environ.get("KYC_SHARED_SECRET", "")
@@ -114,6 +138,12 @@ def main() -> None:
     store = Store(path, secret)
     cache = DomainCache(path, ttl_days=_num("KYC_DNS_TTL_DAYS", 7))
     pool = ThreadPoolExecutor(max_workers=int(_num("KYC_DNS_THREADS", 16)))
+    l3, engine = None, None
+    if len(os.environ.get("KYC_L3_KEY", "")) >= 32:
+        l3 = L3Store(path, os.environ["KYC_L3_KEY"], image_days=_num("KYC_L3_IMAGE_DAYS", 30),
+                     record_days=_num("KYC_L3_RECORD_DAYS", 365), undecided_days=_num("KYC_L3_UNDECIDED_DAYS", 60))
+        engine = load_engine()
+        log.info("level 3 on, face checks %s", engine.name if engine else "UNAVAILABLE (models missing)")
     s = Settings()
     stop = {"now": False}
     signal.signal(signal.SIGTERM, lambda *_: stop.update(now=True))
@@ -131,6 +161,12 @@ def main() -> None:
                 last_expire = t0
                 if gone:
                     log.info("expired %d results past retention", gone)
+                if l3:
+                    p = l3.purge(t0)
+                    if p["imagesDeleted"] or p["recordsDeleted"]:
+                        log.info("level3 retention: %s", p)
+            if l3:
+                run_l3(l3, engine, now=t0)
             b = run_batch(store, cache, s, t0, pool)
             totals["checked"] += b["checked"]
             totals["failed"] += b["failed"]

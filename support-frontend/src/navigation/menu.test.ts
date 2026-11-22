@@ -7,12 +7,12 @@ const paths = (...roles: Role[]) => menuFor(perms(...roles)).flatMap(g => g.item
 
 describe('menu filtered by permissions', () => {
   it.each<[Role, string[]]>([
-    ['support_agent', ['/', '/tickets', '/membres', '/activation', '/approbations', '/contenus']],
-    ['finance_agent', ['/', '/tickets', '/membres', '/activation', '/finance', '/approbations', '/rapports']],
-    ['finance_manager', ['/', '/tickets', '/membres', '/activation', '/finance', '/approbations', '/contenus', '/rapports']],
+    ['support_agent', ['/', '/tickets', '/membres', '/activation', '/identites', '/approbations', '/contenus']],
+    ['finance_agent', ['/', '/tickets', '/membres', '/activation', '/identites', '/finance', '/approbations', '/rapports']],
+    ['finance_manager', ['/', '/tickets', '/membres', '/activation', '/identites', '/finance', '/approbations', '/contenus', '/rapports']],
     ['verifier', ['/', '/verifications']],
-    ['views_supervisor', ['/', '/tickets', '/membres', '/verifications', '/supervision', '/contenus', '/rapports']],
-    ['support_admin', ['/', '/tickets', '/membres', '/activation', '/finance', '/approbations', '/supervision', '/contenus', '/rapports', '/analytique', '/admin/agents', '/admin/reglages', '/admin/audit']],
+    ['views_supervisor', ['/', '/tickets', '/membres', '/identites', '/verifications', '/supervision', '/contenus', '/rapports']],
+    ['support_admin', ['/', '/tickets', '/membres', '/activation', '/identites', '/finance', '/approbations', '/supervision', '/contenus', '/rapports', '/analytique', '/admin/agents', '/admin/reglages', '/admin/audit']],
   ])('%s', (role, expected) => {
     expect(paths(role)).toEqual(expected);
   });
@@ -29,6 +29,11 @@ describe('menu filtered by permissions', () => {
     expect(canOpenPath(perms('support_agent'), '/tickets/abc')).toBe(true);
     expect(canOpenPath(perms('support_agent'), '/finance')).toBe(false);
     expect(canOpenPath(perms('finance_agent'), '/supervision')).toBe(false);
+  });
+
+  it('identities: every support role but the views verifier', () => {
+    expect(canOpenPath(perms('verifier'), '/identites/abc')).toBe(false);
+    expect(canOpenPath(perms('support_agent'), '/identites/abc')).toBe(true);
   });
 
   it('several roles add up', () => {

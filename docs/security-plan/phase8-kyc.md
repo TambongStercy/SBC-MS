@@ -12,7 +12,7 @@ contacts the member. Branch `feature/kyc-level1`.
 | 2. kyc-worker (Python, Docker), own database, results to risk-service as signals + score | `kyc-worker/` (FastAPI); SQLite for DNS answers only; risk-service `kycresults` | done |
 | 3. Level 1: phone, countries, operator, email domain, disposable, variants, random-looking | `kyc-worker/app/checks.py` | done, except Gravatar and the MoMo holder name (below) |
 | 4. Level 2 (Holehe / SEON) on risk triggers | — | waits for the decision (SEON test on 500 vs Holehe) |
-| 5. Level 3 (Smile ID) | — | waits for Rufus |
+| 5. Level 3 (ID + selfie) | `kyc-worker/app/l3_*.py` (secondary) + support « Identités » | done 2026-11-22, open source instead of Smile ID (below) |
 | 6. Throttled night backfill of level 1 | risk-service nightly refresh, 02:05–05:00 Douala, 50/s | done |
 
 ### Flow
@@ -145,6 +145,45 @@ All calls are main → secondary, HTTPS through nginx (main server's IP only), e
   - **By-product for support:** about 670 members in 20,000 (3.4%) have an address that cannot
     receive mail, so emailed codes never reach them.
 
+## Level 3: ID document + selfie (2026-11-22)
+
+Decided 2026-11-22: no paid or keyed service, so not Smile ID.
+- **When it is asked:** a fraud-engine hold, an authenticator reset (lost phone), and someone who
+  says they lost their account details (also without an account, from a guest request). It is not
+  asked for large withdrawals.
+- **Who decides:** any support agent (`identity.review`; the WhatsApp-views verifiers are left out).
+  The decision proves identity, nothing more: the release, the reset or the contact change keeps
+  its own approval.
+- **Storage, on the secondary server only** (`kyc-worker/app/l3_store.py`, same SQLite file):
+  - images encrypted (Fernet, key derived from `KYC_L3_KEY`, never rotated);
+  - deleted 30 days after the decision (`KYC_L3_IMAGE_DAYS`), or 60 days after sending when nobody
+    decided (`KYC_L3_UNDECIDED_DAYS`);
+  - the decision and the check results (no image) kept 12 months (`KYC_L3_RECORD_DAYS`);
+  - `secure_delete` on.
+  The main server keeps no image: support-service streams them to the agent and keeps only
+  `identityverifications` (who, why, status, hints, decision).
+- **Automatic checks = hints** (`l3_checks.py`, run by `kyc-runner`). They use OpenCV YuNet (face
+  detection) and SFace (face recognition) from opencv_zoo (Apache 2.0), from `KYC_MODELS_DIR`.
+  They report:
+  - sharpness, brightness and faces found per image;
+  - selfie vs ID photo, cosine similarity with OpenCV's threshold 0.363;
+  - the same exact image sent by another person;
+  - the same face behind another account (0.45, selfies still kept).
+  There is no OCR or MRZ: the agent reads the document. Without the models, requests are still
+  stored and decided ("engine_unavailable").
+- **Endpoints** (signed like level 1): `/v1/l3/submit` (≤ 4 MB per image, magic bytes checked; one
+  open request per person, 3 a day), `/v1/l3/get`, `/v1/l3/image`, `/v1/l3/decide` (once).
+- **Limits:** nginx lets 18 MB through on `/v1/l3/submit` only. The runner refuses images above
+  40 Mpx (`OPENCV_IO_MAX_IMAGE_PIXELS`) and scales them to 1600 px before detection.
+- **Deploy additions:**
+  - secondary `.env`: `KYC_L3_KEY` (`openssl rand -hex 32`);
+  - the two `.onnx` files in `/opt/kyc-<env>/models`;
+  - the nginx location;
+  - support-service `.env`: `KYC_WORKER_URL` + `KYC_SHARED_SECRET` (the same as risk-service's).
+- Tests: `kyc-worker/tests/test_l3.py` (fake face engine; a real-model test runs when
+  `KYC_MODELS_DIR` holds the models), support `src/tests/identity.test.ts`, support-frontend
+  `IdentityPage.test.tsx`.
+
 ## Deploy (preprod)
 
 Each step needs Sterling's OK. The secrets are generated on the servers and never printed.
@@ -180,7 +219,6 @@ main-server result. Main-server load drops: no more checks or variant lookups th
 - **Level 2 (Sterling):** test SEON on 500 accounts first, otherwise Holehe. Holehe asks each
   site's sign-up or reset page, so the plan's "no email or SMS reaches a test member" check
   (20 controlled accounts) must pass first. Level 2 is capped at 500 lookups a day.
-- **Level 3 (Rufus):** Smile ID (ID + selfie) above a withdrawal threshold and on authenticator resets.
 - **MoMo holder name:** ask CinetPay and MoneyFusion.
 - **Gravatar:** add it to the privacy policy (it is a transfer), then switch it on.
 - **Using the score in decisions:** with Phase 4 part 2 (live events, enforce mode).
