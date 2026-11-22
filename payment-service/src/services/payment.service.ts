@@ -683,9 +683,11 @@ class PaymentService {
         }
         if (a.decision !== 'hold') return;
         log.warn(`Risk HOLD user ${userId}: withdrawal refused (score ${a.score}: ${a.reasons.map(r => r.rule).join(', ')}) [${audience}]`);
-        throw new AppError(audience === 'admin'
-            ? `Retrait bloqué par le moteur de fraude (score ${a.score} : ${a.reasons.map(r => r.detail).slice(0, 2).join(' ; ')}). Un responsable financier peut le libérer depuis le support (fiche du membre → Risque).`
-            : 'Votre retrait est bloqué le temps d’une vérification de sécurité. Le support SBC va examiner votre compte ; vous pouvez aussi lui écrire depuis « Aide ».', 403);
+        if (audience === 'admin') {
+            throw new AppError(`Retrait bloqué par le moteur de fraude (score ${a.score} : ${a.reasons.map(r => r.detail).slice(0, 2).join(' ; ')}). Un responsable financier peut le libérer depuis le support (fiche du membre → Risque).`, 403);
+        }
+        // RISK_HOLD: the member app offers the identity check (KYC level 3) from this refusal.
+        throw Object.assign(new AppError('Votre retrait est bloqué le temps d’une vérification de sécurité. Envoyez votre pièce d’identité et un selfie depuis « Aide » : le support SBC examinera votre compte.', 403), { code: 'RISK_HOLD' });
     }
 
     public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {

@@ -180,6 +180,14 @@ Decided 2026-11-22: no paid or keyed service, so not Smile ID.
   - the two `.onnx` files in `/opt/kyc-<env>/models`;
   - the nginx location;
   - support-service `.env`: `KYC_WORKER_URL` + `KYC_SHARED_SECRET` (the same as risk-service's).
+- **Member app (SBC-WEB-UI, part 2):**
+  - `/aide/identite?motif=…`: camera photos, scaled to 1600 px JPEG on the phone.
+  - `/signaler-un-probleme/identite/:id`: the same for a guest request.
+  - Linked from:
+    - a withdrawal refused with 403 `RISK_HOLD` (payment-service, member paths);
+    - the authenticator's lost-phone note;
+    - « Changer mon email ou téléphone »;
+    - open « Compte & accès » chats.
 - Tests: `kyc-worker/tests/test_l3.py` (fake face engine; a real-model test runs when
   `KYC_MODELS_DIR` holds the models), support `src/tests/identity.test.ts`, support-frontend
   `IdentityPage.test.tsx`.
