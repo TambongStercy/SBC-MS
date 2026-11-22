@@ -2525,7 +2525,7 @@ export class UserController {
                 return;
             }
 
-            await this.userService.requestChangeEmailOtp(userId, newEmail, req.body?.password);
+            await this.userService.requestChangeEmailOtp(userId, newEmail, req.body?.password, req.body?.authCode);
 
             // Return success message indicating OTP sent to the NEW email
             res.status(200).json({ success: true, message: `An OTP has been sent to ${newEmail} to verify the change.` });
@@ -2534,7 +2534,7 @@ export class UserController {
             log.error(`[Controller] Error requesting change email OTP for user ${req.user?.userId}:`, error);
             // If AppError, use its message and status, otherwise generic 500
             if (error instanceof AppError) {
-                res.status(error.statusCode).json({ success: false, message: error.message });
+                res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             } else {
                 res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
             }
@@ -2672,7 +2672,7 @@ export class UserController {
                 throw new AppError('Either OTP code or password reset token is required.', 400);
             }
 
-            await this.userService.resetPassword(email, newPassword, otpCode, passwordResetToken);
+            await this.userService.resetPassword(email, newPassword, otpCode, passwordResetToken, req.body?.authCode);
             res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
         } catch (error) {
             next(error);
@@ -2729,7 +2729,7 @@ export class UserController {
                 return;
             }
 
-            await this.userService.requestChangePhoneOtp(userId, newPhoneNumber);
+            await this.userService.requestChangePhoneOtp(userId, newPhoneNumber, req.body?.authCode);
 
             // Return success message indicating OTP sent to the NEW phone number
             res.status(200).json({ success: true, message: `An OTP has been sent to ${newPhoneNumber} via WhatsApp to verify the change.` });
@@ -2738,7 +2738,7 @@ export class UserController {
             log.error(`[Controller] Error requesting change phone OTP for user ${req.user?.userId}:`, error);
             // If AppError, use its message and status, otherwise generic 500
             if (error instanceof AppError) {
-                res.status(error.statusCode).json({ success: false, message: error.message });
+                res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
             } else {
                 res.status(500).json({ success: false, message: 'An error occurred while processing your request.' });
             }

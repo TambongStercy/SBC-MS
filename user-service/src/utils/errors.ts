@@ -75,3 +75,28 @@ export class AuthenticatorRequiredError extends AppError {
         Object.setPrototypeOf(this, AuthenticatorRequiredError.prototype);
     }
 }
+
+/**
+ * Security plan Phase 3, part 2: a member who set up an authenticator app must
+ * give its code (or a backup code) to change the email or the phone number, or
+ * to reset the password. The app shows the code field on this answer and sends
+ * the same request again with `authCode`.
+ */
+export class AuthenticatorCodeRequiredError extends AppError {
+    public code = 'AUTHENTICATOR_CODE_REQUIRED';
+
+    constructor() {
+        super('Confirmez avec le code de votre application d’authentification (ou un code de secours).', 403);
+        this.name = 'AuthenticatorCodeRequiredError';
+    }
+}
+
+/** The plain profile save cannot change the phone of a member with an authenticator: « Changer de numéro » asks for the code. */
+export class PhoneChangeNeedsCodeError extends AppError {
+    public code = 'PHONE_CHANGE_NEEDS_CODE';
+
+    constructor() {
+        super('Pour changer votre numéro de téléphone, passez par « Changer de numéro » : le code de votre application d’authentification vous sera demandé.', 409);
+        this.name = 'PhoneChangeNeedsCodeError';
+    }
+}

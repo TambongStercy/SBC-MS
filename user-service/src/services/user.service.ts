@@ -42,7 +42,7 @@ import { UserDetails } from '../database/repositories/user.repository';
 // Import service clients
 import { paymentService } from './clients/payment.service.client';
 import { settingsService } from './clients/settings.service.client';
-import { AppError, AuthenticatorRequiredError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError } from '../utils/errors';
+import { AppError, AuthenticatorRequiredError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError, PhoneChangeNeedsCodeError } from '../utils/errors';
 import { memberAuthService } from './member-auth.service';
 import { addressTail, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
 import { isSameMomo, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
@@ -887,6 +887,9 @@ export class UserService {
             } else if (current && isSamePhoneNumber(current.phoneNumber, allowedFields.phoneNumber)) {
                 // Same line in another format (e.g. now with its dialling code): saved, not a change.
             } else {
+                // Phase 3 part 2: a member with an authenticator changes the phone through
+                // « Changer de numéro », which asks for its code; the plain save cannot.
+                if (current && await memberAuthService.isEnabled(current._id)) throw new PhoneChangeNeedsCodeError();
                 Object.assign(allowedFields, withdrawalLockFields('phone_change'));
                 phoneChangedFrom = current;
             }
@@ -4269,7 +4272,7 @@ export class UserService {
      * @param newEmail - The new email address to verify.
      * @returns Promise<void>
      */
-    async requestChangeEmailOtp(userId: string | Types.ObjectId, rawNewEmail: string, password?: string): Promise<void> {
+    async requestChangeEmailOtp(userId: string | Types.ObjectId, rawNewEmail: string, password?: string, authCode?: unknown): Promise<void> {
         const purpose = 'changeEmail';
         const newEmail = typeof rawNewEmail === 'string' ? rawNewEmail.trim().toLowerCase() : '';
         log.info(`Change email OTP requested for user ${userId} to new email: ${newEmail}`);
@@ -4301,6 +4304,10 @@ export class UserService {
         if (existingUserWithNewEmail && existingUserWithNewEmail._id.toString() !== userId.toString()) {
             throw new AppError('Cette adresse e-mail est déjà utilisée par un autre compte.', 409);
         }
+
+        // Security plan Phase 3 part 2: a member with an authenticator app confirms with its code
+        // (checked last, so a refused address never spends a backup code). A resend needs none.
+        if (!isResend) await memberAuthService.requireCodeIfEnabled(currentUser._id, authCode, 'email_change');
 
         // 4. A code that confirms only this change, to this address.
         const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps', 10, { purpose: 'changeEmail', target: newEmail });
@@ -4334,7 +4341,8 @@ export class UserService {
         email: string,
         newPassword: string,
         otpCode?: string,
-        passwordResetToken?: string
+        passwordResetToken?: string,
+        authCode?: unknown,
     ): Promise<void> {
         log.info(`Password reset attempt for email: ${email}`);
 
@@ -4358,6 +4366,9 @@ export class UserService {
         if (passwordResetToken) {
             if (user.passwordResetToken === passwordResetToken && user.passwordResetTokenExpiration && user.passwordResetTokenExpiration > now) {
                 log.info(`Password reset token validated successfully for user ${user.email}.`);
+                // Phase 3 part 2: a member with an authenticator app also gives its code. Checked
+                // before the token is spent, so "code required" lets the page ask and send again.
+                await memberAuthService.requireCodeIfEnabled(user._id, authCode, 'password_reset');
                 validationSuccess = true;
                 // Clear the password reset token immediately after successful validation
                 await userRepository.clearPasswordResetToken(user._id);
@@ -4370,6 +4381,7 @@ export class UserService {
             const matchingOtp = user.otps.find(otp => !otp.purpose && otpMatches(otp.code, otpCode) && otp.expiration > now);
             if (matchingOtp) {
                 log.info(`OTP validated successfully for user ${user.email}.`);
+                await memberAuthService.requireCodeIfEnabled(user._id, authCode, 'password_reset');
                 validationSuccess = true;
                 // Clear all general OTPs for security
                 await userRepository.clearOtps(user._id, 'otps');
@@ -4474,7 +4486,7 @@ export class UserService {
      * @param newPhoneNumber - The new phone number to verify.
      * @returns Promise<void>
      */
-    async requestChangePhoneOtp(userId: string | Types.ObjectId, newPhoneNumber: string): Promise<void> {
+    async requestChangePhoneOtp(userId: string | Types.ObjectId, newPhoneNumber: string, authCode?: unknown): Promise<void> {
         const purpose = 'changePhone';
         log.info(`Change phone OTP requested for user ${userId} to new phone: ${newPhoneNumber}`);
 
@@ -4501,6 +4513,12 @@ export class UserService {
             // This shouldn't happen if the user is authenticated, but check anyway.
             throw new AppError('User account is inactive or not found.', 403);
         }
+
+        // Security plan Phase 3 part 2: a member with an authenticator app confirms with its code.
+        // "Renvoyer le code" for the same number, while its code is live, needs none.
+        const isResend = (currentUser.otps || []).some(o =>
+            o.purpose === 'changePhone' && o.target === normalizedPhoneNumber && new Date(o.expiration) > new Date());
+        if (!isResend) await memberAuthService.requireCodeIfEnabled(currentUser._id, authCode, 'phone_change');
 
         // 4. A code that confirms only this change, to this number.
         const otpCode = await this.generateAndStoreOtp(currentUser._id, 'otps', 10, { purpose: 'changePhone', target: normalizedPhoneNumber });

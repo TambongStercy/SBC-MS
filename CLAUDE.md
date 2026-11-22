@@ -819,9 +819,32 @@ its code replaces the e-mailed code for those actions.
 - **Lost phone:** support checks ID + selfie, then
   `scripts/reset-member-authenticator.ts <email|phone|id> --reason "<ticket>" --apply`:
   removes it, locks withdrawals 72 h (reason `authenticator_reset`), e-mails the member.
-- Not done yet from the plan: setup lock 24–48 h, risky-setup review in
-  support, admin withdrawals with the admin's own code, change of e-mail/phone/
-  password with the app code.
+- **Part 2 (2026-11-22), for members who set up the app:**
+  - **The app code is also required to:**
+    - change the e-mail (`request-change-email {…, authCode}`);
+    - change the phone (`request-change-phone {…, authCode}`);
+    - reset the password (`reset-password {…, authCode}`).
+  - A missing code answers 403 `AUTHENTICATOR_CODE_REQUIRED` and the app shows the field. The
+    reset token survives it, and a resend for the same target needs none.
+  - Members without the app are asked nothing new.
+  - The plain profile save cannot change their phone: 409 `PHONE_CHANGE_NEEDS_CODE`. The web app
+    then saves the rest and links to « Changer de numéro ».
+  - The global error handler now passes `code` through.
+- **Setup:**
+  - **Rate limit:** 5 a minute per member (Redis, fails open).
+  - **Lock after setup:** `AUTHENTICATOR_SETUP_LOCK_HOURS`, default **0**: the plan says 24–48 h,
+    and Rufus picks. It never shortens a longer lock (reason `authenticator_setup`).
+  - **Review of a risky setup** (`AUTHENTICATOR_SETUP_REVIEW=log`): seen from another country, a
+    contact/payout change in the last 7 days, or flagged by the fraud engine. It files an
+    `abnormal_behavior` case and `memberauths.setupReview`; the setup stands. Holding it until
+    approval is Rufus's call.
+- **Adoption:** a daily snapshot (03:55 Douala, `authenticator_adoption_days`) of members above
+  5,000 F who set it up. Admin `GET /users/admin/security/authenticator-adoption` (module
+  dashboard).
+- Check: `user-service/src/scripts/check-authenticator-part2.ts` (run with `REDIS_URL` for the
+  rate limit).
+- Not done yet from the plan: admin withdrawals with the admin's own code + the risk decision
+  (needs the admin authenticator branch and enforce mode).
 - Checks: `user-service/src/scripts/check-member-authenticator.ts`,
   `payment-service/src/scripts/check-withdrawal-authenticator.ts`.
 

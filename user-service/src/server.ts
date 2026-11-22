@@ -18,6 +18,7 @@ import { conversionRetryJob } from './jobs/conversion-retry.job';
 import { activitySignalsJob } from './jobs/activity-signals.job';
 import { activityRollupJob } from './jobs/activity-rollup.job';
 import { dormancyJob } from './jobs/dormancy.job';
+import { authenticatorAdoptionJob } from './jobs/authenticator-adoption.job';
 import { startSupportCaseOutbox } from './services/clients/support.service.client';
 
 // Create Express server
@@ -78,6 +79,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     res.status(statusCode).json({
         success: false,
         message,
+        // a machine-readable reason the app acts on (e.g. AUTHENTICATOR_CODE_REQUIRED)
+        ...(typeof err.code === 'string' && /^[A-Z_]{3,40}$/.test(err.code) ? { code: err.code } : {}),
         error: config.nodeEnv === 'development' ? err.stack : undefined
     });
 });
@@ -104,6 +107,7 @@ async function startServer() {
         activitySignalsJob.start();
         activityRollupJob.start();
         dormancyJob.start(); // Security plan Phase 7: dormant accounts (nightly 03:45 Douala)
+        authenticatorAdoptionJob.start(); // Security plan Phase 3: daily adoption among members above 5,000 F
         // Security plan Phase 5: cases opened while support was down are sent again.
         startSupportCaseOutbox();
 
@@ -133,6 +137,7 @@ async function startServer() {
             activitySignalsJob.stop();
             activityRollupJob.stop();
             dormancyJob.stop();
+            authenticatorAdoptionJob.stop();
             process.exit(0);
         };
 

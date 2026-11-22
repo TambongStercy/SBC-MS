@@ -158,7 +158,7 @@ export interface IUser extends Document {
      * number changes (see utils/withdrawal-lock.ts).
      */
     withdrawalsLockedUntil?: Date;
-    withdrawalLockReason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset';
+    withdrawalLockReason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset' | 'authenticator_setup';
     /** Security plan Phase 5: money frozen by support (withdrawals and transfers), until an approved unfreeze. */
     frozen?: { at: Date; reason?: string | null; approvalId?: string | null } | null;
     /** Security plan Phase 1 (signals), only for members who accepted the policy announcing it. */
@@ -298,7 +298,7 @@ const UserSchema = new Schema<IUser>(
         otps: [otpSchema],
         otpSendLog: { type: [Date], default: undefined },
         withdrawalsLockedUntil: { type: Date },
-        withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change', 'momo_change', 'crypto_change', 'authenticator_reset'] },
+        withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change', 'momo_change', 'crypto_change', 'authenticator_reset', 'authenticator_setup'] },
         frozen: {
             type: new Schema({ at: { type: Date, required: true }, reason: { type: String }, approvalId: { type: String } }, { _id: false }),
             default: undefined,

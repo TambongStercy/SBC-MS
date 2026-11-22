@@ -113,7 +113,7 @@ export const sizeBucket = (xaf: number) => SIZE_BUCKETS.find(s => xaf < s.max)!.
 // ---------------------------------------------------------------- risk flags
 
 /** Members the fraud engine scores require_code / hold. Null when it cannot be asked (flags kept as they were). */
-async function riskFlags(userIds: string[]): Promise<Set<string> | null> {
+export async function riskFlags(userIds: string[]): Promise<Set<string> | null> {
     const base = (process.env.RISK_SERVICE_URL || '').replace(/\/$/, '');
     if (!base || !userIds.length) return null;
     try {
