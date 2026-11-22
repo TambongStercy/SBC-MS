@@ -5,24 +5,23 @@ import { sourceCollection } from '../lib/sources';
 import { config } from '../config';
 import { KYC_BACKFILL, KYC_LIVE, KycQueueModel, KycResultModel } from '../database/models';
 import { childLogger } from '../lib/logger';
-import { hashOf } from './identity';
 
 /**
- * Security plan Phase 8: KYC level 1, risk-service side.
+ * Security plan Phase 8: KYC level 1, main-server side. Since 2026-11-22 KYC runs entirely
+ * on the secondary server (kyc-worker + kyc-runner): its queue, pacing, checks and results
+ * live there. risk-service only hands over the fields and reads results back.
  *
- *   user-service ── hint {userId, reason} ──▶ kycqueue ──▶ (1 batch / s) ──▶ kyc-worker (secondary server)
- *                                                │                                    │
- *            nightly refresh (02:05 Douala) ─────┘          kycresults ◀── signals + score
+ *   user-service ── hint ──▶ kycqueue (outbox) ──▶ every second ──▶ POST /v1/enqueue (secondary)
+ *   nightly 02:05 Douala: users (fingerprints) ──▶ POST /v1/needed ──▶ POST /v1/enqueue (backfill)
+ *   member view / status ──▶ POST /v1/results, /v1/status (1.5 s budget)
  *
- * Nothing runs on the member's request: the hint is a fire-and-forget call, and a
- * lost one is caught by the nightly refresh, which re-queues every member whose
- * checked fields changed (fingerprint) or who was never checked.
+ * The old `kycresults` collection is no longer written; it is kept (never deleted, its TTL
+ * expires rows after 12 months) and shown only while the secondary has no result yet.
  */
 const log = childLogger('Kyc');
 
 /** Bump when the checks change: every member is then checked again by the nightly refresh. */
 export const LEVEL1_VERSION = 1;
-const DAY_MS = 86_400_000;
 const USER_FIELDS = { email: 1, phoneNumber: 1, country: 1, ipCountry: 1, 'geo.lastCountry': 1, momoNumber: 1, momoOperator: 1, deleted: 1 };
 export type KycReason = 'signup' | 'contact_change' | 'refresh' | 'manual';
 const REASONS: KycReason[] = ['signup', 'contact_change', 'refresh', 'manual'];
@@ -71,51 +70,66 @@ export async function enqueue(userIds: string[], reason: KycReason, now: Date = 
     return (r.upsertedCount ?? 0) + (r.modifiedCount ?? 0);
 }
 
+/** Due outbox rows, live first. Backfill pacing (night window) is the secondary's job now. */
 async function claim(limit: number, now: Date) {
-    const allowBackfill = config.kyc.backfillAnytime || inNightWindow(now);
     const free = { $or: [{ claimedUntil: null }, { claimedUntil: { $lt: now } }] };
-    const due = await KycQueueModel.find({ nextAt: { $lte: now }, priority: allowBackfill ? { $in: [KYC_LIVE, KYC_BACKFILL] } : KYC_LIVE, ...free })
-        .sort({ priority: 1, nextAt: 1 }).limit(limit).select('_id').lean();
+    const due = await KycQueueModel.find({ nextAt: { $lte: now }, ...free }).sort({ priority: 1, nextAt: 1 }).limit(limit).select('_id').lean();
     if (!due.length) return [];
     const token = randomUUID();
     await KycQueueModel.updateMany({ _id: { $in: due.map(d => d._id) }, ...free }, { $set: { claimedUntil: new Date(now.getTime() + 120_000), claimToken: token } });
     return KycQueueModel.find({ claimToken: token }).lean();
 }
 
-// ---------------------------------------------------------------- worker
+// ---------------------------------------------------------------- secondary server
 
-export interface WorkerItem { ref: string; email?: string | null; phone?: string | null; country?: string | null; ipCountry?: string | null; geoCountry?: string | null; momoNumber?: string | null; momoOperator?: string | null }
+export interface KycFields { email: string | null; phone: string | null; country: string | null; ipCountry: string | null; geoCountry: string | null; momoNumber: string | null; momoOperator: string | null }
+export interface SubmitItem { ref: string; fingerprint: string; priority: 'live' | 'backfill'; reason: string; fields: KycFields }
 
 export function signBody(raw: string, ts: number, secret = config.kyc.secret): string {
     return createHmac('sha256', secret).update(`${ts}.${raw}`).digest('hex');
 }
 
-async function callWorker(items: WorkerItem[]): Promise<any[]> {
-    const raw = JSON.stringify({ items });
+/** A signed POST to kyc-worker on the secondary server. */
+async function callSecondary<T = any>(path: string, body: unknown, timeoutMs = 15_000): Promise<T> {
+    const raw = JSON.stringify(body);
     const ts = Math.floor(Date.now() / 1000);
-    const res = await axios.post(`${config.kyc.workerUrl}/v1/level1`, raw, {
-        timeout: 15_000,
+    const res = await axios.post(`${config.kyc.workerUrl}${path}`, raw, {
+        timeout: timeoutMs,
         headers: { 'content-type': 'application/json', 'x-kyc-timestamp': String(ts), 'x-kyc-signature': signBody(raw, ts) },
         maxBodyLength: 1024 * 1024,
         transformRequest: [(d) => d],
     });
-    const results = res.data?.results;
-    if (!Array.isArray(results)) throw new Error('worker answered without results');
-    return results;
+    return res.data as T;
+}
+
+const fieldsOf = (u: any): KycFields => ({
+    email: u.email ?? null, phone: u.phoneNumber ?? null, country: u.country ?? null, ipCountry: u.ipCountry ?? null,
+    geoCountry: u.geo?.lastCountry ?? null, momoNumber: u.momoNumber ?? null, momoOperator: u.momoOperator ?? null,
+});
+
+const SUBMIT_MAX = 500;
+async function submit(items: SubmitItem[]): Promise<number> {
+    let queued = 0;
+    for (let i = 0; i < items.length; i += SUBMIT_MAX) {
+        const r = await callSecondary<{ queued: number }>('/v1/enqueue', { items: items.slice(i, i + SUBMIT_MAX) });
+        if (typeof r?.queued !== 'number') throw new Error('secondary answered without queued');
+        queued += r.queued;
+    }
+    return queued;
 }
 
 export function kycReady(): boolean {
     return !config.kyc.disabled && !!config.kyc.workerUrl && config.kyc.secret.length >= 32 && !!config.sources.usersUri;
 }
 
-// ---------------------------------------------------------------- one batch
+// ---------------------------------------------------------------- outbox → secondary
 
-export interface BatchOutcome { claimed: number; checked: number; unchanged: number; gone: number; failed: number; ms: number }
+export interface ForwardOutcome { claimed: number; sent: number; gone: number; failed: number; ms: number }
 
-/** Takes up to `limit` due members, checks the ones whose fields changed, stores signals + score. */
-export async function processBatch(limit = config.kyc.perSecond, now: Date = new Date()): Promise<BatchOutcome> {
+/** Takes up to `limit` due outbox rows, reads the members' fields (read-only) and submits them. */
+export async function forwardBatch(limit = SUBMIT_MAX, now: Date = new Date()): Promise<ForwardOutcome> {
     const t0 = Date.now();
-    const out: BatchOutcome = { claimed: 0, checked: 0, unchanged: 0, gone: 0, failed: 0, ms: 0 };
+    const out: ForwardOutcome = { claimed: 0, sent: 0, gone: 0, failed: 0, ms: 0 };
     const users = await usersCollection();
     if (!users) return out;
     const rows: any[] = await claim(limit, now);
@@ -124,33 +138,25 @@ export async function processBatch(limit = config.kyc.perSecond, now: Date = new
 
     const found = await users.find({ _id: { $in: rows.map(r => new Types.ObjectId(r._id)) } }, { projection: USER_FIELDS }).toArray();
     const byId = new Map(found.map((u: any) => [String(u._id), u]));
-    const existing = await KycResultModel.find({ userId: { $in: rows.map(r => r._id) } }, { userId: 1, fingerprint: 1 }).lean();
-    const fpOf = new Map(existing.map((e: any) => [e.userId, e.fingerprint]));
-
     const done: any[] = [];
-    const items: WorkerItem[] = [];
-    const work: { row: any; fp: string }[] = [];
+    const sendRows: any[] = [];
+    const items: SubmitItem[] = [];
     for (const row of rows) {
         const u: any = byId.get(row._id);
         if (!u || u.deleted) { out.gone += 1; done.push(row); continue; }
-        const fp = fingerprintOf(u);
-        if (fpOf.get(row._id) === fp) { out.unchanged += 1; done.push(row); continue; }
-        work.push({ row, fp });
-        items.push({
-            ref: row._id, email: u.email ?? null, phone: u.phoneNumber ?? null, country: u.country ?? null,
-            ipCountry: u.ipCountry ?? null, geoCountry: u.geo?.lastCountry ?? null, momoNumber: u.momoNumber ?? null, momoOperator: u.momoOperator ?? null,
-        });
+        sendRows.push(row);
+        items.push({ ref: row._id, fingerprint: fingerprintOf(u), priority: row.priority === KYC_LIVE ? 'live' : 'backfill', reason: row.reason, fields: fieldsOf(u) });
     }
-
     if (items.length) {
-        let results: any[] | null = null;
         try {
-            results = await callWorker(items);
+            await submit(items);
+            out.sent = items.length;
+            done.push(...sendRows);
         } catch (e: any) {
             const why = String(e?.response?.status ?? e?.code ?? e?.message ?? 'error').slice(0, 80);
             out.failed = items.length;
-            log.warn({ items: items.length, why }, 'kyc-worker unreachable; batch kept for later');
-            await KycQueueModel.bulkWrite(work.map(({ row }) => ({
+            log.warn({ items: items.length, why }, 'KYC secondary unreachable; kept for later');
+            await KycQueueModel.bulkWrite(sendRows.map(row => ({
                 updateOne: {
                     filter: { _id: row._id, claimToken: row.claimToken },
                     update: {
@@ -160,57 +166,8 @@ export async function processBatch(limit = config.kyc.perSecond, now: Date = new
                 },
             })) as any, { ordered: false });
         }
-        if (results) {
-            const byRef = new Map(results.map((r: any) => [String(r.ref), r]));
-            const resultOps: any[] = [];
-            const keys = new Map<string, string>();
-            for (const { row } of work) {
-                const r: any = byRef.get(row._id);
-                if (r?.emailNormalized) keys.set(row._id, hashOf('email', String(r.emailNormalized)));
-            }
-            // Other accounts whose address reaches the same mailbox (already checked, plus this batch).
-            const keyList = [...new Set(keys.values())];
-            const others = keyList.length
-                ? await KycResultModel.aggregate([{ $match: { emailKey: { $in: keyList } } }, { $group: { _id: '$emailKey', users: { $addToSet: '$userId' } } }])
-                : [];
-            const holders = new Map<string, Set<string>>(others.map((o: any) => [o._id, new Set(o.users)]));
-            for (const [uid, k] of keys) { if (!holders.has(k)) holders.set(k, new Set()); holders.get(k)!.add(uid); }
-
-            for (const { row, fp } of work) {
-                const r: any = byRef.get(row._id);
-                if (!r || r.error) { out.failed += 1; continue; }
-                const emailKey = keys.get(row._id) ?? null;
-                const variantAccounts = emailKey ? Math.max(0, (holders.get(emailKey)?.size ?? 1) - 1) : 0;
-                const reasons: string[] = Array.isArray(r.reasons) ? r.reasons.slice(0, 20) : [];
-                if (variantAccounts > 0) reasons.push('email_variant_shared');
-                const score = Math.min(100, Number(r.score || 0) + (variantAccounts > 0 ? config.kyc.variantPoints : 0));
-                resultOps.push({
-                    updateOne: {
-                        filter: { userId: row._id },
-                        update: {
-                            $set: {
-                                level: 1, fingerprint: fp, signals: r.signals ?? {}, reasons, workerScore: Number(r.score || 0), score,
-                                band: score >= 50 ? 'high' : score >= 20 ? 'medium' : 'low', emailKey, variantAccounts, trigger: row.reason,
-                                checkedAt: now, expiresAt: new Date(now.getTime() + config.kyc.retentionDays * DAY_MS),
-                            },
-                        },
-                        upsert: true,
-                    },
-                });
-                out.checked += 1;
-                done.push(row);
-            }
-            if (resultOps.length) await KycResultModel.bulkWrite(resultOps, { ordered: false });
-            const failedRows = work.filter(w => { const r: any = byRef.get(w.row._id); return !r || r.error; });
-            if (failedRows.length) {
-                await KycQueueModel.bulkWrite(failedRows.map(({ row }) => ({
-                    updateOne: { filter: { _id: row._id, claimToken: row.claimToken }, update: { $set: { claimedUntil: null, claimToken: null, lastError: 'check_failed', nextAt: new Date(now.getTime() + 3600_000) }, $inc: { attempts: 1 } } },
-                })) as any, { ordered: false });
-            }
-        }
     }
-
-    // Done: removed unless a new hint arrived meanwhile (v changed), which keeps it queued.
+    // Sent: removed unless a new hint arrived meanwhile (v changed), which keeps it for the next pass.
     if (done.length) {
         await KycQueueModel.bulkWrite(done.map(row => ({ deleteOne: { filter: { _id: row._id, v: row.v, claimToken: row.claimToken } } })) as any, { ordered: false });
         await KycQueueModel.updateMany({ _id: { $in: done.map(r => r._id) }, claimToken: { $in: [...new Set(done.map(r => r.claimToken))] } },
@@ -220,31 +177,32 @@ export async function processBatch(limit = config.kyc.perSecond, now: Date = new
     return out;
 }
 
-// ---------------------------------------------------------------- nightly refresh
+// ---------------------------------------------------------------- nightly sync
 
 /**
- * Queues (as backfill) every member never checked, or whose checked fields changed since.
- * Reads users with a projection, 1,000 at a time; writes only the queue.
+ * Two phases, 1,000 members at a time: send only {id, fingerprint}; the secondary answers
+ * which members it has never checked, checked with other fields, or whose result expired;
+ * only those are submitted (as backfill, checked in the secondary's night window).
+ * Reads users with a projection; writes nothing on the main server.
  */
-export async function refreshScan(opts: { dryRun?: boolean; batch?: number; limit?: number } = {}): Promise<{ scanned: number; missing: number; changed: number; queued: number; ms: number }> {
+export async function syncScan(opts: { dryRun?: boolean; batch?: number; limit?: number } = {}): Promise<{ scanned: number; needed: number; queued: number; ms: number }> {
     const t0 = Date.now();
     const users = await usersCollection();
-    const out = { scanned: 0, missing: 0, changed: 0, queued: 0, ms: 0 };
+    const out = { scanned: 0, needed: 0, queued: 0, ms: 0 };
     if (!users) return out;
-    const size = opts.batch ?? 1000;
+    const size = Math.min(2000, opts.batch ?? 1000);
     const cursor = users.find({ deleted: { $ne: true } }, { projection: USER_FIELDS }).sort({ _id: 1 }).batchSize(size);
     let batch: any[] = [];
     const flush = async () => {
         if (!batch.length) return;
-        const ids = batch.map(u => String(u._id));
-        const have = new Map((await KycResultModel.find({ userId: { $in: ids } }, { userId: 1, fingerprint: 1 }).lean()).map((r: any) => [r.userId, r.fingerprint]));
-        const todo: string[] = [];
-        for (const u of batch) {
-            const id = String(u._id);
-            const fp = have.get(id);
-            if (!fp) { out.missing += 1; todo.push(id); } else if (fp !== fingerprintOf(u)) { out.changed += 1; todo.push(id); }
+        const fps = new Map(batch.map(u => [String(u._id), fingerprintOf(u)]));
+        const r = await callSecondary<{ refs: string[] }>('/v1/needed', { items: [...fps].map(([ref, fingerprint]) => ({ ref, fingerprint })) });
+        const need = new Set(Array.isArray(r?.refs) ? r.refs : []);
+        out.needed += need.size;
+        if (need.size && !opts.dryRun) {
+            out.queued += await submit(batch.filter(u => need.has(String(u._id)))
+                .map(u => ({ ref: String(u._id), fingerprint: fps.get(String(u._id))!, priority: 'backfill' as const, reason: 'refresh', fields: fieldsOf(u) })));
         }
-        if (todo.length && !opts.dryRun) out.queued += await enqueue(todo, 'refresh');
         batch = [];
     };
     for await (const u of cursor) {
@@ -262,50 +220,70 @@ export async function refreshScan(opts: { dryRun?: boolean; batch?: number; limi
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
-let lastRefreshDay: string | null = null;
-const stats = { batches: 0, checked: 0, failed: 0, lastBatchAt: null as Date | null };
+let lastSyncDay: string | null = null;
+const stats = { batches: 0, sent: 0, failed: 0, lastBatchAt: null as Date | null, lastSync: null as null | { at: Date; scanned: number; needed: number; queued: number; ms: number; error?: string } };
 
-/** One batch a second; the refresh once a night at the window's start (+5 min). */
+/** The outbox once a second; the sync once a night at the window's start (+5 min). */
 export function startKycLoop(): void {
     if (timer || !kycReady()) {
         if (!kycReady()) log.info('KYC level 1 off (KYC_WORKER_URL, KYC_SHARED_SECRET or USERS_MONGODB_URI missing, or KYC_DISABLED)');
         return;
     }
-    log.info({ perSecond: config.kyc.perSecond, night: `${config.kyc.nightFrom}-${config.kyc.nightTo} Douala` }, 'KYC level 1 loop started');
+    log.info({ secondary: config.kyc.workerUrl.replace(/^https?:\/\//, '').split('/')[0], syncAt: `${config.kyc.nightFrom}:05 Douala` }, 'KYC feeder started (checks run on the secondary server)');
     timer = setInterval(() => {
         if (running) return;
         running = true;
         (async () => {
             const now = new Date();
             const day = new Date(now.getTime() + 3600_000).toISOString().slice(0, 10);
-            if (doualaHour(now) === config.kyc.nightFrom && now.getUTCMinutes() >= 5 && lastRefreshDay !== day) {
-                lastRefreshDay = day;
-                const r = await refreshScan();
-                log.info(r, 'KYC nightly refresh queued');
+            if (doualaHour(now) === config.kyc.nightFrom && now.getUTCMinutes() >= 5 && lastSyncDay !== day) {
+                lastSyncDay = day;
+                try {
+                    const r = await syncScan();
+                    stats.lastSync = { at: now, ...r };
+                    log.info(r, 'KYC nightly sync submitted');
+                } catch (e: any) {
+                    stats.lastSync = { at: now, scanned: 0, needed: 0, queued: 0, ms: 0, error: String(e?.response?.status ?? e?.code ?? e?.message).slice(0, 80) };
+                    log.warn({ why: stats.lastSync.error }, 'KYC nightly sync failed (next night retries)');
+                }
             }
-            const b = await processBatch(config.kyc.perSecond, now);
+            const b = await forwardBatch(SUBMIT_MAX, now);
             if (b.claimed) {
-                stats.batches += 1; stats.checked += b.checked; stats.failed += b.failed; stats.lastBatchAt = now;
-                if (b.checked || b.failed) log.debug(b, 'KYC batch');
+                stats.batches += 1; stats.sent += b.sent; stats.failed += b.failed; stats.lastBatchAt = now;
             }
-        })().catch((e) => log.warn({ message: e?.message }, 'KYC batch failed')).finally(() => { running = false; });
+        })().catch((e) => log.warn({ message: e?.message }, 'KYC forward failed')).finally(() => { running = false; });
     }, 1000);
 }
 export function stopKycLoop(): void { if (timer) clearInterval(timer); timer = null; }
 
+/** Outbox here + queue/results on the secondary (no member data). */
 export async function kycStatus() {
-    const [queued, live, results, high, medium] = await Promise.all([
-        KycQueueModel.estimatedDocumentCount(),
-        KycQueueModel.countDocuments({ priority: KYC_LIVE }),
-        KycResultModel.estimatedDocumentCount(),
-        KycResultModel.countDocuments({ band: 'high' }),
-        KycResultModel.countDocuments({ band: 'medium' }),
-    ]);
-    return { ready: kycReady(), queued, live, results, bands: { high, medium }, ...stats };
+    const [outbox, retrying] = await Promise.all([KycQueueModel.estimatedDocumentCount(), KycQueueModel.countDocuments({ attempts: { $gt: 0 } })]);
+    let secondary: any = null;
+    let secondaryError: string | null = null;
+    if (kycReady()) {
+        try { secondary = await callSecondary('/v1/status', {}, 3000); } catch (e: any) { secondaryError = String(e?.response?.status ?? e?.code ?? e?.message).slice(0, 80); }
+    }
+    return { ready: kycReady(), outbox, retrying, secondary, secondaryError, ...stats };
 }
 
-/** The member's level 1, as the support desk will show it (no email, number or key). */
+const shape = (r: any) => ({ level: r.level, score: r.score, band: r.band, reasons: r.reasons, signals: r.signals, variantAccounts: r.variantAccounts, checkedAt: r.checkedAt });
+
+/**
+ * The member's level 1, as the support desk shows it (no email, number or key), read from
+ * the secondary (1.5 s budget). While it has none yet, or cannot be reached, the last result
+ * computed on the main server before 2026-11-22 is shown, marked `source: 'archive'`.
+ */
 export async function kycView(userId: string) {
-    const r: any = await KycResultModel.findOne({ userId }, { _id: 0, emailKey: 0, fingerprint: 0 }).lean();
-    return r ? { level: r.level, score: r.score, band: r.band, reasons: r.reasons, signals: r.signals, variantAccounts: r.variantAccounts, checkedAt: r.checkedAt } : null;
+    if (kycReady()) {
+        try {
+            const r = await callSecondary<{ results: Record<string, any> }>('/v1/results', { refs: [userId] }, 1500);
+            const hit = r?.results?.[userId];
+            if (hit) return { ...shape(hit), source: 'secondary' as const };
+        } catch (e: any) {
+            log.debug({ why: e?.code ?? e?.message }, 'KYC result not readable from the secondary');
+        }
+    }
+    const old: any = await KycResultModel.findOne({ userId }, { _id: 0, emailKey: 0, fingerprint: 0 }).lean();
+    return old ? { ...shape(old), source: 'archive' as const } : null;
 }

@@ -1,4 +1,4 @@
-# kyc-worker (Security plan Phase 8). Level 1 checks only; keeps no member data.
+# kyc-worker + kyc-runner (Security plan Phase 8). KYC level 1, queue and results, on the secondary server.
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 KYC_DB_PATH=/data/kyc.sqlite
 RUN useradd --system --uid 10001 --home /app kyc && mkdir -p /data && chown kyc /data

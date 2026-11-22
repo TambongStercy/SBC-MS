@@ -75,13 +75,37 @@ Details that matter:
 
 ### What is stored
 
-- **kyc-worker:** only `domain → has mail` answers. The request is scored and forgotten.
-- **risk-service `kycresults`:**
+Since 2026-11-22 (Sterling: "The KYC should run entirely on the secondary server"), everything
+below lives on the secondary server, in the worker's SQLite (`/opt/kyc-<env>/data/kyc.sqlite`).
+- **`queue`:** a member waiting, with the fields to check (email, numbers, countries, operator).
+  The row is deleted once checked, with `PRAGMA secure_delete` so the freed pages are zeroed.
+  Live members first; backfill rows only 02:00–05:00 Douala.
+- **`results`:**
   - Stored: the signals (validity, country codes, operator families, the email **domain**, flags),
-    the reasons, the score and band, an HMAC of the normalised mailbox (`emailKey`, to find
-    variants) and an HMAC fingerprint.
-  - Never stored: the email, a number or a name. The check scans the stored documents for them.
-  - Deleted 12 months after the last check (TTL index on `expiresAt`, `KYC_RETENTION_DAYS`).
+    the reasons, the score and band, an HMAC of the normalised mailbox (`email_key`, key derived
+    from `KYC_SHARED_SECRET`, to find variants) and risk-service's HMAC fingerprint of the fields.
+  - Never stored: the email, a number or a name (`tests/test_store_runner.py` scans the file).
+  - Deleted 12 months after the last check (the runner's hourly pass, `KYC_RETENTION_DAYS`).
+- **`domains`:** `domain → has mail` answers (DNS cache).
+- **Main server:** only `kycqueue`, now an outbox (member id, reason, priority; no field), emptied
+  every second. The old `kycresults` collection is no longer written; it is kept (its TTL ends it
+  within 12 months) and the member view shows a row from it, marked `source: 'archive'`, only
+  while the secondary has no result for that member or cannot be reached.
+
+### How the two servers talk
+
+All calls are main → secondary, HTTPS through nginx (main server's IP only), each body signed
+(HMAC, ±5 min):
+- **Every second:** the outbox's due rows → the members' fields read (read-only) → `POST
+  /v1/enqueue` (≤ 500). The secondary skips a member whose result has the same fingerprint.
+  Secondary down: the rows stay, retried with a back-off (30 s → 30 min).
+- **Nightly sync, 02:05 Douala:** the users are read 1,000 at a time; only `{id, fingerprint}` is
+  sent (`POST /v1/needed`); the fields of the members the secondary answers (never checked,
+  changed, or result expired) are then submitted as backfill. A member who changed nothing
+  crosses the network as an id and an HMAC only.
+- **Member view (support desk):** `POST /v1/results`, 1.5 s budget. **Status:** `POST /v1/status`.
+- **kyc-runner** (second container, same image, `python -m app.runner`): one batch a second
+  (`KYC_PER_SECOND`, 50), level 1 in-process, mailbox variants, results. 0.5 CPU / 256 MB.
 
 ### Not quite the plan
 
@@ -91,15 +115,18 @@ Details that matter:
   setup of both servers. A WireGuard link can replace it later without code changes (only
   `KYC_WORKER_URL`).
 - **Queue:** the plan's rule 1 says a Redis stream. user-service has no Redis client, so the hint
-  is an HTTP call to risk-service, which keeps the queue in Mongo. The nightly refresh makes a
-  lost hint harmless.
+  is an HTTP call to risk-service, which keeps an outbox in Mongo and forwards it; the queue
+  itself is on the secondary. The nightly sync makes a lost hint harmless.
 
 ## Measured
 
 - **Checks:**
-  - `risk-service/src/scripts/check-kyc.ts`: 31 checks, against a fake worker; the same
-    checks pass with `KYC_REAL_WORKER_URL` against the real one.
-  - `kyc-worker`: `pytest` (13, also in CI).
+  - `risk-service/src/scripts/check-kyc.ts`: 24 checks of the feeder, against a fake secondary;
+    with `KYC_REAL_WORKER_URL` the hint, forward and sync checks run against a real worker.
+  - `kyc-worker`: `pytest` (21, also in CI): queue, runner, results, signed API.
+  - End to end (2026-11-22, local worker + runner + risk-service): Gmail variants found, a
+    disposable address scored, the sync submitted only the 2 members needed, and the SQLite
+    file held no address or number afterwards.
 - **20,000 real accounts** (local copy of the users database, real DNS):
   - Speed:
     - 150 members/s back to back;
@@ -136,10 +163,17 @@ Each step needs Sterling's OK. The secrets are generated on the servers and neve
    - `USERS_MONGODB_URI=mongodb://localhost:27017/sbc_users_preprod`;
    - then `pm2 restart risk-preprod --update-env`.
 4. user-preprod already has `RISK_SERVICE_URL`, so hints start with the deploy.
-5. **Backfill:** the first nightly refresh queues every preprod member (02:05 Douala), and they
-   are checked by 05:00. For a test by day, use `KYC_BACKFILL_ANYTIME=true` for one run.
+5. **Backfill:** the first nightly sync submits every preprod member (02:05 Douala), and they
+   are checked by 05:00. For a test by day, use `KYC_BACKFILL_ANYTIME=true` in the secondary's
+   `.env` for one run.
 6. **Prod:** the same steps with `kyc.sniperbusinesscenter.com`, `sbc_users` and the prod
-   risk-service. Watch the main server's CPU during the first night (plan: under 70%).
+   risk-service.
+
+**Moving an environment that ran the old version (preprod, 2026-11-22):** nothing to migrate.
+Pull the new image on the secondary (`docker compose up -d --build` starts `kyc-runner` next to
+the worker; both use `data/`), then deploy risk-service. Its first nightly sync submits every
+member again (the secondary has no result yet); until then the member view shows the archived
+main-server result. Main-server load drops: no more checks or variant lookups there.
 
 ## Waiting for decisions
 

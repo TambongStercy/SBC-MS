@@ -54,23 +54,18 @@ export const config = {
         eventRetentionDays: num('RISK_EVENT_RETENTION_DAYS', 90),
     },
     /**
-     * Security plan Phase 8: KYC level 1. On when the worker URL, its secret and the users
-     * database are all set; hints are still queued without them (and checked once they are).
+     * Security plan Phase 8: KYC level 1. Since 2026-11-22 the checks, their queue, pacing and
+     * results live on the secondary server (kyc-worker + kyc-runner; KYC_PER_SECOND,
+     * KYC_BACKFILL_ANYTIME, KYC_RETENTION_DAYS, KYC_EMAIL_VARIANT_POINTS are set there).
+     * Here: the outbox and the nightly sync. On when the worker URL, its secret and the users
+     * database are all set; hints are still queued without them (and sent once they are).
      */
     kyc: {
         workerUrl: (process.env.KYC_WORKER_URL || '').replace(/\/+$/, ''),
         secret: process.env.KYC_SHARED_SECRET || '',
-        /** Members sent per second (one batch a second). 50/s backfills 386,000 members in ~2 h. */
-        perSecond: Math.max(1, Math.min(500, num('KYC_PER_SECOND', 50))),
-        /** Douala hours when the backfill / refresh runs (start inclusive, end exclusive). */
+        /** Douala hours of the secondary's backfill window; the nightly sync runs at nightFrom:05. */
         nightFrom: num('KYC_NIGHT_FROM', 2),
         nightTo: num('KYC_NIGHT_TO', 5),
-        /** Preprod tests only: process backfill rows outside the night window. */
-        backfillAnytime: String(process.env.KYC_BACKFILL_ANYTIME || '').toLowerCase() === 'true',
-        /** Results are kept this long, then deleted by a TTL index (plan: 12 months). */
-        retentionDays: num('KYC_RETENTION_DAYS', 365),
-        /** Points added in risk-service: another account's address reaches the same mailbox. */
-        variantPoints: num('KYC_EMAIL_VARIANT_POINTS', 20),
         disabled: String(process.env.KYC_DISABLED || '').toLowerCase() === 'true',
     },
 };
