@@ -52,6 +52,8 @@ import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsFo
 import { AdminFilters, dateMatch } from '../utils/admin-filters';
 import { alertContactChange } from './contact-change-alert';
 import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
+import { ADMIN_MONEY_REASON_MIN } from '../utils/admin-money';
+
 
 // Country Code to Prefix Mapping (for dashboard calculation)
 const countryCodePrefixes: { [key: string]: string } = {
@@ -3079,27 +3081,39 @@ export class UserService {
         if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
             throw new Error('Reason is required for balance adjustment.');
         }
+        // A real explanation, kept on the transaction (2026-11-22): "ok", "test" are not enough.
+        if (reason.trim().length < ADMIN_MONEY_REASON_MIN) {
+            throw new Error(`Invalid reason: explain the adjustment in at least ${ADMIN_MONEY_REASON_MIN} characters.`);
+        }
+        if (!Number.isFinite(amount) || amount === 0) {
+            throw new Error('Invalid amount for balance adjustment.');
+        }
         if (target !== 'main' && target !== 'activation') {
             throw new Error("Invalid balance target: expected 'main' or 'activation'.");
         }
 
         try {
-            let updatedUser;
+            let updatedUser: IUser | null;
             if (target === 'activation') {
-                // A debit must not be able to push the activation balance below
-                // zero: the sponsoring flow assumes it never is, and a negative
-                // one would silently hand out free activations.
-                if (amount < 0) {
-                    const current = await userRepository.findById(userId);
-                    if (!current) {
-                        log.warn(`Admin balance adjustment failed: User ${userId} not found.`);
-                        return null;
-                    }
-                    if ((current.activationBalance ?? 0) + amount < 0) {
-                        throw new Error('Insufficient activation balance for this adjustment.');
-                    }
+                // Recorded like the main balance since 2026-11-22 (it used to leave no
+                // transaction): pending first (refused if payment-service cannot record it),
+                // then ONE guarded write (a debit never takes it below zero, even with two
+                // admins at once: the sponsoring flow assumes it never is), then closed.
+                const current = await userRepository.findById(userId);
+                if (!current) {
+                    log.warn(`Admin balance adjustment failed: User ${userId} not found.`);
+                    return null;
                 }
-                updatedUser = await userRepository.updateActivationBalance(userId, amount);
+                if (amount < 0 && (current.activationBalance ?? 0) + amount < 0) {
+                    throw new Error('Insufficient activation balance for this adjustment.');
+                }
+                const reference = `admin-adjust-activation:${new Types.ObjectId().toHexString()}`;
+                const base = { userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference, balance: 'activation' as const };
+                await paymentService.recordAdjustmentTransaction({ ...base, status: 'pending' });
+                updatedUser = await userRepository.adjustActivationBalanceGuarded(userId, amount);
+                await paymentService.recordAdjustmentTransaction({ ...base, status: updatedUser ? 'completed' : 'failed' })
+                    .catch((e: any) => log.error(`Activation adjustment ${reference} ${updatedUser ? 'applied' : 'refused'} but its transaction could not be closed: ${e.message}`));
+                if (!updatedUser) throw new Error('Insufficient activation balance for this adjustment.');
             } else {
                 // Main balance: a transaction is recorded in payment-service first
                 // (refused if payment-service cannot record it), then the balance

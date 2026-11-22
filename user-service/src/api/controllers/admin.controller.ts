@@ -396,7 +396,7 @@ class AdminController {
             res.status(200).json({ success: true, message: 'Balance adjusted successfully', newBalance, target: target ?? 'main' });
         } catch (error: any) {
             log.error(`Error adjusting balance for user ${userId} (admin):`, error);
-            res.status(error.message.includes('Invalid') || error.message.includes('required') ? 400 : 500)
+            res.status(/Invalid|required|Insufficient|insuffisant/i.test(String(error.message)) ? 400 : 500)
                 .json({ success: false, message: error.message || 'Failed to adjust balance' });
         }
     }

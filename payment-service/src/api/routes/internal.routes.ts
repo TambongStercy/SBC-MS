@@ -59,7 +59,9 @@ router.post('/balance-refund', (req, res, next) => paymentController.refundBalan
  */
 router.post('/adjustment-transaction', async (req, res) => {
     try {
-        const { userId, amount, reason, adminId, reference, status } = req.body || {};
+        const { userId, amount, reason, adminId, reference, status, balance } = req.body || {};
+        // which balance the admin adjusted: main (default) or activation (2026-11-22, recorded too)
+        const target = balance === 'activation' ? 'activation' : 'main';
         if (!Types.ObjectId.isValid(String(userId)) || !Number.isFinite(Number(amount)) || !reference || !['pending', 'completed', 'failed'].includes(status)) {
             return res.status(400).json({ success: false, message: 'userId, amount, reference and status are required' });
         }
@@ -71,8 +73,8 @@ router.post('/adjustment-transaction', async (req, res) => {
                 amount: Number(amount),
                 currency: Currency.XAF,
                 status: TransactionStatus.PENDING,
-                description: `Ajustement admin du solde : ${String(reason || '').slice(0, 300)}`,
-                metadata: { adjustmentRef: String(reference), adminId: String(adminId || ''), reason: String(reason || '').slice(0, 500) },
+                description: `Ajustement admin du solde${target === 'activation' ? ' d’activation' : ''} : ${String(reason || '').slice(0, 300)}`,
+                metadata: { adjustmentRef: String(reference), adminId: String(adminId || ''), reason: String(reason || '').slice(0, 500), balance: target },
             }) as any;
         }
         if (status !== 'pending') {
@@ -142,6 +144,72 @@ router.post('/user/:userId/commissions-from', (req, res, next) => paymentControl
  * @access  Private (Service-to-Service)
  */
 router.post('/transactions/:transactionId/mark-reconciled', (req, res, next) => paymentController.markTransactionReconciled(req, res, next));
+
+/**
+ * @route   POST /api/internal/transactions/:transactionId/claim-activation-reversal
+ * @desc    Before an admin reverses a member's transfer to the activation balance (activation
+ *          money back to the withdrawable balance), claim the original transfer in ONE
+ *          conditional write: it must be this member's `activation_transfer_in`, completed, not
+ *          yet reversed, and at least the amount. It then becomes RECONCILED with `reversalRef`.
+ *          {userId, amount, reason, by, reference} → 200 {amount} | 404 | 409 NOT_REVERSIBLE.
+ *          The same transfer can never be reversed twice (also blocked by the ledger reference).
+ * @access  Private (Service-to-Service)
+ */
+router.post('/transactions/:transactionId/claim-activation-reversal', async (req, res) => {
+    try {
+        const { transactionId } = req.params;
+        const { userId, amount, reason, by, reference } = req.body || {};
+        const amt = Number(amount);
+        if (!Types.ObjectId.isValid(String(userId)) || !(amt > 0) || !reason || !reference) {
+            return res.status(400).json({ success: false, message: 'userId, amount, reason and reference are required' });
+        }
+        const owner = { $in: [new Types.ObjectId(String(userId)), String(userId)] } as any;
+        const claimed = await TransactionModel.findOneAndUpdate(
+            { transactionId, userId: owner, type: TransactionType.ACTIVATION_TRANSFER_IN, status: TransactionStatus.COMPLETED, amount: { $gte: amt } },
+            { $set: {
+                status: TransactionStatus.RECONCILED,
+                'metadata.reconciliationReason': String(reason).slice(0, 500),
+                'metadata.reconciledAt': new Date(),
+                'metadata.reconciledBy': String(by || 'admin').slice(0, 64),
+                'metadata.reversalRef': String(reference).slice(0, 120),
+                'metadata.reversedAmount': amt,
+            } },
+            { new: true },
+        );
+        if (claimed) return res.status(200).json({ success: true, data: { amount: claimed.amount, reversedAmount: amt } });
+        const tx: any = await TransactionModel.findOne({ transactionId }).lean();
+        if (!tx) return res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Transaction introuvable.' });
+        const why = String(tx.userId) !== String(userId) ? 'elle appartient à un autre membre'
+            : tx.type !== TransactionType.ACTIVATION_TRANSFER_IN ? 'ce n’est pas un transfert vers le solde d’activation'
+            : tx.status === TransactionStatus.RECONCILED ? 'elle a déjà été annulée'
+            : tx.status !== TransactionStatus.COMPLETED ? `son statut est « ${tx.status} »`
+            : `le montant demandé dépasse celui du transfert (${tx.amount} F)`;
+        return res.status(409).json({ success: false, code: 'NOT_REVERSIBLE', message: `Cette transaction ne peut pas être annulée : ${why}.` });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @route   POST /api/internal/transactions/:transactionId/release-activation-reversal
+ * @desc    The balance move behind a claimed reversal failed: the transfer is put back to
+ *          COMPLETED (only the claim with this `reference`), the attempt kept in metadata.
+ * @access  Private (Service-to-Service)
+ */
+router.post('/transactions/:transactionId/release-activation-reversal', async (req, res) => {
+    try {
+        const { reference, why } = req.body || {};
+        if (!reference) return res.status(400).json({ success: false, message: 'reference is required' });
+        const r = await TransactionModel.updateOne(
+            { transactionId: req.params.transactionId, status: TransactionStatus.RECONCILED, 'metadata.reversalRef': String(reference) },
+            { $set: { status: TransactionStatus.COMPLETED, 'metadata.reversalReleasedAt': new Date(), 'metadata.reversalReleaseWhy': String(why || '').slice(0, 200) },
+              $unset: { 'metadata.reversalRef': '', 'metadata.reconciledAt': '', 'metadata.reconciledBy': '', 'metadata.reconciliationReason': '', 'metadata.reversedAmount': '' } },
+        );
+        return res.status(200).json({ success: true, data: { released: r.modifiedCount === 1 } });
+    } catch (error: any) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 // General Admin Stats (Consider moving if this file becomes too large)
 statsRouter.get('/transactions', (req, res, next) => paymentController.adminGetTotalTransactionsCount(req, res, next));

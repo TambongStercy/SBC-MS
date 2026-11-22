@@ -19,6 +19,7 @@ import { subscriptionService } from './subscription.service';
 import { userService } from './user.service';
 import logger from '../utils/logger';
 import { AppError } from '../utils/errors';
+import { ADMIN_MONEY_REASON_MIN } from '../utils/admin-money';
 
 const log = logger.getLogger('ActivationBalanceService');
 
@@ -211,8 +212,8 @@ export class ActivationBalanceService {
         if (!originalTransactionId) {
             throw new AppError('Original transaction ID is required', 400);
         }
-        if (!reason) {
-            throw new AppError('Reconciliation reason is required', 400);
+        if (!reason || String(reason).trim().length < ADMIN_MONEY_REASON_MIN) {
+            throw new AppError(`Expliquez l’annulation en au moins ${ADMIN_MONEY_REASON_MIN} caractères.`, 400);
         }
 
         const user = await this.userRepository.findById(new Types.ObjectId(userId));
@@ -226,17 +227,35 @@ export class ActivationBalanceService {
             );
         }
 
-        // Atomic reverse — checks activationBalance >= amount inside the query
-        const updatedUser = await this.userRepository.transferFromActivationToMain(userId, amount);
+        // 2026-11-22: this turns activation money (never withdrawable) back into withdrawable
+        // balance, so the cited transfer is checked and claimed FIRST, in one conditional write
+        // in payment-service: this member's own transfer to the activation balance, completed,
+        // never reversed, at least this amount. It used to be checked for nothing, so one old
+        // transfer id could unlock any amount, again and again.
+        const reference = `activation-reversal:${originalTransactionId}`;
+        await paymentService.claimActivationReversal(originalTransactionId, {
+            userId, amount, reason: String(reason).trim(), by: adminId || 'admin', reference,
+        });
+
+        // Atomic reverse under the same reference: the ledger refuses a second movement for it.
+        let updatedUser: Awaited<ReturnType<typeof this.userRepository.transferFromActivationToMain>> = null;
+        let moveError: unknown = null;
+        try {
+            updatedUser = await this.userRepository.transferFromActivationToMain(userId, amount, reference);
+        } catch (e) {
+            moveError = e;
+        }
         if (!updatedUser) {
-            // Race condition guard: balance changed between findById and atomic update
+            await paymentService.releaseActivationReversal(originalTransactionId, reference, moveError ? 'balance move failed' : 'balance changed meanwhile')
+                .catch((e: any) => log.error(`Reversal ${reference}: balances unchanged but the claim could not be released (${e.message}); release it by hand.`));
+            if (moveError) throw moveError;
             throw new AppError('Failed to reverse activation transfer (concurrent balance change). Please retry.', 409);
         }
 
         log.info(`Reversed balances for user ${userId}: balance=${updatedUser.balance}, activationBalance=${updatedUser.activationBalance}`);
 
-        // Record the audit reversal transaction. The metadata documents the linkage to the
-        // original transaction. This is recorded even if the subsequent mark-reconciled fails.
+        // The audit reversal transaction (the original is already RECONCILED by the claim, with
+        // the same reference). Recorded even if it fails to be written: the balance is the truth.
         let reversalTransactionId = '';
         try {
             const txResult = await paymentService.recordActivationTransaction({
@@ -247,6 +266,7 @@ export class ActivationBalanceService {
                 metadata: {
                     reverses: originalTransactionId,
                     reverseReason: reason,
+                    reversalRef: reference,
                     reconciledBy: adminId || 'admin',
                     isReversal: true,
                     previousBalance: user.balance,
@@ -260,20 +280,6 @@ export class ActivationBalanceService {
             log.info(`Reversal audit tx recorded: ${reversalTransactionId}`);
         } catch (error: any) {
             log.error(`Failed to record reversal audit tx for user ${userId} (balances already reversed): ${error.message}`);
-            // Don't throw — balance reversal is source of truth, audit can be repaired
-        }
-
-        // Mark the original transaction as RECONCILED. If this fails the balances are still
-        // correctly reversed; the original tx will remain status=completed and require manual
-        // cleanup. We log loud but don't undo the balance change.
-        try {
-            await paymentService.markTransactionReconciled(originalTransactionId, {
-                reason,
-                reversedByTransactionId: reversalTransactionId || undefined,
-                reconciledBy: adminId || 'admin',
-            });
-        } catch (error: any) {
-            log.error(`Failed to mark original tx ${originalTransactionId} as reconciled (balances are already reversed): ${error.message}`);
         }
 
         return {

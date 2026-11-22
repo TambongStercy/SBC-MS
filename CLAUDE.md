@@ -208,8 +208,10 @@ with the original admin): moderator role and staff login (#300), member search
 and filters (#301, #303), admin story delete (#306), admin relance routes acting
 on every member's campaign + overview/parrains endpoints (#310), admin product
 removal (#314). Facts found while rebuilding — still true of the backend:
-- `POST /users/admin/users/:id/adjust-balance` changes the balance **without
-  writing any transaction** (log line only).
+- `POST /users/admin/users/:id/adjust-balance` (API only, no screen) now writes a
+  transaction and a ledger movement for the main balance (support phase 2) and, since
+  2026-11-22, a transaction for the activation balance too; it needs the admin's code
+  (see "Money actions need the admin's own code").
 - The live CinetPay balance (`/payments/admin/gateway-balances/live`) calls
   `getBalance()` without a country, so it is ONE country's balance (#305, open,
   fixes it).
@@ -347,6 +349,26 @@ routes `/users/admin/login`, `/login/email-code`, `/login/enroll/{start,confirm}
   - **Kill switch:** `ADMIN_STEPUP_REQUIRED=false` (payment-service).
   - **Checks:** user-service `check-admin-step-up.ts`, payment-service `check-admin-step-up.ts`,
     admin `AdminCodePrompt.test.tsx`.
+  - **user-service money actions (2026-11-22).** Both are API-only (no screen), and both need
+    the same code: `requireAdminStepUp` in user-service calls `stepUp` directly.
+    - `adjust-balance`:
+      - needs a reason of at least 10 characters (`ADMIN_MONEY_REASON_MIN`) and a non-zero amount;
+      - activation-balance adjustments are recorded too (`ADMIN_ADJUSTMENT`,
+        `metadata.balance: activation`, pending → completed/failed; refused if payment-service
+        cannot record them);
+      - an activation debit is one guarded write, so two at once never take it below zero.
+    - `cancel-activation-transfer` turns activation money back into withdrawable balance:
+      - payment-service first claims the cited transfer in ONE conditional write
+        (`/internal/transactions/:id/claim-activation-reversal`). It must be this member's
+        `activation_transfer_in`, completed, never reversed, and at least the amount. A refusal
+        answers 409 `NOT_REVERSIBLE` with the reason.
+      - The balance then moves under the ledger reference `activation-reversal:<transfer>`, so
+        the same transfer can never move money twice.
+      - A failed move releases the claim (`release-activation-reversal`).
+      - Before this, nothing about the cited transfer was checked: one old transfer id could
+        unlock any amount, again and again.
+    - Checks: user-service `check-admin-balance-guard.ts`, payment-service
+      `check-activation-reversal.ts`.
 
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).

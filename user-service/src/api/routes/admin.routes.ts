@@ -11,6 +11,7 @@ import { getActivityBoard, getActivityList } from '../controllers/activity.contr
 import {
     downloadDormantExport, getDormantExport, getDormantList, getDormantSummary, postDormantChecked, postDormantExport, postDormantFreezeRequest,
 } from '../controllers/dormancy.controller';
+import { requireAdminStepUp } from '../middleware/admin-step-up.middleware';
 
 const router = Router();
 
@@ -87,8 +88,8 @@ router.patch('/users/:userId/block', notOnAdminAccounts, adminController.blockUs
 router.patch('/users/:userId/unblock', notOnAdminAccounts, adminController.unblockUser as any); // PATCH /api/admin/users/:userId/unblock
 router.delete('/users/:userId', notOnAdminAccounts, adminController.deleteUser as any); // DELETE /api/admin/users/:userId (Soft Delete)
 router.patch('/users/:userId/restore', notOnAdminAccounts, adminController.restoreUser as any); // PATCH /api/admin/users/:userId/restore
-router.post('/users/:userId/adjust-balance', notOnAdminAccounts, adminController.adjustBalance as any); // POST /api/admin/users/:userId/adjust-balance
-router.post('/users/:userId/cancel-activation-transfer', notOnAdminAccounts, adminController.cancelActivationTransfer as any); // POST /api/admin/users/:userId/cancel-activation-transfer
+router.post('/users/:userId/adjust-balance', notOnAdminAccounts, requireAdminStepUp('balance_adjust'), adminController.adjustBalance as any); // POST /api/admin/users/:userId/adjust-balance
+router.post('/users/:userId/cancel-activation-transfer', notOnAdminAccounts, requireAdminStepUp('activation_reversal'), adminController.cancelActivationTransfer as any); // POST /api/admin/users/:userId/cancel-activation-transfer
 
 // Route to set/update subscription type
 router.patch('/users/:userId/subscription', notOnAdminAccounts, adminController.adminSetUserSubscription as any); // PATCH /api/admin/users/:userId/subscription
