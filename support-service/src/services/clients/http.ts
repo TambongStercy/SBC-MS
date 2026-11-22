@@ -6,7 +6,7 @@ import logger from '../../utils/logger';
 
 const log = logger.getLogger('ServiceClient');
 
-export type ServiceName = 'user' | 'payment' | 'advertising' | 'notification';
+export type ServiceName = 'user' | 'payment' | 'advertising' | 'notification' | 'risk';
 
 export interface ServiceResponse<T = any> {
     ok: boolean;

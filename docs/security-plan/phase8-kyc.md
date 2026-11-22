@@ -25,7 +25,8 @@ nightly 02:05 Douala: every member never checked or whose checked fields changed
 processed 02:00–05:00 only; live hints any time and first)
 ```
 
-- **user-service** `utils/kyc-hint.ts`: `kycHint(userId, reason)` after `register` and inside
+- **user-service** `utils/risk-event.ts` (was `kyc-hint.ts` until Phase 4 part 2): a `signup` /
+  `contact_change` event to risk-service, which queues the check, after `register` and inside
   `alertContactChange` (every real email / phone / MoMo change: member, admin, support). A first
   MoMo number raises no alert, so the nightly refresh picks it up. The call is never awaited.
 - **risk-service** `services/kyc.service.ts`:

@@ -1,5 +1,5 @@
 import { api } from './http';
-import type { MemberHit, MemberWithdrawal, Payin, SupportMember, Ticket } from './types';
+import type { MemberHit, MemberWithdrawal, Payin, RiskCard, SupportMember, Ticket } from './types';
 
 export const membersApi = {
   search: (q: string) => api.post<MemberHit[]>('/members/search', { q }), // POST: an email or phone never goes in a URL
@@ -7,6 +7,8 @@ export const membersApi = {
   payins: (id: string) => api.get<Payin[]>(`/members/${encodeURIComponent(id)}/payins`, { limit: 20 }),
   withdrawals: (id: string) => api.get<MemberWithdrawal[]>(`/members/${encodeURIComponent(id)}/withdrawals`, { limit: 20 }),
   tickets: (id: string) => api.get<Ticket[]>(`/members/${encodeURIComponent(id)}/tickets`),
+  /** Security plan Phase 4: score, reasons, linked accounts, KYC (finance managers). */
+  risk: (id: string) => api.get<RiskCard>(`/members/${encodeURIComponent(id)}/risk`),
   /** After the approval: sends the confirmation code to the member's NEW email or number. */
   sendContactCode: (approvalId: string) => api.post<{ ok: boolean }>(`/members/contact-change/${encodeURIComponent(approvalId)}/send-code`, {}),
   /** Applies the change with the code the member received (needs a reauth token). */

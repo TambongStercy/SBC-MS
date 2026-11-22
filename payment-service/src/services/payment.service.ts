@@ -37,7 +37,7 @@ import {
     OPEN_WITHDRAWAL_STATUSES, COMPLETABLE_STATUSES,
 } from './withdrawal-lifecycle';
 import { openSupportCase } from './clients/support.service.client';
-import { askRisk } from './clients/risk.service.client';
+import { askRisk, riskEvent } from './clients/risk.service.client';
 import { failureFromError, failureFromProviderResult } from '../utils/payment-failure';
 import { checkPayinNumber, numberCheckMode } from '../utils/payin-number';
 import { memberFailureText } from '../utils/member-failure-text';
@@ -645,6 +645,8 @@ class PaymentService {
                     summary: `Retrait ${mode === 'enforce' ? 'bloqué' : 'à surveiller'} : les trois soldes ne concordent pas (${c.currency}) : A ${c.a}, B ${c.b}, C ${c.c ?? '—'} (${c.reason}).`,
                     details: { ...c, audience, mode },
                 });
+                // Phase 4: the fraud engine scores the member (30 points, 30 days); same key = once per difference
+                riskEvent('balance_mismatch', uid, { currency: c.currency, key: `${uid}:${c.currency}:${c.a}:${c.b}:${c.c}` });
             }
         }
         if (mode !== 'enforce') return;

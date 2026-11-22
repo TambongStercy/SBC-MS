@@ -244,6 +244,13 @@ countries; asking for another country returns `board: null`.
   `type=finance` leaves them out. Intake accepts `country` and `amount`.
 - **Member card:** `geo` (declared / usual / last country), `frozen`, `momoNumber`/`momoOperator`
   (masked like the phone), and for money readers `ledger` (balance A against B per currency).
+- **Risk card (Phase 4 part 2):** `GET /members/:userId/risk` (`risk.read`, audited
+  `member.risk.viewed`) reads risk-service's member view (`RISK_SERVICE_URL`; empty →
+  `{ available: false }`, down → 503): `{ available: true, score, decision, scoredAt, groupSize,
+  reasons[{ rule, points, detail, live, expiresAt? }], linked[{ userId, name, country, score,
+  decision }], identifiers[{ kind, uses, tail, count, hub }], events[{ type, at, kind, amountXaf,
+  numberTail }], kyc{ score, band, reasons, emailDomain, checkedAt, variantAccounts } | null }`.
+  Numbers and devices by their last 3 digits only.
 
 Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend). Lists are
 `{ items, total, page, limit }` unless noted; sensitive routes need `x-reauth-token`.

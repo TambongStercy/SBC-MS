@@ -12,6 +12,7 @@ import config from '../config';
 import { doualaDay } from './activity-signals.service';
 import { countryCondition, isoOfCountryValue } from '../utils/country-filter';
 import { openSupportCase } from './clients/support.service.client';
+import { riskEvent } from '../utils/risk-event';
 import logger from '../utils/logger';
 
 const log = logger.getLogger('Dormancy');
@@ -553,6 +554,7 @@ export async function noteSignIn(userId: string, ctx: { country?: string | null;
         }
         await UserModel.updateOne({ _id: userId }, { $set: { 'dormancy.reactivatedFrom': prev.dormancy.status } });
         resetDormancySummaryCache();
+        riskEvent('dormant_reactivated', userId, { from: prev.dormancy.status }); // Phase 4: 15 points for 30 days
 
         const signals = await returnSignals(userId, prev, ctx, now);
         const combined = signals.newCountry || signals.newDevice === true || !!signals.contactChange;

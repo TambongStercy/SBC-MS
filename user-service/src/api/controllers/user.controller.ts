@@ -28,9 +28,10 @@ import {
 } from '../../services/leaderboard.service';
 import { startOfCurrentMonthDouala } from '../../database/repositories/referral.repository';
 import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
-import { doualaDay, ingestActivityBatch, ipRange } from '../../services/activity-signals.service';
+import { doualaDay, ingestActivityBatch, ipRange, SIGNALS_POLICY_VERSION } from '../../services/activity-signals.service';
 import { noteSignIn } from '../../services/dormancy.service';
-import { kycHint } from '../../utils/kyc-hint';
+import { riskEvent } from '../../utils/risk-event';
+import { PRIVACY_POLICY_VERSION } from '../../config/privacy';
 import { markSignupCompleted, markSignupWrongCode, recordSignupAttempt, signupContext } from '../../services/signup-attempts.service';
 
 /** Fire-and-forget: one login in the day's signals (headers set by nginx / the gateway). */
@@ -908,8 +909,15 @@ export class UserController {
 
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
             recordSignupAttempt(signup, { userId: result.userId });
-            // Security plan Phase 8: KYC level 1 in the background (risk-service → kyc-worker).
-            kycHint(result.userId, 'signup');
+            // Security plan Phases 4 and 8: fraud engine (sign-up bursts) and KYC level 1, in the background.
+            // The network (/24 + user agent) and device go along only once the member accepted the
+            // policy that announces these signals (as Phase 1); risk-service keeps them as HMACs.
+            const signalsOk = (registrationData as any).consents?.privacy === true && PRIVACY_POLICY_VERSION >= SIGNALS_POLICY_VERSION();
+            riskEvent('signup', result.userId, signalsOk ? {
+                ipRange: ipRange(req.ip),
+                userAgent: String(req.headers['user-agent'] || '').slice(0, 300) || undefined,
+                device: typeof req.headers['x-sbc-device'] === 'string' ? req.headers['x-sbc-device'] : undefined,
+            } : {});
         } catch (error: any) {
             log.error('Error registering a new user', error);
             res.status(400).json({ success: false, message: error.message });

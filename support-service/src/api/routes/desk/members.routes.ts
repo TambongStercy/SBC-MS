@@ -45,6 +45,13 @@ router.get('/:userId/tickets', requirePermission('members.read', 'tickets.read')
     res.json({ success: true, data: await presentTickets(await members.memberTickets(req.params.userId, agentOf(req).countries)) });
 }));
 
+// Security plan Phase 4: the fraud engine's score, reasons and linked accounts (finance managers).
+router.get('/:userId/risk', requirePermission('risk.read'), ah(async (req, res) => {
+    const card = await members.riskCard(req.params.userId);
+    await audit({ actor: actorOf(req), action: 'member.risk.viewed', target: { type: 'member', id: req.params.userId }, meta: { available: card.available }, ...reqCtx(req) });
+    res.json({ success: true, data: card });
+}));
+
 // Security plan Phase 5: lost phone (after ID + selfie) → finance manager approves → user-service removes the app.
 router.post('/:userId/authenticator-reset', requirePermission('authenticator.reset.request'), requireReauth, ah(async (req, res) => {
     const a = await requestAuthenticatorReset(req.params.userId, req.body ?? {}, ref(req), reqCtx(req));

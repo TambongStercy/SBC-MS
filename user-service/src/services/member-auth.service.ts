@@ -11,6 +11,7 @@ import { AppError, AuthenticatorRequiredError } from '../utils/errors';
 import logger from '../utils/logger';
 import { otpMatches } from '../utils/otp.utils';
 import { withdrawalLockFields } from '../utils/withdrawal-lock';
+import { riskEvent } from '../utils/risk-event';
 import { notificationService } from './clients/notification.service.client';
 import { userService } from './user.service';
 
@@ -182,6 +183,7 @@ class MemberAuthService {
         );
         if (r.modifiedCount !== 1) throw new AppError('La configuration a déjà été terminée.', 409);
         log.info(`User ${user._id} set up an authenticator app.`);
+        riskEvent('authenticator_change', user._id, { kind: 'setup' }); // Phase 4: a withdrawal soon after scores
         alert(user, 'Application d’authentification activée sur votre compte SBC',
             'L’application d’authentification vient d’être activée sur votre compte SBC. Elle vous sera demandée pour chaque retrait et pour changer votre numéro Mobile Money ou votre portefeuille crypto. Si ce n’était pas vous, changez votre mot de passe et contactez immédiatement le support.');
         return { backupCodes: codes, enrolledAt: now.toISOString() };
@@ -269,6 +271,7 @@ class MemberAuthService {
         const lock = withdrawalLockFields('authenticator_reset', new Date(), memberAuthConfig.resetLockHours);
         await userRepository.updateById(user._id, lock);
         log.warn(`Authenticator of user ${user._id} reset by support (${reason}); withdrawals locked until ${lock.withdrawalsLockedUntil.toISOString()}.`);
+        riskEvent('authenticator_change', user._id, { kind: 'reset' });
         alert(user, 'L’application d’authentification de votre compte SBC a été réinitialisée',
             `À votre demande, le support a retiré l’application d’authentification de votre compte SBC. Configurez-en une nouvelle depuis votre profil. Par sécurité, les retraits sont bloqués pendant ${memberAuthConfig.resetLockHours} h. Si vous n’avez rien demandé, contactez immédiatement le support.`);
         return { withdrawalsLockedUntil: lock.withdrawalsLockedUntil.toISOString() };

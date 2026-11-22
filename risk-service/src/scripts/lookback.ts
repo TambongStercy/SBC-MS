@@ -20,8 +20,9 @@ import { config } from '../config';
 import { IdentifierModel, RiskMemberModel, RiskRunModel } from '../database/models';
 import { analyse, Facts } from '../services/analysis';
 import { clearDecisionCache } from '../services/decision.service';
-import { phoneKey } from '../services/identity';
-import { openCase } from '../services/support.client';
+import { hashOf, tailOf } from '../services/identity';
+import { collectFacts } from '../services/facts';
+import { clearedUpdate, sendCases, storeMembers } from '../services/scoring';
 import { closeRedis } from '../lib/redis';
 
 const args = process.argv.slice(2);
@@ -31,71 +32,36 @@ const sinceArg = args.includes('--since') ? args[args.indexOf('--since') + 1] : 
 const SINCE = sinceArg ? new Date(sinceArg) : null;
 if (sinceArg && isNaN(SINCE!.getTime())) { console.error('--since: bad date'); process.exit(2); }
 
-const USD_TO_XAF = 500;
-
-export async function collectFacts(users: mongoose.Connection, payment: mongoose.Connection, since: Date | null): Promise<Facts> {
-    const facts: Facts = { identifiers: [], referrals: [], withdrawals: [], commissions: [], countries: new Map() };
-    const known = new Set<string>();
-
-    // users: profile MoMo, country
-    const uc = users.collection('users').find({}, { projection: { momoNumber: 1, country: 1 } }).batchSize(5000);
-    for await (const u of uc as any) {
-        const id = String(u._id);
-        known.add(id);
-        if (u.country) facts.countries.set(id, String(u.country).toUpperCase());
-        const k = phoneKey(u.momoNumber);
-        if (k) facts.identifiers.push({ kind: 'profile_momo', value: k, userId: id });
+/** Every identifier a member used (shared or not), so a live event can find who else used it. */
+function allIdentifiers(facts: Facts, hubThreshold: number) {
+    const by = new Map<string, { kind: 'phone' | 'device'; value: string; accounts: Set<string>; payout: Set<string>; uses: Set<string> }>();
+    for (const i of facts.identifiers) {
+        const kind = i.kind === 'device' ? 'device' : 'phone';
+        const k = `${kind}|${i.value}`;
+        const e = by.get(k) ?? { kind, value: i.value, accounts: new Set<string>(), payout: new Set<string>(), uses: new Set<string>() };
+        e.accounts.add(i.userId); e.uses.add(i.kind);
+        if (i.kind === 'payout_number') e.payout.add(i.userId);
+        by.set(k, e);
     }
-
-    // referrals, levels 1–3 (archived ones still count: the tree existed)
-    const rc = users.collection('referrals').find({ referralLevel: { $gte: 1, $lte: 3 } }, { projection: { referrer: 1, referredUser: 1, referralLevel: 1 } }).batchSize(10000);
-    for await (const r of rc as any) {
-        if (r.referrer && r.referredUser) facts.referrals.push({ referrer: String(r.referrer), referred: String(r.referredUser), level: r.referralLevel });
-    }
-
-    // devices (only members who consented to the signals)
-    const gc = users.collection('user_geo_days').find({ 'devices.0': { $exists: true } }, { projection: { userId: 1, devices: 1 } }).batchSize(5000);
-    for await (const g of gc as any) {
-        for (const d of g.devices ?? []) if (d) facts.identifiers.push({ kind: 'device', value: String(d), userId: String(g.userId) });
-    }
-
-    // withdrawals: the number paid to
-    const date = since ? { createdAt: { $gte: since } } : {};
-    const wc = payment.collection('transactions').find({ type: 'withdrawal', ...date }, { projection: { userId: 1, amount: 1, currency: 1, status: 1, createdAt: 1, 'metadata.accountInfo.fullMomoNumber': 1 } }).batchSize(5000);
-    for await (const w of wc as any) {
-        const userId = String(w.userId);
-        const amount = Number(w.amount) * (w.currency === 'USD' ? USD_TO_XAF : 1);
-        facts.withdrawals.push({ userId, amount: Number.isFinite(amount) ? amount : 0, at: new Date(w.createdAt), completed: w.status === 'completed' });
-        const k = phoneKey(w.metadata?.accountInfo?.fullMomoNumber);
-        if (k) facts.identifiers.push({ kind: 'payout_number', value: k, userId });
-    }
-
-    // commissions: deposits credited because of a filleul
-    const cc = payment.collection('transactions').find({ type: 'deposit', status: 'completed', 'paymentProvider.metadata.sourceUserId': { $exists: true }, ...date }, { projection: { userId: 1, amount: 1, currency: 1, createdAt: 1 } }).batchSize(10000);
-    for await (const c of cc as any) {
-        const amount = Number(c.amount) * (c.currency === 'USD' ? USD_TO_XAF : 1);
-        facts.commissions.push({ userId: String(c.userId), amount: Number.isFinite(amount) ? amount : 0, at: new Date(c.createdAt) });
-    }
-
-    // numbers that paid (activation, products…)
-    const pc = payment.collection('paymentintents').find({ status: 'SUCCEEDED', phoneNumber: { $exists: true, $ne: null }, ...date }, { projection: { userId: 1, phoneNumber: 1 } }).batchSize(10000);
-    for await (const p of pc as any) {
-        const k = phoneKey(p.phoneNumber);
-        if (k && p.userId) facts.identifiers.push({ kind: 'payin_number', value: k, userId: String(p.userId) });
-    }
-
-    // drop ids that are not members (deleted docs, malformed ids)
-    facts.identifiers = facts.identifiers.filter(i => known.has(i.userId));
-    return facts;
+    return [...by.values()].map(e => {
+        const accounts = [...e.accounts];
+        const hub = accounts.length > hubThreshold;
+        return {
+            kind: e.kind, hash: hashOf(e.kind, e.value), tail: tailOf(e.value), uses: [...e.uses],
+            accounts: hub ? accounts.slice(0, hubThreshold + 1) : accounts,
+            payoutAccounts: hub || e.payout.size > hubThreshold ? [] : [...e.payout],
+            count: accounts.length, hub,
+        };
+    });
 }
 
-export async function runLookback(o: { usersUri: string; paymentUri: string; since: Date | null; apply: boolean; cases: boolean; log?: (...a: unknown[]) => void }) {
+export async function runLookback(o: { usersUri: string; paymentUri: string; since: Date | null; apply: boolean; cases: boolean; kind?: 'lookback' | 'rebuild'; log?: (...a: unknown[]) => void }) {
     const say = o.log ?? ((...a: unknown[]) => console.log(...a));
     const users = await mongoose.createConnection(o.usersUri, { readPreference: 'secondaryPreferred', maxPoolSize: 4 }).asPromise();
     const payment = await mongoose.createConnection(o.paymentUri, { readPreference: 'secondaryPreferred', maxPoolSize: 4 }).asPromise();
     say(`Reading ${users.name} and ${payment.name}${o.since ? ` since ${o.since.toISOString().slice(0, 10)}` : ''} (read-only)…`);
     const t0 = Date.now();
-    const facts = await collectFacts(users, payment, o.since);
+    const facts = await collectFacts((db, name) => (db === 'users' ? users : payment).collection(name) as any, { since: o.since });
     await users.close(); await payment.close();
     say(`Facts: ${facts.countries.size} members with a country, ${facts.identifiers.length} identifier uses, ${facts.referrals.length} referral links, ${facts.withdrawals.length} withdrawals, ${facts.commissions.length} commissions (${Math.round((Date.now() - t0) / 1000)} s)`);
 
@@ -115,33 +81,27 @@ export async function runLookback(o: { usersUri: string; paymentUri: string; sin
 
     if (mongoose.connection.readyState !== 1) await mongoose.connect(config.mongoUri);
     await Promise.all([IdentifierModel.syncIndexes(), RiskMemberModel.syncIndexes()]);
-    const runId = `lookback-${new Date().toISOString().slice(0, 19)}-${randomUUID().slice(0, 6)}`;
+    const kind = o.kind ?? 'lookback';
+    const runId = `${kind}-${new Date().toISOString().slice(0, 19)}-${randomUUID().slice(0, 6)}`;
     const startedAt = new Date();
     const now = new Date();
 
-    for (let i = 0; i < result.identifiers.length; i += 1000) {
-        await IdentifierModel.bulkWrite(result.identifiers.slice(i, i + 1000).map(d => ({
+    // every identifier, shared or not (part 2: a live event links a new account to it)
+    const idents = allIdentifiers(facts, config.hubThreshold);
+    for (let i = 0; i < idents.length; i += 1000) {
+        await IdentifierModel.bulkWrite(idents.slice(i, i + 1000).map(d => ({
             updateOne: { filter: { kind: d.kind, hash: d.hash }, update: { $set: { uses: d.uses, tail: d.tail, accounts: d.accounts, payoutAccounts: d.payoutAccounts, count: d.count, hub: d.hub, lastSeenAt: now }, $setOnInsert: { firstSeenAt: now } }, upsert: true },
         })), { ordered: false });
     }
-    for (let i = 0; i < result.members.length; i += 1000) {
-        await RiskMemberModel.bulkWrite(result.members.slice(i, i + 1000).map(m => ({
-            updateOne: { filter: { userId: m.userId }, update: { $set: { ...m, scoredAt: now, runId } }, upsert: true },
-        })) as any, { ordered: false });
-    }
-    // members flagged by an earlier run and not by this one go back to allow
-    const cleared = await RiskMemberModel.updateMany({ runId: { $ne: runId } }, [{ $set: { score: 0, decision: 'allow', reasons: [], groupId: '$userId', groupSize: 1, scoredAt: now, runId } }]);
+    await storeMembers(result.members, runId, now);
+    // members flagged by an earlier run (or live) and not by this one lose their structural reasons; live ones stay
+    const cleared = await RiskMemberModel.updateMany({ runId: { $ne: runId } }, clearedUpdate(runId, now) as any);
     const cacheCleared = await clearDecisionCache();
 
-    const sent: Record<string, number> = {};
-    if (o.cases) {
-        for (const c of result.cases) {
-            const r = await openCase({ ...c, alert: false, details: { ...c.details, runId } });
-            sent[r] = (sent[r] ?? 0) + 1;
-        }
-    }
-    await RiskRunModel.create({ _id: runId, kind: 'lookback', dryRun: false, startedAt, finishedAt: new Date(), stats: { ...s, since: o.since, cleared: cleared.modifiedCount, cases: sent } });
-    say(`\nApplied (${runId}): ${result.identifiers.length} identifiers, ${result.members.length} members, ${cleared.modifiedCount} cleared, ${cacheCleared} cached decisions dropped. Cases: ${o.cases ? JSON.stringify(sent) : 'none (--no-cases)'}`);
+    // past cases are filed without alerting anyone (alert: false)
+    const sent = o.cases ? await sendCases(result.cases, false, { runId }) : {};
+    await RiskRunModel.create({ _id: runId, kind, dryRun: false, startedAt, finishedAt: new Date(), stats: { ...s, since: o.since, identifiersStored: idents.length, cleared: cleared.modifiedCount, cases: sent } });
+    say(`\nApplied (${runId}): ${idents.length} identifiers, ${result.members.length} members, ${cleared.modifiedCount} cleared, ${cacheCleared} cached decisions dropped. Cases: ${o.cases ? JSON.stringify(sent) : 'none (--no-cases)'}`);
     return { result, runId, sent };
 }
 

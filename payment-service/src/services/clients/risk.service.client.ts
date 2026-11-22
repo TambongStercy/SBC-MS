@@ -33,3 +33,18 @@ export async function askRisk(input: { userId: string; action: string; amount?: 
         return null;
     }
 }
+
+/**
+ * Security plan Phase 4, part 2: tells risk-service about something only
+ * payment-service sees (the ledger triple check disagreeing). Fire-and-forget,
+ * 1 s budget, never awaited, never throws; sent whenever RISK_MODE is not off.
+ * Withdrawals and payments are NOT sent: risk-service reads them from the
+ * payment database itself.
+ */
+export function riskEvent(type: 'balance_mismatch', userId: string, data: Record<string, unknown> = {}): void {
+    if (riskMode() === 'off' || !riskUrl() || !/^[a-f0-9]{24}$/i.test(userId)) return;
+    axios.post(`${riskUrl()}/api/risk/internal/events`, { ...data, type, userId }, {
+        timeout: 1000,
+        headers: { Authorization: `Bearer ${config.services.serviceSecret}`, 'x-service-name': 'payment-service' },
+    }).catch((error: any) => log.debug(`Risk event ${type} for ${userId} not sent: ${error.code || error.response?.status || error.message}`));
+}
