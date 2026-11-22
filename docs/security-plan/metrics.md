@@ -86,6 +86,19 @@ Each step needs Sterling's OK; secrets are generated on the servers and never pr
 5. **Prod:** the five `/prod/<service>` locations and targets, `METRICS_TOKEN` in the prod
    services.
 
+**Preprod, deployed 2026-11-22:**
+- **Alerts:** ntfy.sh, topic `sbc-alerts-<random>` generated on the secondary and never printed.
+  To get the alerts on a phone:
+  1. Read the topic on the server: `ssh ubuntu@169.58.159.177 'sudo grep NTFY_TOPIC /opt/metrics/.env'`.
+  2. Subscribe to it in the ntfy app (server ntfy.sh).
+  The topic is the only key: share it with nobody else.
+- **Grafana `admin` password:** `sudo grep GRAFANA_ADMIN_PASSWORD /opt/metrics/.env` on the secondary.
+- **Testing the contact point:** Grafana 13 answers 410 to the old receiver-test API. Send a
+  Grafana-shaped body to the contact point's URL instead (title, message, status). ntfy.sh's answer
+  shows the rendered title and priority.
+- **Templates:** every value is wrapped in `{{ with $values.A }}…{{ end }}`. Grafana also renders
+  the text of rules whose query returned nothing, and `humanize*` fails on that empty value.
+
 Open Grafana through a tunnel: `ssh -L 3300:127.0.0.1:3300 ubuntu@169.58.159.177`, then
 http://localhost:3300.
 

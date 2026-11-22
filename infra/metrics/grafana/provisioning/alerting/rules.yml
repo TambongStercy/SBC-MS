@@ -49,7 +49,7 @@ groups:
     labels:
       severity: critical
     annotations:
-      summary: 'Serveur principal, {{ $labels.path }} : disque utilisé à {{ humanizePercentage $values.A.Value }} (seuil 85 %).'
+      summary: 'Serveur principal, {{ $labels.path }} : disque utilisé à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} (seuil 85 %).'
     data:
     - refId: A
       relativeTimeRange:
@@ -83,7 +83,7 @@ groups:
     labels:
       severity: critical
     annotations:
-      summary: 'Serveur principal : mémoire utilisée à {{ humanizePercentage $values.A.Value }} (seuil 90 %).'
+      summary: 'Serveur principal : mémoire utilisée à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} (seuil 90 %).'
     data:
     - refId: A
       relativeTimeRange:
@@ -117,7 +117,7 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: '{{ $labels.env }} {{ $labels.service }} : {{ humanizePercentage $values.A.Value }} des requêtes finissent en erreur serveur depuis 10 min (seuil 2 %).'
+      summary: '{{ $labels.env }} {{ $labels.service }} : {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} des requêtes finissent en erreur serveur depuis 10 min (seuil 2 %).'
     data:
     - refId: A
       relativeTimeRange:
@@ -152,7 +152,7 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: '{{ $labels.env }} payment {{ $labels.route }} : p95 de {{ humanizeDuration $values.A.Value }} depuis 10 min (seuil 5 s).'
+      summary: '{{ $labels.env }} payment {{ $labels.route }} : p95 de {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} depuis 10 min (seuil 5 s).'
     data:
     - refId: A
       relativeTimeRange:
@@ -186,7 +186,7 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: '{{ $labels.env }} {{ $labels.service }} : p95 de {{ humanizeDuration $values.A.Value }} depuis 15 min (seuil 2 s).'
+      summary: '{{ $labels.env }} {{ $labels.service }} : p95 de {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} depuis 15 min (seuil 2 s).'
     data:
     - refId: A
       relativeTimeRange:
@@ -254,7 +254,7 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: '{{ $labels.env }} : cache WiredTiger rempli à {{ humanizePercentage $values.A.Value }} : les données de travail ne tiennent plus en mémoire.'
+      summary: '{{ $labels.env }} : cache WiredTiger rempli à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} : les données de travail ne tiennent plus en mémoire.'
     data:
     - refId: A
       relativeTimeRange:
@@ -288,7 +288,7 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: '{{ $labels.env }} {{ $labels.service }} : la boucle Node prend {{ humanizeDuration $values.A.Value }} de retard (p99).'
+      summary: '{{ $labels.env }} {{ $labels.service }} : la boucle Node prend {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} de retard (p99).'
     data:
     - refId: A
       relativeTimeRange:
@@ -322,7 +322,7 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: '{{ $labels.env }} {{ $labels.service }} : la tâche {{ $labels.task }} a échoué {{ printf "%.0f" $values.A.Value }} fois en 30 min.'
+      summary: '{{ $labels.env }} {{ $labels.service }} : la tâche {{ $labels.task }} a échoué {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} fois en 30 min.'
     data:
     - refId: A
       relativeTimeRange:

@@ -26,30 +26,30 @@ REQ = 'sbc_http_request_duration_seconds'
 rule('sbc-service-down', 'Service injoignable', 'up{job="sbc"}', 'lt', 1, '3m',
      '{{ $labels.env }} {{ $labels.instance }} : Prometheus ne lit plus ses métriques depuis 3 min (service arrêté, nginx ou réseau).', 'critical')
 rule('sbc-disk', 'Disque presque plein', '1 - sbc_host_disk_free_bytes / sbc_host_disk_total_bytes', 'gt', 0.85, '10m',
-     'Serveur principal, {{ $labels.path }} : disque utilisé à {{ humanizePercentage $values.A.Value }} (seuil 85 %).', 'critical')
+     'Serveur principal, {{ $labels.path }} : disque utilisé à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} (seuil 85 %).', 'critical')
 rule('sbc-memory', 'Mémoire presque pleine', '1 - sbc_host_memory_available_bytes / sbc_host_memory_total_bytes', 'gt', 0.90, '10m',
-     'Serveur principal : mémoire utilisée à {{ humanizePercentage $values.A.Value }} (seuil 90 %).', 'critical')
+     'Serveur principal : mémoire utilisée à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} (seuil 90 %).', 'critical')
 rule('sbc-5xx', 'Erreurs serveur (5xx)',
      f'sum by (env, service) (rate({REQ}_count{{code="5xx"}}[10m])) / sum by (env, service) (rate({REQ}_count[10m]))'
      f' and on (env, service) sum by (env, service) (rate({REQ}_count[10m])) > 0.05',
      'gt', 0.02, '10m',
-     '{{ $labels.env }} {{ $labels.service }} : {{ humanizePercentage $values.A.Value }} des requêtes finissent en erreur serveur depuis 10 min (seuil 2 %).')
+     '{{ $labels.env }} {{ $labels.service }} : {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} des requêtes finissent en erreur serveur depuis 10 min (seuil 2 %).')
 rule('sbc-money-slow', 'Routes argent lentes',
      f'histogram_quantile(0.95, sum by (le, env, route) (rate({REQ}_bucket{{service="payment", route=~".*(withdraw|payout|transactions|payments/intents).*"}}[10m])))',
      'gt', 5, '10m',
-     '{{ $labels.env }} payment {{ $labels.route }} : p95 de {{ humanizeDuration $values.A.Value }} depuis 10 min (seuil 5 s).')
+     '{{ $labels.env }} payment {{ $labels.route }} : p95 de {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} depuis 10 min (seuil 5 s).')
 rule('sbc-api-slow', 'API lente',
      f'histogram_quantile(0.95, sum by (le, env, service) (rate({REQ}_bucket{{route!="unmatched"}}[10m])))', 'gt', 2, '15m',
-     '{{ $labels.env }} {{ $labels.service }} : p95 de {{ humanizeDuration $values.A.Value }} depuis 15 min (seuil 2 s).')
+     '{{ $labels.env }} {{ $labels.service }} : p95 de {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} depuis 15 min (seuil 2 s).')
 rule('sbc-mongo-down', 'MongoDB ne répond pas', 'sbc_mongo_up', 'lt', 1, '3m',
      '{{ $labels.env }} : MongoDB ne répond plus à user-service (serverStatus) depuis 3 min.', 'critical')
 rule('sbc-mongo-cache', 'Cache MongoDB saturé',
      'sbc_mongo_cache_bytes{kind="used"} / ignoring(kind) sbc_mongo_cache_bytes{kind="max"}', 'gt', 0.95, '15m',
-     '{{ $labels.env }} : cache WiredTiger rempli à {{ humanizePercentage $values.A.Value }} : les données de travail ne tiennent plus en mémoire.')
+     '{{ $labels.env }} : cache WiredTiger rempli à {{ with $values.A }}{{ humanizePercentage .Value }}{{ end }} : les données de travail ne tiennent plus en mémoire.')
 rule('sbc-event-loop', 'Service saturé (boucle d’événements)', 'sbc_nodejs_eventloop_lag_p99_seconds', 'gt', 0.5, '10m',
-     '{{ $labels.env }} {{ $labels.service }} : la boucle Node prend {{ humanizeDuration $values.A.Value }} de retard (p99).')
+     '{{ $labels.env }} {{ $labels.service }} : la boucle Node prend {{ with $values.A }}{{ humanizeDuration .Value }}{{ end }} de retard (p99).')
 rule('sbc-job-errors', 'Tâche planifiée en échec', 'sum by (env, service, task) (increase(sbc_job_runs_total{result="error"}[30m]))', 'gt', 2, '0s',
-     '{{ $labels.env }} {{ $labels.service }} : la tâche {{ $labels.task }} a échoué {{ printf "%.0f" $values.A.Value }} fois en 30 min.')
+     '{{ $labels.env }} {{ $labels.service }} : la tâche {{ $labels.task }} a échoué {{ with $values.A }}{{ printf "%.0f" .Value }}{{ end }} fois en 30 min.')
 rule('sbc-job-stale', 'Tâche de nuit non faite',
      'time() - sbc_job_last_success_timestamp_seconds{task=~"dormancy_nightly|ledger_check|finance_reconciliation|authenticator_adoption"}',
      'gt', 26 * 3600, '0s', '{{ $labels.env }} {{ $labels.service }} : {{ $labels.task }} n’a pas réussi depuis plus de 26 h.')
