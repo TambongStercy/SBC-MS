@@ -909,7 +909,10 @@ Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
   - **What approving does:** it proves identity only. Release, authenticator reset and contact
     change keep their own approvals; the reset request cites the accepted check.
   - **support-service:** `KYC_WORKER_URL` + `KYC_SHARED_SECRET`.
-  - Details: `docs/security-plan/phase8-kyc.md` « Level 3 ». The member app screens are part 2.
+  - **Member app (part 2):** `/aide/identite` and, without an account, `/signaler-un-probleme/identite/:id`.
+    A withdrawal held by the fraud engine answers 403 `RISK_HOLD` (payment-service, member paths
+    only), and the app offers the identity check from it.
+  - Details: `docs/security-plan/phase8-kyc.md` « Level 3 ».
 - Checks: `risk-service/src/scripts/check-kyc.ts` (fake secondary; `KYC_REAL_WORKER_URL` for a real one), kyc-worker `pytest`.
 
 ### Support integration (Security plan Phase 5, 2026-11-21)

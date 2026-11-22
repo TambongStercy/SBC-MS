@@ -80,7 +80,7 @@ const main = async () => {
     process.env.RISK_MODE = 'enforce';
     const n0 = asked.length;
     r = await run();
-    check('enforce: hold → member refused (403), told support will look', r.err?.statusCode === 403 && /vérification de sécurité/.test(r.err.message) && asked[n0]?.body.enforced === true, r.err?.message);
+    check('enforce: hold → member refused (403, RISK_HOLD), told to send ID + selfie', r.err?.statusCode === 403 && r.err?.code === 'RISK_HOLD' && /vérification de sécurité/.test(r.err.message) && /selfie/.test(r.err.message) && asked[n0]?.body.enforced === true, r.err?.message);
     r = await run('admin');
     check('enforce: hold → admin approval refused too, says how to release', r.err?.statusCode === 403 && /libérer/.test(r.err.message), r.err?.message);
     answer = { decision: 'require_code', score: 45, reasons: [] };

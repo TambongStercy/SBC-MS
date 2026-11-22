@@ -541,7 +541,7 @@ export class TransactionController {
                 }
                 // Withdrawal lock after an email/phone change (assertWithdrawalsNotLocked)
                 if (error instanceof AppError && (error.statusCode === 403 || error.statusCode === 503)) {
-                    return res.status(error.statusCode).json({ success: false, message: error.message });
+                    return res.status(error.statusCode).json({ success: false, message: error.message, ...((error as any).code ? { code: (error as any).code } : {}) });
                 }
             }
 
