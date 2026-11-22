@@ -134,6 +134,11 @@ const fake = (handler: (url: string, body: any) => unknown) => new Promise<http.
     check('bootstrap --apply --cases: sealed, warning case without alert', ap.sealed >= 2 && (await state(g)) === 'ok'
         && cases.slice(before).some((x) => x.subject?.userId === String(g) && x.severity === 'warning' && x.alert === false));
 
+    const before2 = cases.length;
+    const re = await svc.bootstrapPayoutSeals(true, true, true);
+    check('recheck: lists again over sealed members, reseals nobody, case not duplicated by dedupKey', re.sealed === 0 && re.mismatches.some((m) => m.userId === String(g))
+        && cases.slice(before2).some((x) => x.dedupKey === `payout_seal_bootstrap:${g}`));
+
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
     support.close(); payment.close();
