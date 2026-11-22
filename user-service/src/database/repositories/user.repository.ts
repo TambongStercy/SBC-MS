@@ -251,6 +251,17 @@ export class UserRepository {
      * @param amountChange - The amount to add (positive) or subtract (negative).
      * @returns The updated user document or null.
      */
+    /**
+     * Admin adjustment of the activation balance: one write, and a debit never takes it below
+     * zero (the guard is in the same update, so two debits at once cannot both pass).
+     * null = member not found or not enough on the activation balance.
+     */
+    async adjustActivationBalanceGuarded(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
+        const filter: Record<string, unknown> = { _id: userId };
+        if (amountChange < 0) filter.activationBalance = { $gte: -amountChange };
+        return UserModel.findOneAndUpdate(filter, { $inc: { activationBalance: amountChange } }, { new: true }).exec();
+    }
+
     async updateActivationBalance(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
         return UserModel.findByIdAndUpdate(
             userId,
@@ -291,7 +302,7 @@ export class UserRepository {
      * to activation under a misleading main balance figure caused by a stuck withdrawal).
      * Atomic with activationBalance >= amount precondition; returns null if insufficient.
      */
-    async transferFromActivationToMain(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+    async transferFromActivationToMain(userId: string | Types.ObjectId, amount: number, reference?: string): Promise<IUser | null> {
         if (amount <= 0) {
             throw new Error('Reversal amount must be positive');
         }
@@ -301,6 +312,8 @@ export class UserRepository {
             guard: { activationBalance: { $gte: amount } },
             extraInc: { activationBalance: -amount },
             source: 'activation-transfer-reversal', description: 'Annulation de transfert vers le solde d\'activation',
+            // `activation-reversal:<original transaction>`: the same transfer is reversed once at most
+            ...(reference ? { reference } : {}),
         });
         return out.applied ? out.user : null;
     }

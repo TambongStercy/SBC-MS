@@ -750,12 +750,34 @@ class PaymentServiceClient {
      */
     async recordAdjustmentTransaction(payload: {
         userId: string; amount: number; reason: string; adminId: string; reference: string; status: 'pending' | 'completed' | 'failed';
+        /** which balance was adjusted (default main) */
+        balance?: 'main' | 'activation';
     }): Promise<{ transactionId: string }> {
         const response = await this.apiClient.post<PaymentServiceResponse<{ transactionId: string }>>('/internal/adjustment-transaction', payload);
         if (!response.data?.success || !response.data.data?.transactionId) {
             throw new Error(response.data?.message || 'Failed to record adjustment transaction');
         }
         return response.data.data;
+    }
+
+    /**
+     * Claims a member's transfer to the activation balance before reversing it (one conditional
+     * write in payment-service: this member's, completed, not yet reversed, amount ≤ the
+     * transfer). Refusals keep payment-service's status and French message; unreachable → 503.
+     */
+    async claimActivationReversal(transactionId: string, payload: { userId: string; amount: number; reason: string; by: string; reference: string }): Promise<{ amount: number }> {
+        try {
+            const r = await this.apiClient.post<PaymentServiceResponse<{ amount: number }>>(`/internal/transactions/${encodeURIComponent(transactionId)}/claim-activation-reversal`, payload);
+            return r.data.data as { amount: number };
+        } catch (e: any) {
+            const status = e?.response?.status;
+            if (status && status < 500) throw new AppError(e.response?.data?.message || 'Transaction non annulable.', status);
+            throw new AppError('Le service de paiement ne répond pas : rien n’a été modifié. Réessayez.', 503);
+        }
+    }
+
+    async releaseActivationReversal(transactionId: string, reference: string, why: string): Promise<void> {
+        await this.apiClient.post(`/internal/transactions/${encodeURIComponent(transactionId)}/release-activation-reversal`, { reference, why });
     }
 }
 
