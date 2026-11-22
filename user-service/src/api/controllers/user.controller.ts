@@ -31,6 +31,7 @@ import { parseAdminFilters, AdminFilterError } from '../../utils/admin-filters';
 import { doualaDay, ingestActivityBatch, ipRange, SIGNALS_POLICY_VERSION } from '../../services/activity-signals.service';
 import { noteSignIn } from '../../services/dormancy.service';
 import { riskEvent } from '../../utils/risk-event';
+import { recordCodeStep, recordPasswordStep, signinContext } from '../../services/signin-attempts.service';
 import { PRIVACY_POLICY_VERSION } from '../../config/privacy';
 import { markSignupCompleted, markSignupWrongCode, recordSignupAttempt, signupContext } from '../../services/signup-attempts.service';
 
@@ -933,6 +934,9 @@ export class UserController {
         // Declare variables outside try block so they're accessible in catch
         let email: string | undefined;
         let normalizedPhone: string | null | undefined;
+        // Security plan Phase 1: every sign-in attempt is recorded, success or not.
+        const signin = signinContext(req);
+        const typed = () => (typeof req.body?.email === 'string' && req.body.email) || (typeof req.body?.phoneNumber === 'string' && req.body.phoneNumber) || null;
         
         try {
             const { email: reqEmail, phoneNumber, password } = req.body;
@@ -944,6 +948,7 @@ export class UserController {
                     success: false, 
                     message: 'Email or phone number is required' 
                 });
+                recordPasswordStep(signin, null, 'invalid');
                 return;
             }
             
@@ -957,6 +962,7 @@ export class UserController {
                         success: false, 
                         message: 'Invalid phone number format. Please include country code (e.g., 237670123456)' 
                     });
+                    recordPasswordStep(signin, typed(), 'invalid');
                     return;
                 }
                 normalizedPhone = normalized;
@@ -966,10 +972,15 @@ export class UserController {
             // Now returns { message, userId }
             const result = await this.userService.loginUser(email, normalizedPhone || '', password, req.ip);
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
+            recordPasswordStep(signin, normalizedPhone || email || typed(), 'code_sent', (result as any)?.userId ? String((result as any).userId) : null);
         } catch (error: any) {
             // Check if the error is due to user not found (potential recovery case)
             const isUserNotFound = error.message?.startsWith('USER_NOT_FOUND:');
             const isWrongPassword = error.message?.startsWith('WRONG_PASSWORD:');
+            recordPasswordStep(signin, normalizedPhone || email || typed(),
+                isUserNotFound ? 'unknown_account' : isWrongPassword ? 'wrong_password'
+                    : /blocked|bloqu|inactive|deleted/i.test(String(error?.message)) ? 'blocked'
+                    : /required|invalid/i.test(String(error?.message)) ? 'invalid' : 'error');
             
             if (isUserNotFound && (email || normalizedPhone)) {
                 // Check if this email/phone has already been recovered to avoid suggesting duplicate recovery
@@ -1046,6 +1057,7 @@ export class UserController {
             // Ensure userId is a string before passing
             const userProfile = await this.userService.getUserProfile(userId.toString());
 
+            recordCodeStep(signinContext(req), String(userId), !!(result.isValid && result.newToken));
             if (result.isValid && result.newToken) {
                 // If valid and a new token was generated, return it
                 this.log.info(`OTP verification successful for userId: ${userId}`);

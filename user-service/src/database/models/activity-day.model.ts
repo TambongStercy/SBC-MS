@@ -14,10 +14,20 @@ export interface ISignupCounts {
     reasons: Record<string, number>;
 }
 
+/** Security plan Phase 1: sign-in steps (password step = attempts; code step = signed in or wrong code). */
+export interface ISigninCounts {
+    attempts: number;
+    codeSent: number;
+    signedIn: number;
+    failed: number;
+    reasons: Record<string, number>;
+}
+
 export interface IActivityDay extends Document {
     day: string;
     country: string;
     signups: { web: ISignupCounts; app: ISignupCounts; api: ISignupCounts };
+    signins?: { web: ISigninCounts; app: ISigninCounts; api: ISigninCounts };
     connected: { all: number; web: number; app: number; api: number; exact: boolean };
     activated: number;
     payments: { failed: number; waiting: number; abandoned: number; groups: { sbc_code: number; provider_api: number; member: number; unknown: number } };
@@ -28,6 +38,7 @@ const ActivityDaySchema = new Schema<IActivityDay>({
     day: { type: String, required: true },
     country: { type: String, required: true },
     signups: { type: Schema.Types.Mixed, default: undefined },
+    signins: { type: Schema.Types.Mixed, default: undefined },
     connected: { type: Schema.Types.Mixed, default: undefined },
     activated: { type: Number, default: 0 },
     payments: { type: Schema.Types.Mixed, default: undefined },

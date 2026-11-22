@@ -29,6 +29,7 @@ const EVENT: Record<string, string> = {
   withdrawal_requested: 'Demande de retrait',
   payin_succeeded: 'Paiement reçu',
   automation_seen: 'Utilisation hors de l’application web',
+  signin_failures: 'Mots de passe erronés répétés',
 };
 const KIND: Record<string, string> = { email: 'e-mail', phone: 'téléphone', momo: 'Mobile Money', crypto: 'portefeuille crypto', setup: 'activée', reset: 'réinitialisée' };
 const USES: Record<string, string> = { payout_number: 'retrait', profile_momo: 'Mobile Money du profil', payin_number: 'paiement', device: 'appareil' };

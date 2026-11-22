@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
-import { ActivityDayModel, IActivityDay, ISignupCounts } from '../database/models/activity-day.model';
+import { ActivityDayModel, IActivityDay, ISigninCounts, ISignupCounts } from '../database/models/activity-day.model';
+import { SigninAttemptModel } from '../database/models/signin-attempt.model';
 import { SignupAttemptModel } from '../database/models/signup-attempt.model';
 import { UserGeoDayModel } from '../database/models/user-geo-day.model';
 import SubscriptionModel, { SubscriptionCategory, SubscriptionType } from '../database/models/subscription.model';
@@ -23,6 +24,7 @@ const log = logger.getLogger('ActivityDashboard');
  *     user_geo_days (each member counted once, in the country of most of
  *     their requests that day, so country rows add up to the total).
  *   - Sign-ups: from signup_attempts, by the day the form was sent.
+ *   - Sign-ins: from signin_attempts (Phase 1): password steps, signed in, refused by reason.
  *   - Activated: members whose first CLASSIQUE/CIBLE subscription started that day.
  *   - Payments unfinished: from payment-service, by failure group.
  */
@@ -33,6 +35,16 @@ const SRC_ALL = 'all';
 const COUNTRY = /^[A-Z]{2}$/;
 
 const emptySignups = (): ISignupCounts => ({ started: 0, completed: 0, failed: 0, inProgress: 0, reasons: {} });
+/** Why a sign-in step was refused, in French for the boards. */
+export const SIGNIN_REASON_LABELS: Record<string, string> = {
+    wrong_password: 'Mot de passe erroné',
+    unknown_account: 'Compte inconnu (e-mail ou numéro)',
+    wrong_code: 'Code de connexion erroné',
+    blocked: 'Compte bloqué',
+    invalid: 'Saisie incomplète ou invalide',
+    error: 'Erreur serveur',
+};
+const emptySignins = (): ISigninCounts => ({ attempts: 0, codeSent: 0, signedIn: 0, failed: 0, reasons: {} });
 const emptyPayments = () => ({ failed: 0, waiting: 0, abandoned: 0, groups: { sbc_code: 0, provider_api: 0, member: 0, unknown: 0 } });
 const emptyConnected = (exact: boolean) => ({ all: 0, web: 0, app: 0, api: 0, exact });
 
@@ -84,6 +96,27 @@ async function signupsFor(day: string): Promise<Map<string, IActivityDay['signup
     return out;
 }
 
+async function signinsFor(day: string): Promise<Map<string, NonNullable<IActivityDay['signins']>>> {
+    const rows = await SigninAttemptModel.aggregate([
+        { $match: { day } },
+        { $group: { _id: { country: '$country', source: '$source', step: '$step', outcome: '$outcome' }, n: { $sum: 1 } } },
+    ]);
+    const out = new Map<string, NonNullable<IActivityDay['signins']>>();
+    for (const r of rows as any[]) {
+        const c = COUNTRY.test(r._id.country) ? r._id.country : 'XX';
+        const s = (SOURCES as string[]).includes(r._id.source) ? (r._id.source as Source) : 'api';
+        const doc = out.get(c) || { web: emptySignins(), app: emptySignins(), api: emptySignins() };
+        const x = doc[s];
+        const o = String(r._id.outcome);
+        if (r._id.step === 'password') x.attempts += r.n;
+        if (o === 'code_sent') x.codeSent += r.n;
+        else if (o === 'signed_in') x.signedIn += r.n;
+        else { x.failed += r.n; x.reasons[o] = (x.reasons[o] || 0) + r.n; }
+        out.set(c, doc);
+    }
+    return out;
+}
+
 async function activatedFor(day: string): Promise<Map<string, number>> {
     const start = dayStart(day);
     const end = new Date(start.getTime() + 86400_000);
@@ -122,7 +155,7 @@ async function activatedFor(day: string): Promise<Map<string, number>> {
 }
 
 /** Writes one part of each country's document for a day; countries no longer present get zeros. */
-async function writePart(day: string, part: 'signups' | 'connected' | 'activated' | 'payments', values: Map<string, unknown>, zero: unknown): Promise<void> {
+async function writePart(day: string, part: 'signups' | 'signins' | 'connected' | 'activated' | 'payments', values: Map<string, unknown>, zero: unknown): Promise<void> {
     const now = new Date();
     const ops = [...values].map(([country, v]) => ({
         updateOne: { filter: { day, country }, update: { $set: { [part]: v, updatedAt: now } }, upsert: true },
@@ -147,7 +180,10 @@ export interface RollupParts { signups?: boolean; connected?: boolean; activated
  */
 export async function rollupDay(day: string, parts: RollupParts = { signups: true, connected: true, activated: true, payments: true }, now: Date = new Date()): Promise<void> {
     const today = doualaDay(now);
-    if (parts.signups) await writePart(day, 'signups', await signupsFor(day), { web: emptySignups(), app: emptySignups(), api: emptySignups() });
+    if (parts.signups) {
+        await writePart(day, 'signups', await signupsFor(day), { web: emptySignups(), app: emptySignups(), api: emptySignups() });
+        await writePart(day, 'signins', await signinsFor(day), { web: emptySignins(), app: emptySignins(), api: emptySignins() });
+    }
     if (parts.connected) {
         // An empty live count (Redis just restarted, keys expired) falls back to the exact one.
         const live = day === today ? await liveConnected(day) : null;
@@ -185,13 +221,21 @@ interface Figures {
     reasons: Record<string, number>;
     activated: number;
     payments: { failed: number; waiting: number; abandoned: number; groups: Record<FailureGroup, number> };
+    signins: ISigninCounts;
 }
 
 const zeroFigures = (): Figures => ({
     connected: 0, started: 0, completed: 0, failed: 0, inProgress: 0,
     failedGroups: { sbc_code: 0, provider_api: 0, member: 0, unknown: 0 }, reasons: {},
     activated: 0, payments: { failed: 0, waiting: 0, abandoned: 0, groups: { sbc_code: 0, provider_api: 0, member: 0, unknown: 0 } },
+    signins: emptySignins(),
 });
+
+function addSignins(a: ISigninCounts, b: Partial<ISigninCounts> | undefined): void {
+    if (!b) return;
+    a.attempts += b.attempts || 0; a.codeSent += b.codeSent || 0; a.signedIn += b.signedIn || 0; a.failed += b.failed || 0;
+    for (const [r, n] of Object.entries(b.reasons || {})) a.reasons[r] = (a.reasons[r] || 0) + n;
+}
 
 function addDoc(f: Figures, d: any, source: Source | null): void {
     const conn = d.connected || {};
@@ -206,6 +250,8 @@ function addDoc(f: Figures, d: any, source: Source | null): void {
             f.failedGroups[reasonGroup(reason)] += n;
         }
     }
+    const si = d.signins || {};
+    for (const s of source ? [source] : SOURCES) addSignins(f.signins, si[s]);
     f.activated += Number(d.activated) || 0;
     const p = d.payments || {};
     f.payments.failed += p.failed || 0; f.payments.waiting += p.waiting || 0; f.payments.abandoned += p.abandoned || 0;
@@ -218,6 +264,7 @@ function addFigures(a: Figures, b: Figures): void {
     for (const g of Object.keys(a.failedGroups) as FailureGroup[]) { a.failedGroups[g] += b.failedGroups[g]; a.payments.groups[g] += b.payments.groups[g]; }
     for (const [r, n] of Object.entries(b.reasons)) a.reasons[r] = (a.reasons[r] || 0) + n;
     a.payments.failed += b.payments.failed; a.payments.waiting += b.payments.waiting; a.payments.abandoned += b.payments.abandoned;
+    addSignins(a.signins, b.signins);
 }
 
 /** Change of the period's daily average against the 7 days before it, in %; null without a base. */
@@ -290,6 +337,7 @@ async function computeBoard(range: Range, source: Source | null, countries: stri
         activated: f.activated,
         activatedTrend: trend(f.activated, nDays, p?.activated ?? 0),
         payments: f.payments,
+        signins: f.signins,
     });
 
     const rows = [...cur].map(([c, f]) => shape(c, f, prev.get(c)))
@@ -310,9 +358,10 @@ async function computeBoard(range: Range, source: Source | null, countries: stri
         total: shape('ALL', totalCur, totalPrev),
         daily: days.map(day => {
             const f = daily.get(day) || zeroFigures();
-            return { day, current: day >= from, connected: f.connected, started: f.started, completed: f.completed, failed: f.failed, activated: f.activated, paymentsFailed: f.payments.failed };
+            return { day, current: day >= from, connected: f.connected, started: f.started, completed: f.completed, failed: f.failed, activated: f.activated, paymentsFailed: f.payments.failed, signedIn: f.signins.signedIn, signinsFailed: f.signins.failed };
         }),
         reasons: Object.entries(SIGNUP_REASONS).map(([code, v]) => ({ code, group: v.group, label: v.label })),
+        signinReasons: Object.entries(SIGNIN_REASON_LABELS).map(([code, label]) => ({ code, label })),
         connectedExact,
         connectedCollecting: !!(await UserGeoDayModel.exists({ day: { $gte: addDays(to, -1) } })),
         updatedAt,

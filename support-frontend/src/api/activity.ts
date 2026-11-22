@@ -11,6 +11,8 @@ export interface ActivityRow {
   completedTrend: number | null;
   activated: number;
   payments: { failed: number; waiting: number; abandoned: number; groups: Record<FailureGroup, number> };
+  /** Security plan Phase 1: sign-in steps (absent before the release that records them). */
+  signins?: { attempts: number; codeSent: number; signedIn: number; failed: number; reasons: Record<string, number> };
 }
 
 export interface ActivityBoard {
@@ -18,6 +20,7 @@ export interface ActivityBoard {
   rows: ActivityRow[];
   total: ActivityRow;
   reasons: { code: string; group: FailureGroup; label: string }[];
+  signinReasons?: { code: string; label: string }[];
   connectedCollecting: boolean;
   updatedAt: string | null;
 }

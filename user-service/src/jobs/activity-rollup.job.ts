@@ -1,6 +1,7 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { rollupDay } from '../services/activity-dashboard.service';
 import { closeUnverifiedAttempts, flushSignupAttempts } from '../services/signup-attempts.service';
+import { flushSigninAttempts } from '../services/signin-attempts.service';
 import { doualaDay } from '../services/activity-signals.service';
 import logger from '../utils/logger';
 
@@ -30,6 +31,7 @@ class ActivityRollupJob {
         const today = doualaDay(now);
         const minute = Number(new Date(now.getTime() + 3600_000).toISOString().slice(14, 16));
         await flushSignupAttempts();
+        await flushSigninAttempts();
         if (minute % 10 === 0) {
             const { closed, days } = await closeUnverifiedAttempts(now);
             if (closed) log.info(`Closed ${closed} sign-up(s) never verified after 24 h`);
