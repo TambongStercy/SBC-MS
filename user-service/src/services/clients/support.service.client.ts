@@ -35,6 +35,8 @@ export interface SupportCaseInput {
     country?: string;
     /** Money at stake (XAF), for the fraud queue's order. */
     amount?: number;
+    /** false: filed without notifying anyone (review lists). */
+    alert?: boolean;
 }
 
 const OutboxSchema = new Schema({

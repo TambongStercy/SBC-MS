@@ -505,6 +505,28 @@ push), so a hijacker cannot silence it.
   `payment-service/src/scripts/check-crypto-payout-wallet.ts`.
 - There is no admin "lift lock" action: to lift one, unset
   `withdrawalsLockedUntil` on the user document.
+- **Payout seal: a destination changed outside the app freezes the money (2026-11-22, Sterling).**
+  Someone with database access could rewrite `momoNumber` or the crypto wallet directly, skipping
+  the authenticator code and the lock.
+  - **The seal:** `users.payoutSeal` is an HMAC (`PAYOUT_SEAL_KEY`, only in user-service `.env`,
+    never rotate) of the member id + MoMo number/operator + crypto wallet/network, plus their last
+    digits.
+  - **Writes through the code reseal by themselves:** `utils/payout-seal.ts` is a plugin on the User
+    model that hooks every save/update touching those fields, whatever the path (member flows,
+    admin, support, scripts). A doc whose seal is already broken is not resealed by a later write.
+  - **Where a broken seal is caught:** in `GET /users/internal/:id/withdrawal-lock` (so before every
+    withdrawal and admin approval), and by a nightly sweep at 03:50 Douala.
+  - **What happens** (`services/payout-seal.service.ts`, `PAYOUT_SEAL_MODE=enforce`, the default;
+    `log` = case only):
+    - the money is frozen (`frozen.by = 'payout_seal'`), lifted only by support's approved unfreeze;
+    - a critical `abnormal_behavior` case goes to the Fraude queue with the evidence: the sealed vs
+      current last digits, and the numbers this member really withdrew to (payment-service
+      `POST /api/internal/withdrawal-destinations`, last 9 digits only).
+  - **Bootstrap:** `dist/scripts/payout-seal-bootstrap.js` (dry run, `--apply [--cases]`) seals
+    everyone. It lists members whose current number never served their withdrawals, as warning
+    cases without alert. Then set `PAYOUT_SEAL_SINCE` (the bootstrap date), after which a missing
+    seal counts as a tamper too.
+  - Check: `user-service/src/scripts/check-payout-seal.ts`.
 
 ### Withdrawal reservations, wallet ledger, webhook rules (support phase 2, 2026-11)
 
