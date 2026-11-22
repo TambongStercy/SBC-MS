@@ -1,6 +1,7 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { deliverDueContactsEvents, expireEndedAddons } from '../services/contacts-webhook.service';
 import logger from '../utils/logger';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('ContactsWebhookJob');
 
@@ -17,7 +18,7 @@ class ContactsWebhookJob {
         this.tasks.push(cron.schedule('* * * * *', async () => {
             if (this.running) return;
             this.running = true;
-            try { await deliverDueContactsEvents(); }
+            try { await timeJob('contacts_webhook_delivery', () => deliverDueContactsEvents()); }
             catch (err: any) { log.error(`Delivery pass failed: ${err?.message ?? err}`); }
             finally { this.running = false; }
         }));

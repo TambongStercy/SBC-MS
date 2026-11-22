@@ -16,9 +16,14 @@ import { sandboxSweeper } from './jobs/sandbox-sweeper.job';
 import { warnIfMisconfigured } from './services/sandbox.service';
 import path from 'path';
 import { startSupportCaseOutbox } from './services/clients/support.service.client';
+import { httpMetrics, metricsHandler } from './utils/metrics';
 
 // Create Express server
 const app: Application = express();
+
+// Metrics (Security plan item 10): every request timed by route pattern; /metrics behind METRICS_TOKEN.
+app.use(httpMetrics);
+app.get('/metrics', (req, res) => { void metricsHandler(req, res); });
 
 // Apply middleware
 app.use(helmet({

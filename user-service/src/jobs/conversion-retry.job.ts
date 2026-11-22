@@ -1,6 +1,7 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { retryPendingConversions } from '../services/wallet-conversion.service';
 import logger from '../utils/logger';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('ConversionRetry');
 
@@ -14,7 +15,7 @@ class ConversionRetryJob {
             if (this.running) return;
             this.running = true;
             try {
-                await retryPendingConversions();
+                await timeJob('conversion_retry', () => retryPendingConversions());
             } catch (err: any) {
                 log.error(`Conversion retry failed: ${err?.message ?? err}`);
             } finally {

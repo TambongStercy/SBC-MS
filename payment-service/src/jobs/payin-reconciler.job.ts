@@ -4,6 +4,7 @@ import PaymentIntentModel from '../database/models/PaymentIntent';
 import { PaymentStatus, PaymentGateway } from '../database/interfaces/IPaymentIntent';
 import paymentService from '../services/payment.service';
 import { moneyFusionService } from '../services/moneyfusion.service';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('PayinReconciler');
 
@@ -81,7 +82,7 @@ export class PayinReconciler {
     constructor() {
         this.cronJob = cron.schedule(
             process.env.PAYIN_RECONCILE_CRON || '*/5 * * * *',
-            async () => { await this.reconcile(); },
+            async () => { await timeJob('payin_reconciler', () => this.reconcile()); },
             { name: 'payin-reconciler' },
         );
         this.cronJob.stop();

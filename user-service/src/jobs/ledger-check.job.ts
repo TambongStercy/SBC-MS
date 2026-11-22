@@ -6,6 +6,7 @@ import WalletOpeningBalanceModel from '../database/models/wallet-opening-balance
 import BalanceReservationModel, { ReservationState } from '../database/models/balance-reservation.model';
 import { openSupportCase } from '../services/clients/support.service.client';
 import logger from '../utils/logger';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('LedgerCheck');
 
@@ -164,7 +165,7 @@ class LedgerCheckJob {
             if (this.running) return;
             this.running = true;
             try {
-                await runLedgerCheck();
+                await timeJob('ledger_check', () => runLedgerCheck());
             } catch (err: any) {
                 log.error(`Ledger check failed: ${err?.message ?? err}`);
             } finally {

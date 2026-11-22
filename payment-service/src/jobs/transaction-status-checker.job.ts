@@ -7,6 +7,7 @@ import { feexPayPayoutService } from '../services/feexpay-payout.service'; // Im
 import nowPaymentsService from '../services/nowpayments.service'; // Import NOWPayments service
 import { endWithdrawal } from '../services/withdrawal-lifecycle';
 import { openSupportCase } from '../services/clients/support.service.client';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('TransactionStatusChecker');
 
@@ -17,7 +18,7 @@ export class TransactionStatusChecker {
     constructor() {
         // Schedule to run every 5 minutes
         this.cronJob = cron.schedule('*/5 * * * *', async () => {
-            await this.checkPendingTransactions();
+            await timeJob('withdrawal_status_checker', () => this.checkPendingTransactions());
         }, {
             name: 'transaction-status-checker'
         });

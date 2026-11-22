@@ -1,0 +1,52 @@
+# Metrics stack on the SECONDARY server (/opt/metrics): Prometheus scrapes the SBC services on the
+# main server (nginx-main-metrics.conf) and keeps 30 days; Grafana draws the dashboard and sends
+# the alerts to ntfy. Both listen on 127.0.0.1 only: open Grafana through an SSH tunnel,
+#   ssh -L 3300:127.0.0.1:3300 ubuntu@169.58.159.177   then http://localhost:3300
+# Secrets (never printed) in /opt/metrics/.env and /opt/metrics/secrets/ (mode 600).
+services:
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=8GB
+      - --web.listen-address=0.0.0.0:9090
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./secrets:/etc/prometheus/secrets:ro
+      - ./data/prometheus:/prometheus
+    user: "65534:65534"
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy: { resources: { limits: { cpus: "1.0", memory: 1G } } }
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+  grafana:
+    image: grafana/grafana:13.3.0
+    restart: unless-stopped
+    depends_on: [prometheus]
+    env_file: .env
+    environment:
+      GF_SERVER_HTTP_PORT: "3300"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+    ports: ["127.0.0.1:3300:3300"]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./data/grafana:/var/lib/grafana
+    user: "472:0"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }

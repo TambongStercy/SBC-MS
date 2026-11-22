@@ -12,12 +12,18 @@ import { ipGeo } from './api/middleware/ip-geo.middleware';
 import { ipGeoStats, startIpGeo } from './services/ip-geo';
 import { browserChecks, startBrowserChecksFlush } from './api/middleware/browser-checks.middleware';
 import { altchaChallenge, robotCheck, startRobotChecksFlush } from './api/middleware/robot-check.middleware';
+import { httpMetrics, metricsHandler } from './utils/metrics';
+import './utils/host-metrics';
 
 // Initialize logger
 const log = logger.getLogger('Server');
 
 // Create Express app
 const app = express();
+
+// Metrics (Security plan item 10): every request timed by route pattern; /metrics behind METRICS_TOKEN.
+app.use(httpMetrics);
+app.get('/metrics', (req, res) => { void metricsHandler(req, res); });
 
 // Initial Middleware (Security, CORS, Logging)
 app.use(helmet());

@@ -10,6 +10,7 @@ import { collectFacts } from './facts';
 import { hashOf, phoneKey, tailOf } from './identity';
 import { enqueue as kycEnqueue } from './kyc.service';
 import { addLiveReason, clearedUpdate, dropCached, expireLiveReasons, sendCases, storeMembers } from './scoring';
+import { timeJob } from '../utils/metrics';
 
 const log = childLogger('Live');
 
@@ -523,7 +524,7 @@ export function startLiveLoop(): void {
     const guard = (k: keyof typeof busy, fn: () => Promise<unknown>) => async () => {
         if (busy[k]) return;
         busy[k] = true;
-        try { await fn(); } catch (e: any) { log.warn({ message: e?.message, task: k }, 'live task failed'); } finally { busy[k] = false; }
+        try { await timeJob(`risk_live_${String(k)}`, fn); } catch (e: any) { log.warn({ message: e?.message, task: k }, 'live task failed'); } finally { busy[k] = false; }
     };
     timers = [
         setInterval(guard('events', async () => {

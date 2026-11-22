@@ -2,6 +2,7 @@ import cron, { type ScheduledTask } from 'node-cron';
 import { AuthenticatorAdoptionDayModel, computeAdoption } from '../services/authenticator-adoption.service';
 import { doualaDay } from '../services/activity-signals.service';
 import logger from '../utils/logger';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('AuthenticatorAdoptionJob');
 
@@ -14,7 +15,7 @@ class AuthenticatorAdoptionJob {
     private task: ScheduledTask | null = null;
 
     private async run(): Promise<void> {
-        try { await computeAdoption(); } catch (err: any) { log.error(`Adoption snapshot failed: ${err?.message ?? err}`); }
+        try { await timeJob('authenticator_adoption', () => computeAdoption()); } catch (err: any) { log.error(`Adoption snapshot failed: ${err?.message ?? err}`); }
     }
 
     start(): void {

@@ -4,6 +4,7 @@ import { doualaDay } from '../services/activity-signals.service';
 import { runDormancyPass, watchHolds } from '../services/dormancy.service';
 import { dormancyConfig } from '../config/dormancy';
 import logger from '../utils/logger';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('DormancyJob');
 
@@ -19,7 +20,7 @@ class DormancyJob {
     private tasks: ScheduledTask[] = [];
 
     private async nightly(): Promise<void> {
-        try { await runDormancyPass(); }
+        try { await timeJob('dormancy_nightly', () => runDormancyPass()); }
         catch (err: any) { log.error(`Dormancy pass failed: ${err?.message ?? err}`); }
     }
 

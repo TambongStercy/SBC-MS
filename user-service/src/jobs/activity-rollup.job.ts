@@ -4,6 +4,7 @@ import { closeUnverifiedAttempts, flushSignupAttempts } from '../services/signup
 import { flushSigninAttempts } from '../services/signin-attempts.service';
 import { doualaDay } from '../services/activity-signals.service';
 import logger from '../utils/logger';
+import { timeJob } from '../utils/metrics';
 
 const log = logger.getLogger('ActivityRollupJob');
 
@@ -22,7 +23,7 @@ class ActivityRollupJob {
     private async guarded(label: string, fn: () => Promise<void>): Promise<void> {
         if (this.running) return;
         this.running = true;
-        try { await fn(); }
+        try { await timeJob(label.toLowerCase().replace(/[^a-z0-9]+/g, '_'), fn); }
         catch (err: any) { log.error(`${label} failed: ${err?.message ?? err}`); }
         finally { this.running = false; }
     }
