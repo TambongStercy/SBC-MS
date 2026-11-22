@@ -8,6 +8,8 @@ import logger from './utils/logger';
 import { errorHandler } from './api/middleware/error.middleware';
 import { adminAllowlist } from './api/middleware/admin-allowlist.middleware';
 import { activitySignals, startSignalsFlush } from './api/middleware/activity-signals.middleware';
+import { ipGeo } from './api/middleware/ip-geo.middleware';
+import { ipGeoStats, startIpGeo } from './services/ip-geo';
 import { browserChecks, startBrowserChecksFlush } from './api/middleware/browser-checks.middleware';
 import { altchaChallenge, robotCheck, startRobotChecksFlush } from './api/middleware/robot-check.middleware';
 
@@ -36,6 +38,11 @@ app.use(morgan(':client-ip - :remote-user [:date[clf]] ":method :url HTTP/:http-
 // Before any proxy: admin paths need an allow-listed admin (see the middleware).
 app.use(adminAllowlist);
 
+// Country (when Cloudflare gave none) and network of the visitor, from the free IP files
+// (services/ip-geo.ts; off until IPGEO_DIR holds them). Before everything that reads them.
+startIpGeo();
+app.use(ipGeo);
+
 // Security plan Phase 1: per-member country/device/activity counts (off unless ACTIVITY_SIGNALS_ENABLED=true).
 app.use(activitySignals);
 startSignalsFlush();
@@ -62,7 +69,8 @@ app.get('/health', (req, res) => {
       productService: config.services.productServiceUrl,
       chatService: config.services.chatServiceUrl,
       supportService: config.services.supportServiceUrl
-    }
+    },
+    ipGeo: { loaded: ipGeoStats.loaded, loadedAt: ipGeoStats.loadedAt, rows: ipGeoStats.rows, lastError: ipGeoStats.lastError }
   });
 });
 

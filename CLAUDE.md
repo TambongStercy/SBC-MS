@@ -585,7 +585,7 @@ push), so a hijacker cannot silence it.
   public through the other sites on the server. `/api/` gets
   `X-SBC-Geo $http_cf_ipcountry` (overwrites the client's) and `X-SBC-ASN
   $http_x_cf_asn` (only meaningful once a Cloudflare transform rule sets
-  `X-CF-ASN` = `ip.src.asnum`). Keep the range list in step with
+  `X-CF-ASN` = `ip.src.asnum`; the gateway now overwrites it from the free IP files, below). Keep the range list in step with
   https://www.cloudflare.com/ips (the vhost was missing 173.245.48.0/20).
 - **Gateway** `activity-signals.middleware.ts` (off unless
   `ACTIVITY_SIGNALS_ENABLED=true`): counts each authenticated request in memory
@@ -618,7 +618,21 @@ push), so a hijacker cannot silence it.
   - **Fraud engine:** a member's 10th wrong password within an hour sends `signin_failures` to
     risk-service once (rule `password_guessing`, 15 points, 7 days).
   - Check: `src/scripts/check-signin-attempts.ts`.
-- Not done: GeoLite2 fallback (needs a MaxMind key), mobile-app install ID.
+- **Country and network from free IP files (2026-11-22, instead of GeoLite2: no keyed services).**
+  - **Data:** sapics/ip-location-db's own datasets `user-country` + `origin-asn` (public domain,
+    daily). `scripts/security-plan/update-ip-geo.sh` downloads them nightly into `IPGEO_DIR`
+    (checksums and a size floor checked; nothing replaced on any failure, previous kept as `.prev`).
+  - **Gateway** `services/ip-geo.ts` + `ip-geo.middleware.ts`:
+    - Sorted ranges in typed arrays (about 35 MB), a lookup under a microsecond. Reloaded when the
+      files change (checked every 10 min); a truncated or missing file keeps the previous tables.
+    - It always sets `X-SBC-ASN` from its own lookup. nginx's copy of `X-CF-ASN` could be sent by
+      any client: no Cloudflare transform rule sets it.
+    - It fills `X-SBC-Geo` only when Cloudflare gave none or `XX` (marked `X-SBC-Geo-Source: ipdb`).
+    - Off while `IPGEO_DIR` is unset or empty. `/health` shows `ipGeo`.
+  - **Fraud engine:** the sign-up event carries the network (with the same consent gate as the
+    other signals); a hosting/VPN network at sign-up adds `datacenter_network` (15, 7 days).
+  - Check: `gateway-service/src/scripts/check-ip-geo.ts`.
+- Not done: mobile-app install ID.
 - Checks: `gateway-service/src/scripts/check-activity-signals.ts`,
   `user-service/src/scripts/check-activity-signals.ts`.
 
@@ -806,7 +820,7 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
     on that group's facts.
   - **Live rules** (points until expiry): contact change → withdrawal ≤ 72 h 30; new device +
     new country + new number the same day 40; hosting/VPN network 15; sign-up burst under one
-    sponsor (sponsor 30, recruits 20); dormant back 15; ledger mismatch 30; automation seen by
+    sponsor (sponsor 30, recruits 20); sign-up from a hosting/VPN network 15; dormant back 15; ledger mismatch 30; automation seen by
     the gateway (Phase 9) 20; 10 wrong passwords in an hour (Phase 1) 15. Score = structural +
     live (`structuralScore`, `liveReasons`).
   - **Weekly rebuild:** Sunday 01:00 Douala.

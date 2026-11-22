@@ -37,7 +37,8 @@ const log = childLogger('Live');
  *       new_device_country_payout   same day: new device + new country + a
  *                                   withdrawal number new to the member     40 (7 days)
  *       datacenter_network          withdrawal on a day seen from a hosting/VPN
- *                                   network                                 15 (7 days)
+ *                                   network, or sign-up from one (the gateway's own
+ *                                   network lookup, free IP files, 2026-11-22)   15 (7 days)
  *       signup_burst                ≥ RISK_SIGNUP_BURST sign-ups under one sponsor
  *                                   from one network or device in 24 h:
  *                                   sponsor 30, each recruit 20             (30 days)
@@ -110,11 +111,14 @@ export function hintToEvent(body: any, source: string): EventIn | { error: strin
             const range = str(body.ipRange, 45);
             const ua = str(body.userAgent, 300);
             const device = str(body.device, 64);
+            const asn = Number(body.asn);
             return {
                 type, userId, at, source,
                 data: {
                     ...(range ? { net: hashOf('signup_net', `${range}|${ua ?? ''}`) } : {}),
                     ...(device ? { device: hashOf('device', device) } : {}),
+                    // a network number, not personal: kept as is for the hosting/VPN rule
+                    ...(Number.isInteger(asn) && asn > 0 && asn < 2 ** 32 ? { asn } : {}),
                 },
             };
         }
@@ -391,6 +395,10 @@ async function onSignup(e: any, now: Date): Promise<string[]> {
             }], true, { source: 'live' });
             touched.push(sponsor, ...recruits);
         }
+    }
+    if (e.data?.asn && datacenterAsns().has(Number(e.data.asn))) {
+        await addLiveReason(userId, { rule: 'datacenter_network', points: LIVE_POINTS.datacenter_network, detail: 'Inscription depuis un réseau d’hébergement ou un VPN' }, 7, now);
+        touched.push(userId);
     }
     if (await refreshOwnIdentifiers(userId, now)) touched.push(userId);
     return touched;

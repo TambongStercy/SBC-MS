@@ -73,7 +73,7 @@ const main = async () => {
     const auth = { headers: { Authorization: `Bearer ${config.serviceSecret}`, 'x-service-name': 'user-service' } };
 
     const ids: Record<string, Types.ObjectId> = {};
-    for (const k of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'S', 'T', 'Q']) ids[k] = new Types.ObjectId();
+    for (const k of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'S', 'T', 'Q', 'V', 'W', 'X']) ids[k] = new Types.ObjectId();
     const id = (k: string) => String(ids[k]);
     const recruitsS = Array.from({ length: 5 }, () => new Types.ObjectId());
     const recruitsT = Array.from({ length: 5 }, () => new Types.ObjectId());
@@ -190,6 +190,15 @@ const main = async () => {
     check('member view: live reasons with their expiry; own unshared number not listed', viewA.liveReasons.length === 2 && viewA.liveReasons.every((r: any) => r.expiresAt) && viewA.identifiers.length === 0);
     const st = (await axios.get(`${url}/api/risk/internal/live/status`, auth)).data.data;
     check('live status: on, nothing pending, counts by type', st.on === true && st.pending === 0 && st.last24h.signup === 10, JSON.stringify(st.last24h));
+
+    // ---- sign-up from a hosting / VPN network (gateway's own network lookup, 2026-11-22) ----
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'signup', userId: id('V'), asn: 16509 }, auth); // AWS
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'signup', userId: id('W'), asn: 37508 }, auth); // Orange Cameroun
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'signup', userId: id('X'), asn: 'abc' }, auth);
+    for (let i = 0; i < 3; i++) await live.processEvents(100, new Date());
+    const v = await mem('V');
+    check('sign-up from a hosting network (AWS) → datacenter 15; mobile network → nothing; bad ASN ignored', v?.score === 15 && v?.liveReasons?.[0]?.detail?.includes('Inscription') && ((await mem('W'))?.score ?? 0) === 0 && ((await mem('X'))?.score ?? 0) === 0
+        && (await RiskEventModel.findOne({ userId: id('X'), type: 'signup' }).lean() as any)?.data?.asn === undefined, `${v?.score}`);
 
     // ---- expiry ----
     const n = await expireLiveReasons(new Date(Date.now() + 8 * DAY));
