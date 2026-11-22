@@ -595,7 +595,7 @@
   {
    "id": 17,
    "type": "timeseries",
-   "title": "Services joignables",
+   "title": "Sauvegardes : âge de la dernière réussite",
    "description": "",
    "datasource": {
     "type": "prometheus",
@@ -604,6 +604,82 @@
    "gridPos": {
     "x": 12,
     "y": 57,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "time() - max by (kind) (sbc_backup_last_success_timestamp_seconds)",
+     "legendFormat": "{{kind}}"
+    }
+   ]
+  },
+  {
+   "id": 18,
+   "type": "table",
+   "title": "Tests de restauration (1 = réussi)",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 65,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "min by (kind) (sbc_restore_test_ok)",
+     "legendFormat": "{{kind}}",
+     "instant": true,
+     "format": "table"
+    }
+   ],
+   "options": {
+    "sortBy": [
+     {
+      "displayName": "Value",
+      "desc": true
+     }
+    ]
+   }
+  },
+  {
+   "id": 19,
+   "type": "timeseries",
+   "title": "Services joignables",
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 65,
     "w": 12,
     "h": 8
    },

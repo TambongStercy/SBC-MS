@@ -14,6 +14,7 @@ import { browserChecks, startBrowserChecksFlush } from './api/middleware/browser
 import { altchaChallenge, robotCheck, startRobotChecksFlush } from './api/middleware/robot-check.middleware';
 import { httpMetrics, metricsHandler } from './utils/metrics';
 import './utils/host-metrics';
+import './utils/backup-metrics';
 
 // Initialize logger
 const log = logger.getLogger('Server');

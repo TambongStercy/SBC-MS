@@ -381,3 +381,139 @@ groups:
             type: gt
             params:
             - 93600
+  - uid: sbc-backup-stale
+    title: Sauvegarde en retard
+    condition: B
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: critical
+    annotations:
+      summary: 'Sauvegarde {{ $labels.kind }} : aucune réussite depuis plus de 26 h.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: time() - max by (kind) (sbc_backup_last_success_timestamp_seconds)
+        instant: true
+        range: false
+        intervalMs: 30000
+        maxDataPoints: 43200
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: threshold
+        expression: A
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 93600
+  - uid: sbc-backup-failed
+    title: Sauvegarde en échec
+    condition: B
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: critical
+    annotations:
+      summary: 'Sauvegarde {{ $labels.kind }} : la dernière exécution a échoué.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: min by (kind) (sbc_backup_last_ok) + max by (kind) (sbc_backup_running)
+        instant: true
+        range: false
+        intervalMs: 30000
+        maxDataPoints: 43200
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: threshold
+        expression: A
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+  - uid: sbc-restore-failed
+    title: Test de restauration en échec
+    condition: B
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: critical
+    annotations:
+      summary: 'Test de restauration {{ $labels.kind }} : la sauvegarde ne se restaure pas correctement.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: min by (kind) (sbc_restore_test_ok)
+        instant: true
+        range: false
+        intervalMs: 30000
+        maxDataPoints: 43200
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: threshold
+        expression: A
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+  - uid: sbc-restore-stale
+    title: Test de restauration trop ancien
+    condition: B
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: warning
+    annotations:
+      summary: 'Test de restauration {{ $labels.kind }} : pas fait depuis plus de 35 jours.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: time() - max by (kind) (sbc_restore_test_timestamp_seconds)
+        instant: true
+        range: false
+        intervalMs: 30000
+        maxDataPoints: 43200
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: threshold
+        expression: A
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 3024000
