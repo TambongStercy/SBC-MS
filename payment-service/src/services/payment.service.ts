@@ -26,7 +26,7 @@ import nowPaymentsService from './nowpayments.service';
 import { cinetpayPayoutService, PayoutRequest as CinetPayPayoutRequest, PayoutResult as CinetPayPayoutResult, PayoutStatus as CinetPayPayoutStatus } from './cinetpay-payout.service'; // NEW: Import cinetpayPayoutService and PayoutRequest type
 import { feexPayPayoutService, PayoutRequest as FeexPayPayoutRequest, PayoutResult as FeexPayPayoutResult, PayoutStatus as FeexPayPayoutStatus } from './feexpay-payout.service'; // NEW: Import feexPayPayoutService and its types
 import { withdrawalMonitor } from '../utils/withdrawal-monitor';
-import { moneyFusionService, getMoneyFusionPayinCurrency } from './moneyfusion.service';
+import { moneyFusionService, getMoneyFusionPayinCurrency, moneyFusionPayinGross } from './moneyfusion.service';
 import { currencyService } from './currency.service';
 import { ssoWebhookService } from './sso-webhook.service';
 import { buildCinetPayPayer } from '../utils/cinetpay-payer';
@@ -4302,10 +4302,10 @@ class PaymentService {
         await this.handlePaymentCompletion({ ...(updated as any).toObject?.() ?? updated, paidAmount, paidCurrency } as IPaymentIntent);
     }
 
-    /** Amount (to the unit) and our session id in MF's status answer must match the intent. */
+    /** Amount (to the unit, Montant + frais) and our session id in MF's status answer must match the intent. */
     private moneyFusionPayinConcordance(intent: IPaymentIntent, data: any): { ok: boolean; amountMismatch: boolean; reason: string; expected: number } {
         const expected = Number(intent.metadata?.mfPayinAmount ?? intent.amount ?? 0);
-        const paid = Number(String(data?.Montant ?? data?.montant ?? '').replace(/[^\d.]/g, ''));
+        const paid = moneyFusionPayinGross(data);
         if (!Number.isFinite(paid) || !(paid > 0)) {
             return { ok: false, amountMismatch: false, reason: 'montant absent de la réponse MoneyFusion', expected };
         }
@@ -4465,9 +4465,11 @@ class PaymentService {
 
     /**
      * Does a MoneyFusion payout webhook carry the amount and the number we sent?
-     * Field names vary between MF payloads, so several spellings are read. The
-     * amount may be MF's gross figure (what its dashboard shows) or the net we
-     * sent; both are accepted to the franc. Sandbox references are their own proof.
+     * Field names vary between MF payloads, so several spellings are read. A real
+     * one (prod, 2026-11-21): `{event, tokenPay, montant: <gross>, numeroRetrait:
+     * "6XXXXXXXX", moyen: "orange-cm", webhook_url, createdAt}`, montant being our
+     * gross. The amount may be MF's gross figure (what its dashboard shows) or the
+     * net we sent; both are accepted to the franc. Sandbox references are their own proof.
      */
     private moneyFusionPayoutConcordance(tx: ITransaction, payload: any): {
         concordant: boolean; amountMismatch: boolean; reason: string;
@@ -4480,8 +4482,9 @@ class PaymentService {
         const pick = (...vals: unknown[]) => vals.find((v) => v !== undefined && v !== null && v !== '');
         const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
         const rawAmount = pick(payload?.Montant, payload?.montant, payload?.amount, data.Montant, data.montant, data.amount);
-        const rawNumber = pick(payload?.numeroSend, payload?.phone, payload?.numero, payload?.numeroCompte, payload?.number,
-            data.numeroSend, data.phone, data.numero, data.numeroCompte);
+        // Real payout webhooks carry the number as `numeroRetrait` (prod logs, 2026-11-21).
+        const rawNumber = pick(payload?.numeroRetrait, payload?.numeroSend, payload?.phone, payload?.numero, payload?.numeroCompte, payload?.number,
+            data.numeroRetrait, data.numeroSend, data.phone, data.numero, data.numeroCompte);
         const gross = Math.abs(tx.amount);
         const net = Math.round((gross - (tx.fee || 0)) * 100) / 100;
         const amount = rawAmount === undefined ? undefined : Number(String(rawAmount).replace(/[^\d.]/g, ''));

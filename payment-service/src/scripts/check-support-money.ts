@@ -176,7 +176,9 @@ const main = async () => {
     const processing = await tx(live1.transactionId);
     assert.strictEqual(processing.status, TransactionStatus.PROCESSING);
     const net = Math.round((processing.amount - processing.fee) * 100) / 100;
-    const done = { event: 'payout.session.completed', tokenPay: 'MF-TOKEN-1', Montant: net, numeroSend: '650000000' };
+    // Real MoneyFusion payout webhook shape (prod 2026-11-21): lowercase montant = our gross, numeroRetrait.
+    const done = { event: 'payout.session.completed', tokenPay: 'MF-TOKEN-1', montant: processing.amount, numeroRetrait: '650000000' };
+    void net;
     const cancelled = { event: 'payout.session.cancelled', tokenPay: 'MF-TOKEN-1' };
     await Promise.all([...Array.from({ length: 5 }, () => paymentService.handleMoneyFusionPayoutWebhook(done))]);
     await paymentService.handleMoneyFusionPayoutWebhook(cancelled); // late, out of order
@@ -390,7 +392,8 @@ const main = async () => {
     // (15) MoneyFusion payin webhook: MF's status endpoint decides, amount must match
     const u15 = await member({});
     const pi15 = await PaymentIntentModel.create({ userId: u15, paymentType: 'SUBSCRIPTION', amount: 2070, currency: 'XAF', gateway: 'moneyfusion', gatewayPaymentId: 'MF-IN-1', status: PaymentStatus.PENDING_PROVIDER, metadata: { mfPayinAmount: 2070 } });
-    let mfStatus: any = { statut: 'paid', Montant: 1000, personal_Info: [{ sessionId: pi15.sessionId, userId: u15 }] };
+    // MoneyFusion's status answer: Montant is net of its fee, frais the fee (2,150 F → 2085.5 + 64.5).
+    let mfStatus: any = { statut: 'paid', Montant: 970, frais: 30, personal_Info: [{ sessionId: pi15.sessionId, userId: u15 }] };
     moneyFusionService.checkPaymentStatus = async () => mfStatus;
     const before15 = callbacks;
     await paymentService.handleMoneyFusionPayinWebhook({ event: 'payin.session.completed', tokenPay: 'MF-IN-1', Montant: 2070 });
@@ -399,7 +402,7 @@ const main = async () => {
     mfStatus = { statut: 'pending', Montant: 2070 };
     await paymentService.handleMoneyFusionPayinWebhook({ event: 'payin.session.completed', tokenPay: 'MF-IN-1', Montant: 2070 });
     assert.strictEqual((await PaymentIntentModel.findById(pi15._id).lean()).status, PaymentStatus.PENDING_PROVIDER, 'a forged "completed" is not applied while MF says pending');
-    mfStatus = { statut: 'paid', Montant: 2070, personal_Info: [{ sessionId: pi15.sessionId, userId: u15 }] };
+    mfStatus = { statut: 'paid', Montant: 2007.9, frais: 62.1, personal_Info: [{ sessionId: pi15.sessionId, userId: u15 }] };
     await Promise.all([1, 2, 3].map(() => paymentService.handleMoneyFusionPayinWebhook({ event: 'payin.session.completed', tokenPay: 'MF-IN-1' })));
     assert.strictEqual((await PaymentIntentModel.findById(pi15._id).lean()).status, PaymentStatus.SUCCEEDED);
     assert.strictEqual(callbacks - before15, 1);
@@ -438,7 +441,7 @@ const main = async () => {
         assert.strictEqual(a.success, true, a.error);
         return tx(r.transactionId);
     };
-    const mfDone = (t: any) => ({ event: 'payout.session.completed', tokenPay: t.externalTransactionId, Montant: Math.round((t.amount - t.fee) * 100) / 100, numeroSend: '650000000' });
+    const mfDone = (t: any) => ({ event: 'payout.session.completed', tokenPay: t.externalTransactionId, montant: Math.abs(t.amount), numeroRetrait: '650000000' });
 
     // (17) forged MoneyFusion "cancelled": no failure, no release, case; the real success still completes
     const u17 = await member({ balance: 30000 });

@@ -78,6 +78,21 @@ export function getMoneyFusionPayinCurrency(countryCode: string): string | undef
     return MF_PAYIN_CURRENCY[countryCode.toUpperCase()];
 }
 
+/**
+ * What the payer paid for a MoneyFusion payin, in the unit we sent totalPrice in.
+ * MoneyFusion's `Montant` is NET of its fee and `frais` is the fee: a 2,150 F
+ * payin answers `Montant: 2085.5, frais: 64.5` (checked on prod 2026-11-22, all
+ * 156 paid payins of 3 days were 97%). Comparing `Montant` alone with the price
+ * would refuse every real payin. Without `frais`, `Montant` alone.
+ */
+export function moneyFusionPayinGross(data: any): number {
+    const num = (v: unknown) => Number(String(v ?? '').replace(/[^\d.]/g, ''));
+    const montant = num(data?.Montant ?? data?.montant);
+    if (!Number.isFinite(montant) || !(montant > 0)) return NaN;
+    const frais = num(data?.frais);
+    return Number.isFinite(frais) && frais > 0 ? Math.round((montant + frais) * 100) / 100 : montant;
+}
+
 // --- Withdraw mode mapping per country ---
 // Keys cover BOTH the long-form storage names (e.g. MTN_MOMO_CMR, ORANGE_CMR — see operatorMaps.ts)
 // AND the short-form aliases (e.g. MTN_CM, ORANGE_CM). The lookup site passes whatever value is
