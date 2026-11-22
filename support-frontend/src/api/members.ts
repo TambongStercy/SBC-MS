@@ -20,6 +20,9 @@ export const membersApi = {
   /** Security plan Phase 5: lost phone (after ID + selfie); a finance manager approves. */
   requestAuthenticatorReset: (id: string, reason: string, reauthToken: string) =>
     api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/authenticator-reset`, { reason }, { reauthToken }),
+  /** Blocking mode: release a member the fraud engine holds; another finance manager approves. */
+  requestRiskRelease: (id: string, reason: string, reauthToken: string) =>
+    api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/risk/release`, { reason }, { reauthToken }),
   /** Security plan Phase 5: freeze or unfreeze the member's money; another finance manager approves. */
   requestFreeze: (id: string, action: 'freeze' | 'unfreeze', reason: string, reauthToken: string) =>
     api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/freeze`, { action, reason }, { reauthToken }),

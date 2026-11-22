@@ -128,6 +128,7 @@ function approvalSummary(a: any): string {
             : `Changement ${p.field === 'email' ? 'd’email' : 'de téléphone'} pour le membre ${a.subject?.userId ?? ''} → ${p.newValue ?? ''}`;
         case 'authenticator_reset': return `Retirer l’application d’authentification du membre ${a.subject?.userId ?? ''} (téléphone perdu)`;
         case 'account_freeze': return `${p.action === 'unfreeze' ? 'Dégeler' : 'Geler'} l’argent du membre ${a.subject?.userId ?? ''}`;
+        case 'risk_release': return `Libérer le membre ${a.subject?.userId ?? ''} retenu par le moteur de fraude (score ${p.score ?? '—'})`;
         default: return APPROVAL_PERMISSIONS[a.type as keyof typeof APPROVAL_PERMISSIONS]?.label ?? a.type;
     }
 }

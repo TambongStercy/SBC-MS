@@ -759,10 +759,23 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
 - **Look-back:** `dist/scripts/lookback.js` (dry run; `--apply`). It only reads the source
   databases. Its cases are sent to support with `alert: false` (new support intake option: filed
   without notifying anyone).
-- **payment-service:** `RISK_MODE=off|silent` + `RISK_SERVICE_URL`. Silent asks inside
-  `assertWithdrawalsNotLocked` (100 ms budget), logs, never refuses. No enforce mode yet: it waits
-  for Rufus's rules on held withdrawals.
-- Checks: `risk-service/src/scripts/check-risk.ts`, `payment-service/src/scripts/check-risk-silent.ts`.
+- **payment-service:** `RISK_MODE=off|silent|enforce` + `RISK_SERVICE_URL`. The engine is asked
+  inside `assertWithdrawalsNotLocked`, so on every path that takes a member's money out.
+  - **silent:** 100 ms budget; logs, never refuses.
+  - **enforce (decided 2026-11-22):** a member marked `hold` cannot take money out (member and
+    admin paths alike, 403 with a support message). `require_code` passes, because the app code
+    is already asked.
+  - **No answer within `RISK_ENFORCE_TIMEOUT_MS` (1500):** refused (503), never paid blind,
+    unless `RISK_FAIL_OPEN=true`.
+  - **Each refusal** files a critical `abnormal_behavior` case (`risk:withdrawal_held:<user>:<day>`)
+    in support's Fraude queue.
+  - **Release:** support « Risque » → « Libérer le compte » (`risk.decide` + reauth, a second
+    finance manager approves, approval type `risk_release`). risk-service records it in
+    `riskreleases`; the member is allowed while the score stays ≤ the score at release. A new
+    reason above it holds them again. Ending a release keeps the record (`endedAt`). The other
+    answer is the freeze.
+- Checks: `risk-service/src/scripts/check-risk.ts`, `payment-service/src/scripts/check-risk-silent.ts`
+  (silent + enforce), support `src/tests/risk-card.test.ts` (release).
 - **Part 2 (2026-11-22): live events.** Still silent.
   - **Sources:**
     - user-service `utils/risk-event.ts` sends hints (signup, contact_change,
@@ -881,12 +894,12 @@ its code replaces the e-mailed code for those actions.
   - The global error handler now passes `code` through.
 - **Setup:**
   - **Rate limit:** 5 a minute per member (Redis, fails open).
-  - **Lock after setup:** `AUTHENTICATOR_SETUP_LOCK_HOURS`, default **0**: the plan says 24–48 h,
-    and Rufus picks. It never shortens a longer lock (reason `authenticator_setup`).
-  - **Review of a risky setup** (`AUTHENTICATOR_SETUP_REVIEW=log`): seen from another country, a
-    contact/payout change in the last 7 days, or flagged by the fraud engine. It files an
-    `abnormal_behavior` case and `memberauths.setupReview`; the setup stands. Holding it until
-    approval is Rufus's call.
+  - **Lock after setup:** none. Decided 2026-11-22: the member uses the app fully at once.
+    `AUTHENTICATOR_SETUP_LOCK_HOURS` stays 0. If ever set, it never shortens a longer lock.
+  - **Risky setup** (`AUTHENTICATOR_SETUP_REVIEW=log`): seen from another country, a
+    contact/payout change in the last 7 days, or flagged by the fraud engine. It notifies support
+    (`abnormal_behavior` case, alerting) and records `memberauths.setupReview`. The member keeps
+    using the app; support freezes or closes the case as fine. Decided 2026-11-22, no hold.
 - **Adoption:** a daily snapshot (03:55 Douala, `authenticator_adoption_days`) of members above
   5,000 F who set it up. Admin `GET /users/admin/security/authenticator-adoption` (module
   dashboard).

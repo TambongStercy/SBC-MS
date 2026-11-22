@@ -37,7 +37,8 @@ describe('member risk panel', () => {
     setup(['finance_manager']);
     renderWithProviders(<App />, { path: '/membres/m1' });
     expect(await screen.findByTestId('risk-score')).toHaveTextContent('120');
-    expect(screen.getByText('Retrait à retenir')).toBeInTheDocument();
+    expect(screen.getByText('Retraits bloqués')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Libérer le compte' })).toBeInTheDocument();
     const reasons = screen.getByRole('list', { name: 'Raisons du score' });
     expect(within(reasons).getAllByRole('listitem')).toHaveLength(2);
     expect(within(reasons).getByText(/compte jusqu’au/)).toBeInTheDocument();
@@ -59,5 +60,12 @@ describe('member risk panel', () => {
     expect(await screen.findByText('Sécurité')).toBeInTheDocument();
     expect(screen.queryByText('Risque')).toBeNull();
     expect(api.calls.some(c => c.path.includes('/risk'))).toBe(false);
+  });
+
+  it('a released member shows the release; a support agent without risk.decide has no release button', async () => {
+    setup(['finance_manager'], { data: { ...card, decision: 'allow', release: { at: '2026-11-22T09:00:00Z', by: { id: 'a2', name: 'Awa' }, reason: 'Vérifié', scoreAtRelease: 120, endedAt: null, active: true } } });
+    renderWithProviders(<App />, { path: '/membres/m1' });
+    expect(await screen.findByText(/Libéré par le support/)).toHaveTextContent('Awa');
+    expect(screen.queryByRole('button', { name: 'Libérer le compte' })).toBeNull();
   });
 });

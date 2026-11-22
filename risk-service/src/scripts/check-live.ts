@@ -206,6 +206,23 @@ const main = async () => {
     await RiskRunModel.deleteMany({ kind: 'rebuild' });
     check('rebuild schedule: due Sunday 01:xx Douala only once a week', !dueAfterRun && await live.rebuildDue(sunday) && !(await live.rebuildDue(new Date(sunday.getTime() + DAY))));
 
+    // ---- blocking mode: held withdrawal → case; support release ----
+    const before2 = received.length;
+    const held = (await axios.post(`${url}/api/risk/internal/decision`, { userId: id('H'), action: 'withdrawal', amount: 5000, enforced: true }, auth)).data.data;
+    await new Promise(r => setTimeout(r, 200));
+    check('enforced hold → a critical withdrawal_held case for support', held.decision === 'hold' && received.slice(before2).some(x => x.dedupKey.startsWith(`risk:withdrawal_held:${id('H')}:`) && x.severity === 'critical' && x.alert === true));
+    const rel = (await axios.post(`${url}/api/risk/internal/members/${id('H')}/release`, { reason: 'Famille vérifiée par le support', by: { id: 'a1', name: 'Agent' }, approvalId: 'ap1' }, auth)).data.data;
+    const after = (await axios.post(`${url}/api/risk/internal/decision`, { userId: id('H'), action: 'withdrawal', enforced: true }, auth)).data.data;
+    check('support release → allowed (released), score unchanged', rel.wasHeld === true && after.decision === 'allow' && after.released === true && after.score === held.score);
+    const viewH = (await axios.get(`${url}/api/risk/internal/members/${id('H')}`, auth)).data.data;
+    check('member view shows the active release', viewH.release?.active === true && viewH.release?.by?.name === 'Agent');
+    await live.recordEvent({ type: 'balance_mismatch', userId: id('H'), data: { currency: 'XAF' } });
+    await live.processEvents(100, new Date());
+    const again2 = (await axios.post(`${url}/api/risk/internal/decision`, { userId: id('H'), action: 'withdrawal', enforced: true }, auth)).data.data;
+    check('a new reason above the release score → held again', again2.decision === 'hold' && again2.score > held.score, `${again2.score}`);
+    await axios.delete(`${url}/api/risk/internal/members/${id('H')}/release`, auth);
+    check('ending a release keeps its record (marked ended)', (await axios.get(`${url}/api/risk/internal/members/${id('H')}`, auth)).data.data.release?.endedAt != null);
+
     // ---- Phase 1: repeated wrong passwords ----
     await axios.post(`${url}/api/risk/internal/events`, { type: 'signin_failures', userId: id('B'), count: 10 }, auth);
     await live.processEvents(100, new Date());

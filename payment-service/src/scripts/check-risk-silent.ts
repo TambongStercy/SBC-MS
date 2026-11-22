@@ -43,6 +43,7 @@ const main = async () => {
 
     const asked: { auth?: string; body: any }[] = [];
     let delayMs = 0;
+    let answer: any = { decision: 'hold', score: 90, reasons: [{ rule: 'shared_payout_number', points: 40, detail: 'Numéro partagé' }] };
     const fake = http.createServer((req, res) => {
         let raw = '';
         req.on('data', c => { raw += c; });
@@ -50,7 +51,7 @@ const main = async () => {
             asked.push({ auth: req.headers.authorization, body: JSON.parse(raw || '{}') });
             setTimeout(() => {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: true, data: { decision: 'hold', score: 90, reasons: [{ rule: 'shared_payout_number', points: 40, detail: 'x' }] } }));
+                res.end(JSON.stringify({ success: true, data: answer }));
             }, delayMs);
         });
     }).listen(0);
@@ -74,10 +75,36 @@ const main = async () => {
     r = await run();
     check('silent: risk-service slow (300 ms) → goes on after ~100 ms', !r.err && r.ms < 250, `${r.ms} ms`);
 
+    // ---- enforce (decided 2026-11-22): a held member cannot take money out ----
+    delayMs = 0;
+    process.env.RISK_MODE = 'enforce';
+    const n0 = asked.length;
+    r = await run();
+    check('enforce: hold → member refused (403), told support will look', r.err?.statusCode === 403 && /vérification de sécurité/.test(r.err.message) && asked[n0]?.body.enforced === true, r.err?.message);
+    r = await run('admin');
+    check('enforce: hold → admin approval refused too, says how to release', r.err?.statusCode === 403 && /libérer/.test(r.err.message), r.err?.message);
+    answer = { decision: 'require_code', score: 45, reasons: [] };
+    r = await run();
+    check('enforce: require_code passes (the app code is already asked)', !r.err);
+    answer = { decision: 'allow', score: 90, reasons: [], released: true };
+    r = await run();
+    check('enforce: released by support (allow) passes', !r.err);
+    delayMs = 2000;
+    r = await run();
+    check('enforce: risk-service too slow → refused 503 (never paid blind)', r.err?.statusCode === 503, `${r.ms} ms`);
+    process.env.RISK_FAIL_OPEN = 'true';
+    r = await run();
+    check('enforce: RISK_FAIL_OPEN=true → goes on when risk-service is slow', !r.err);
+    delete process.env.RISK_FAIL_OPEN;
+    process.env.RISK_MODE = 'silent';
+
     fake.close();
     process.env.RISK_SERVICE_URL = 'http://127.0.0.1:9';
     r = await run();
     check('silent: risk-service down → goes on', !r.err);
+    process.env.RISK_MODE = 'enforce';
+    r = await run();
+    check('enforce: risk-service down → refused 503', r.err?.statusCode === 503);
 
     console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll checks passed');
     process.exit(failures ? 1 : 0);

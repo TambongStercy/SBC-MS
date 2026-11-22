@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { decide, memberView } from '../services/decision.service';
+import { RiskReleaseModel } from '../database/models';
+import { dropCached } from '../services/scoring';
 import { RiskMemberModel } from '../database/models';
 import { redis } from '../lib/redis';
 import { requireService } from './service-auth';
@@ -32,6 +34,7 @@ export function routes(): Router {
             currency: typeof currency === 'string' ? currency.slice(0, 8) : undefined,
             transactionId: typeof transactionId === 'string' ? transactionId.slice(0, 64) : undefined,
             caller: String(req.header('x-service-name') || '').slice(0, 40) || undefined,
+            enforced: req.body?.enforced === true,
         });
         return res.json({ success: true, data: a });
     });
@@ -41,6 +44,29 @@ export function routes(): Router {
         if (!ID.test(req.params.userId)) return res.status(400).json({ success: false, message: 'bad userId' });
         const [view, kyc] = await Promise.all([memberView(req.params.userId), kycView(req.params.userId)]);
         return res.json({ success: true, data: { ...view, kyc } });
+    });
+
+    /**
+     * POST /api/risk/internal/members/:userId/release {reason, by, approvalId}: support's approved
+     * release of a held member (blocking mode). Allowed while their score stays at or under today's.
+     * DELETE the same path ends it (the record is kept, marked ended).
+     */
+    r.post('/api/risk/internal/members/:userId/release', requireService, async (req, res) => {
+        if (!ID.test(req.params.userId)) return res.status(400).json({ success: false, message: 'bad userId' });
+        const m = await RiskMemberModel.findOne({ userId: req.params.userId }, { score: 1, decision: 1 }).lean() as any;
+        const reason = typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 500) : null;
+        const by = req.body?.by && typeof req.body.by === 'object' ? { id: String(req.body.by.id ?? '').slice(0, 40), name: String(req.body.by.name ?? '').slice(0, 80) } : null;
+        await RiskReleaseModel.updateOne({ _id: req.params.userId }, {
+            $set: { scoreAtRelease: m?.score ?? 0, reason, by, approvalId: typeof req.body?.approvalId === 'string' ? req.body.approvalId.slice(0, 40) : null, at: new Date(), endedAt: null },
+        }, { upsert: true });
+        await dropCached([req.params.userId]);
+        return res.json({ success: true, data: { released: true, scoreAtRelease: m?.score ?? 0, wasHeld: m?.decision === 'hold' } });
+    });
+    r.delete('/api/risk/internal/members/:userId/release', requireService, async (req, res) => {
+        if (!ID.test(req.params.userId)) return res.status(400).json({ success: false, message: 'bad userId' });
+        await RiskReleaseModel.updateOne({ _id: req.params.userId, endedAt: null }, { $set: { endedAt: new Date() } });
+        await dropCached([req.params.userId]);
+        return res.json({ success: true });
     });
 
     /**
