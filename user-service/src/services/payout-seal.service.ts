@@ -121,7 +121,7 @@ export async function sweepPayoutSeals(): Promise<{ checked: number; broken: num
  * were: those are filed as warning cases for support to look at (nothing frozen). After it, set
  * PAYOUT_SEAL_SINCE so that a missing seal also counts as a tamper.
  */
-export async function bootstrapPayoutSeals(apply: boolean, fileCases: boolean) {
+export async function bootstrapPayoutSeals(apply: boolean, fileCases: boolean, recheckAll = false) {
     const out = { unsealed: 0, sealed: 0, mismatches: [] as { userId: string; current: string | null; withdrewTo: string[] }[] };
     const batch: any[] = [];
     const flush = async () => {
@@ -150,8 +150,10 @@ export async function bootstrapPayoutSeals(apply: boolean, fileCases: boolean) {
         }
         batch.length = 0;
     };
-    for await (const d of UserModel.collection.find({ payoutSeal: { $exists: false } }, { projection: PROJ })) {
-        out.unsealed++;
+    // recheckAll: compare every member (sealed or not) without resealing anyone already sealed, e.g. to
+    // file the review cases again when support could not be reached the first time.
+    for await (const d of UserModel.collection.find(recheckAll ? { deleted: { $ne: true } } : { payoutSeal: { $exists: false } }, { projection: PROJ })) {
+        if (!d.payoutSeal) out.unsealed++;
         batch.push(d);
         if (batch.length >= 200) await flush();
     }

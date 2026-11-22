@@ -7,6 +7,8 @@
  *
  *   node dist/scripts/payout-seal-bootstrap.js            dry run (counts + the list, masked)
  *   node dist/scripts/payout-seal-bootstrap.js --apply [--cases]
+ *   node dist/scripts/payout-seal-bootstrap.js --apply --cases --recheck   every member again (no reseal of the
+ *     sealed), e.g. to file the review cases when support was unreachable the first time
  */
 import mongoose from 'mongoose';
 import config from '../config';
@@ -17,7 +19,7 @@ import { sealEnabled } from '../utils/payout-seal';
     if (!sealEnabled()) throw new Error('PAYOUT_SEAL_KEY is not set (32+ characters)');
     const apply = process.argv.includes('--apply');
     await mongoose.connect(config.mongodb.uri);
-    const r = await bootstrapPayoutSeals(apply, process.argv.includes('--cases'));
+    const r = await bootstrapPayoutSeals(apply, process.argv.includes('--cases'), process.argv.includes('--recheck'));
     console.log(`${apply ? 'APPLIED' : 'DRY RUN'}: ${r.unsealed} without a seal, ${r.sealed} sealed now`);
     console.log(`${r.mismatches.length} whose current MoMo number was never used for their withdrawals:`);
     for (const m of r.mismatches.slice(0, 50)) console.log(`  ${m.userId}  now ${m.current}  withdrew to ${m.withdrewTo.join(', ')}`);
