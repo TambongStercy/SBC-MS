@@ -99,8 +99,17 @@ Each step needs Sterling's OK; secrets are generated on the servers and never pr
 - **Templates:** every value is wrapped in `{{ with $values.A }}…{{ end }}`. Grafana also renders
   the text of rules whose query returned nothing, and `humanize*` fails on that empty value.
 
-Open Grafana through a tunnel: `ssh -L 3300:127.0.0.1:3300 ubuntu@169.58.159.177`, then
-http://localhost:3300.
+**Grafana's public address (2026-11-22): https://grafana.sniperbusinesscenter.com**
+- **Serving:** nginx with a Let's Encrypt certificate, from `infra/metrics/nginx-grafana.conf`. The
+  zone's DNS-only wildcard already points at the secondary.
+- **Hardening:**
+  - Grafana's login is the only door, with its brute-force lockout on;
+  - nginx allows 10 login posts a minute per IP (burst 5, then 429);
+  - secure, SameSite=strict cookies; HSTS; sessions of 7 days, or 1 day idle;
+  - no external snapshots, no Gravatar.
+- **Prometheus** stays on 127.0.0.1 only.
+- **Settings** in `/opt/metrics/.env`: `GRAFANA_DOMAIN`, `GRAFANA_ROOT_URL`, `GRAFANA_COOKIE_SECURE`.
+  The root URL also makes the links in the ntfy alerts open the public Grafana.
 
 ## Checks
 
