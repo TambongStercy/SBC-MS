@@ -84,6 +84,8 @@ export interface IAdminSession {
     ip: string | null;
     userAgent: string | null;
     method: string;
+    /** Money actions allowed without a new code until then (step-up, Security plan Phase 3 item 6). */
+    stepUpUntil?: Date | null;
 }
 
 const sessionSchema = new Schema<IAdminSession>({
@@ -96,6 +98,7 @@ const sessionSchema = new Schema<IAdminSession>({
     ip: { type: String, default: null },
     userAgent: { type: String, default: null },
     method: { type: String, default: 'totp' },
+    stepUpUntil: { type: Date, default: null },
 });
 // Ended sessions are kept 30 days for investigations, then removed.
 sessionSchema.index({ absoluteExpiresAt: 1 }, { expireAfterSeconds: 30 * 24 * 3600 });

@@ -55,10 +55,13 @@ import EventTicketsPage from './pages/EventTicketsPage';
 import EventAnimationPage from './pages/EventAnimationPage';
 import { SocketProvider } from './contexts/SocketContext';
 import { AppShell } from './shell/AppShell';
+import AdminCodePrompt from './components/common/AdminCodePrompt';
 
 function App() {
   return (
     <SocketProvider>
+      {/* Security plan Phase 3 item 6: the admin's code before a money action. */}
+      <AdminCodePrompt />
       <Routes>
         <Route path="/login" element={<Login />} />
 

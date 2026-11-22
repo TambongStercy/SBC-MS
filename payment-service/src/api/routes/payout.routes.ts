@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { payoutController } from '../controllers/payout.controller';
 import { requireAdmin, authenticate } from '../middleware/auth.middleware';
 import { generalLimiter } from '../middleware/rate-limit.middleware';
+import { requireAdminStepUp } from '../middleware/admin-step-up.middleware';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get('/balance', authenticate as any, requireAdmin, generalLimiter, (req, 
  * @desc    Initiate a payout to a user
  * @access  Private (Admin only)
  */
-router.post('/initiate', authenticate as any, requireAdmin, generalLimiter, (req, res) => {
+router.post('/initiate', authenticate as any, requireAdmin, generalLimiter, requireAdminStepUp('payout_initiate'), (req, res) => {
     payoutController.initiatePayout(req, res);
 });
 
@@ -84,7 +85,7 @@ router.get('/webhooks/feexpay', (req, res) => {
  * @desc    Test payout functionality (development only)
  * @access  Private (Admin only)
  */
-router.post('/test', authenticate as any, requireAdmin, generalLimiter, (req, res) => {
+router.post('/test', authenticate as any, requireAdmin, generalLimiter, requireAdminStepUp('payout_test'), (req, res) => {
     payoutController.testPayout(req, res);
 });
 

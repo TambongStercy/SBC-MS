@@ -357,6 +357,79 @@ export async function regenerateBackupCodes(userId: string, code: unknown): Prom
     return codes;
 }
 
+/**
+ * Security plan Phase 3 item 6: an admin's money action (withdrawal from a member's balance,
+ * direct payout, approval, manual completion) needs the admin's OWN authenticator code, not just
+ * a signed-in session. A code (or a backup code, single use, e-mailed) opens a step-up window of
+ * ADMIN_STEPUP_MINUTES (10) on that admin session: a batch of approvals needs one code, and a
+ * stolen admin token alone moves nothing. Called by payment-service (internal route).
+ *   - no code: allowed only inside the window, else ADMIN_CODE_REQUIRED (403);
+ *   - wrong code: ADMIN_CODE_INVALID (403), counted with the sign-in failures (same lockout);
+ *   - session not active: ADMIN_SESSION_ENDED (401).
+ */
+export type StepUpResult = { until: string; method: 'window' | 'totp' | 'backup_code' };
+const stepUpError = (code: 'ADMIN_CODE_REQUIRED' | 'ADMIN_CODE_INVALID' | 'ADMIN_CODE_LOCKED' | 'ADMIN_SESSION_ENDED', status = 403) => {
+    const msg = {
+        ADMIN_CODE_REQUIRED: 'Confirmez avec le code de votre application d’authentification.',
+        ADMIN_CODE_INVALID: 'Code incorrect ou déjà utilisé.',
+        ADMIN_CODE_LOCKED: 'Trop de codes erronés : votre compte est bloqué pour un moment.',
+        ADMIN_SESSION_ENDED: 'Votre session d’administration est terminée. Reconnectez-vous.',
+    }[code];
+    const e = new AppError(msg, status);
+    (e as any).code = code;
+    return e;
+};
+
+export async function stepUp(input: { userId?: unknown; sid?: unknown; code?: unknown; backupCode?: unknown; action?: unknown }, ctx: ReqCtx): Promise<StepUpResult> {
+    const userId = String(input.userId ?? '');
+    const sid = String(input.sid ?? '');
+    const action = String(input.action ?? 'money').slice(0, 40);
+    if (!config.adminAuth.totpEncKey) throw NOT_CONFIGURED();
+    if ((await checkSession(userId, sid)) !== 'active') throw stepUpError('ADMIN_SESSION_ENDED', 401);
+    const code = typeof input.code === 'string' ? input.code.replace(/\s/g, '') : '';
+    const backup = typeof input.backupCode === 'string' ? input.backupCode.trim() : '';
+    const now = new Date();
+
+    if (!code && !backup) {
+        const s = await AdminSessionModel.findById(sid, { stepUpUntil: 1 }).lean();
+        if (s?.stepUpUntil && s.stepUpUntil.getTime() > now.getTime()) return { until: s.stepUpUntil.toISOString(), method: 'window' };
+        throw stepUpError('ADMIN_CODE_REQUIRED');
+    }
+
+    const user = await userRepository.findById(userId);
+    const a = await AdminAuthModel.findOne({ userId });
+    if (!user || !a?.totpSecretEnc) throw stepUpError('ADMIN_CODE_REQUIRED');
+    if (isLocked(a)) throw stepUpError('ADMIN_CODE_LOCKED');
+    let method: 'totp' | 'backup_code' = 'totp';
+    if (backup) {
+        const r = await AdminAuthModel.updateOne(
+            { _id: a._id, backupCodes: { $elemMatch: { hash: hashBackup(backup), usedAt: null } } },
+            { $set: { 'backupCodes.$.usedAt': now } },
+        );
+        if (r.modifiedCount !== 1) { await recordFailure(user, ctx, `step-up backup code (${action})`); throw stepUpError('ADMIN_CODE_INVALID'); }
+        method = 'backup_code';
+    } else {
+        const step = verifyTotp(decrypt(a.totpSecretEnc), code);
+        const r = step === null ? null : await AdminAuthModel.updateOne(
+            { _id: a._id, $or: [{ lastUsedStep: null }, { lastUsedStep: { $lt: step } }] },
+            { $set: { lastUsedStep: step } },
+        );
+        if (!r || r.modifiedCount !== 1) { await recordFailure(user, ctx, `step-up code (${action})`); throw stepUpError('ADMIN_CODE_INVALID'); }
+    }
+    const until = new Date(now.getTime() + config.adminAuth.stepUpMs);
+    await AdminSessionModel.updateOne({ _id: sid, revokedAt: null }, { $set: { stepUpUntil: until } });
+    log.info(`Admin ${user.email} confirmed money actions with ${method} (${action}) until ${until.toISOString()}.`);
+    if (method === 'backup_code') {
+        const remaining = a.backupCodes.filter(b => !b.usedAt).length - 1;
+        void notificationService.sendAccountEmail({
+            userId: String(user._id), email: user.email,
+            subject: 'SBC Admin : un code de secours a été utilisé',
+            body: `Un code de secours vient d’être utilisé pour confirmer une opération d’argent dans l’administration SBC (adresse IP ${ctx.ip}). Il vous en reste ${remaining}. Si ce n’était pas vous, prévenez immédiatement le super administrateur.`,
+        }).catch(() => undefined);
+    }
+    return { until: until.toISOString(), method };
+}
+
 /** What the team screen shows per account. */
 export async function securityStatus(userIds: string[]): Promise<Record<string, { authenticator: boolean; backupCodesLeft: number; lastLoginAt: Date | null; locked: boolean }>> {
     const rows = await AdminAuthModel.find({ userId: { $in: userIds } }).lean();

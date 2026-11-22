@@ -1,6 +1,11 @@
 import axios from 'axios';
 import { toast } from 'sonner';
 import { isGatewayAccessRefusal } from '../lib/permissions';
+import { isAdminCodeError, requestAdminCode } from '../lib/adminCodePrompt';
+
+declare module 'axios' {
+    interface AxiosRequestConfig { __adminCodeTries?: number }
+}
 
 // Create an Axios instance with default configurations
 const apiClient = axios.create({
@@ -59,6 +64,21 @@ apiClient.interceptors.response.use(
     async error => {
         if (error.response) {
             console.error('API Error Response:', error.config?.url, error.response.status, error.response.data);
+
+            // A money action needs the admin's own authenticator code (Security plan Phase 3 item 6):
+            // ask for it, then send the same request again with it (at most 3 tries).
+            if (isAdminCodeError(error.response.status, error.response.data) && error.config && (error.config.__adminCodeTries ?? 0) < 3) {
+                const answer = await requestAdminCode(error.response.data?.code === 'ADMIN_CODE_INVALID' ? error.response.data.message : undefined);
+                if (answer) {
+                    let body: Record<string, unknown> = {};
+                    try { body = typeof error.config.data === 'string' && error.config.data ? JSON.parse(error.config.data) : (error.config.data ?? {}); } catch { body = {}; }
+                    // a previous try's code is replaced, never sent alongside the new one
+                    delete body.adminCode;
+                    delete body.adminBackupCode;
+                    return apiClient.request({ ...error.config, data: { ...body, ...answer }, __adminCodeTries: (error.config.__adminCodeTries ?? 0) + 1 } as typeof error.config);
+                }
+                return Promise.reject(error);
+            }
 
             // A module this account may only read (or not see): say so, stay signed in.
             // One toast at a time, however many calls the page made.

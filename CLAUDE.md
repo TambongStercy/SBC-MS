@@ -327,8 +327,26 @@ routes `/users/admin/login`, `/login/email-code`, `/login/enroll/{start,confirm}
   (Node 20/22), gateway `check-admin-permissions.ts`.
 - Still different from the desk: the admin token stays in localStorage (the admin
   calls the API cross-origin, so the desk's httpOnly cookie would need an `/api`
-  location on the admin vhosts first), and there is no code re-check before
-  sensitive actions.
+  location on the admin vhosts first). Money actions do re-check the code (below).
+- **Money actions need the admin's own code (2026-11-22, Security plan Phase 3 item 6).**
+  - **Where:** payment-service `requireAdminStepUp` guards withdrawal from a member's balance
+    (`/withdrawals/admin/user`), direct payouts (`/withdrawals/admin/direct`,
+    `/payouts/initiate`, `/payouts/test`), approve, bulk-approve and manual-complete.
+    Reject and manual-fail are not guarded.
+  - **How it is checked:** the code travels in the body (`adminCode` or `adminBackupCode`) and is
+    stripped before the handler. user-service `stepUp` checks it against the admin's
+    authenticator: used once, the same lockout as sign-in, a backup code is e-mailed.
+  - **Window:** a code opens a window of `ADMIN_STEPUP_MINUTES` (10) on that admin session
+    (`adminsessions.stepUpUntil`), so a batch of approvals needs one code.
+  - **Refused:** a token without `asid`; a signed-out session (401).
+  - **User-service down:** 503 (fails closed).
+  - **Codes:** `ADMIN_CODE_REQUIRED` / `ADMIN_CODE_INVALID` / `ADMIN_CODE_LOCKED`. The admin app
+    (`apiClient` interceptor + `AdminCodePrompt`) asks for the code and resends the request.
+  - **Fraud check:** the Phase 4 decision already applies on the member-money paths
+    (`assertWithdrawalsNotLocked(…, 'admin')`).
+  - **Kill switch:** `ADMIN_STEPUP_REQUIRED=false` (payment-service).
+  - **Checks:** user-service `check-admin-step-up.ts`, payment-service `check-admin-step-up.ts`,
+    admin `AdminCodePrompt.test.tsx`.
 
 ### Inter-Service Communication
 Services communicate via HTTP REST APIs through the gateway. Service URLs are configured in docker-compose environment variables (e.g., `USER_SERVICE_URL: http://user-service:3001`).
@@ -942,8 +960,8 @@ its code replaces the e-mailed code for those actions.
   dashboard).
 - Check: `user-service/src/scripts/check-authenticator-part2.ts` (run with `REDIS_URL` for the
   rate limit).
-- Not done yet from the plan: admin withdrawals with the admin's own code + the risk decision
-  (needs the admin authenticator branch and enforce mode).
+- Admin withdrawals with the admin's own code + the risk decision: done 2026-11-22, see
+  "Money actions need the admin's own code" under Admin sign-in.
 - Checks: `user-service/src/scripts/check-member-authenticator.ts`,
   `payment-service/src/scripts/check-withdrawal-authenticator.ts`.
 
