@@ -85,7 +85,7 @@ const main = async () => {
     const users = mongoose.createConnection(process.env.USERS_MONGODB_URI!);
     await users.asPromise();
     await users.dropDatabase();
-    kyc.setUsersDb(users);
+    (await import('../lib/sources')).setSource('users', users);
     const U = users.collection('users');
     const mk = async (f: Record<string, unknown>) => (await U.insertOne({ name: 'Membre Test', password: 'x', ...f })).insertedId;
 

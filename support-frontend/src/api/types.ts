@@ -475,3 +475,19 @@ export interface AuditVerifyResult {
   firstBrokenSeq?: number | null;
   verifiedAt: string;
 }
+
+/** Security plan Phase 4: the fraud engine's card on the member page (`risk.read`). */
+export type RiskCard =
+  | { available: false }
+  | {
+      available: true;
+      score: number;
+      decision: 'allow' | 'require_code' | 'hold';
+      scoredAt: string | null;
+      groupSize: number;
+      reasons: { rule: string; points: number; detail: string; live: boolean; at?: string; expiresAt?: string }[];
+      linked: { userId: string; name: string | null; country: string | null; score: number; decision: string }[];
+      identifiers: { kind: 'phone' | 'device'; uses: string[]; tail: string; count: number; hub: boolean }[];
+      events: { type: string; at: string; kind: string | null; amountXaf: number | null; numberTail: string | null }[];
+      kyc: { score: number; band: 'low' | 'medium' | 'high'; reasons: string[]; emailDomain: string | null; checkedAt: string; variantAccounts: number } | null;
+    };

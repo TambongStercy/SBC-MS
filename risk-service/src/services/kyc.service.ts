@@ -1,6 +1,7 @@
 import { createHmac, randomUUID } from 'crypto';
 import axios from 'axios';
-import mongoose, { Connection, Types } from 'mongoose';
+import { Types } from 'mongoose';
+import { sourceCollection } from '../lib/sources';
 import { config } from '../config';
 import { KYC_BACKFILL, KYC_LIVE, KycQueueModel, KycResultModel } from '../database/models';
 import { childLogger } from '../lib/logger';
@@ -28,34 +29,8 @@ const REASONS: KycReason[] = ['signup', 'contact_change', 'refresh', 'manual'];
 
 // ---------------------------------------------------------------- users database (read-only)
 
-let usersConn: Connection | null = null;
-export function usersDb(): Connection | null {
-    if (!config.kyc.usersMongoUri) return null;
-    if (!usersConn) {
-        usersConn = mongoose.createConnection(config.kyc.usersMongoUri, { maxPoolSize: 5, readPreference: 'secondaryPreferred' });
-        usersConn.on('error', (e) => log.warn({ message: e.message }, 'users database error'));
-    }
-    return usersConn;
-}
-export async function closeUsersDb(): Promise<void> {
-    if (usersConn) await usersConn.close().catch(() => undefined);
-    usersConn = null;
-}
-/** For the checks: point at another database. */
-export function setUsersDb(conn: Connection | null) { usersConn = conn; }
-
 /** The users collection (native driver) once connected; null when not configured or unreachable. */
-async function usersCollection() {
-    const conn = usersDb();
-    if (!conn) return null;
-    try {
-        if (conn.readyState !== 1) await conn.asPromise();
-    } catch (e: any) {
-        log.warn({ message: e?.message }, 'users database unreachable');
-        return null;
-    }
-    return conn.db ? conn.db.collection('users') : null;
-}
+const usersCollection = () => sourceCollection('users', 'users');
 
 // ---------------------------------------------------------------- helpers
 
@@ -130,7 +105,7 @@ async function callWorker(items: WorkerItem[]): Promise<any[]> {
 }
 
 export function kycReady(): boolean {
-    return !config.kyc.disabled && !!config.kyc.workerUrl && config.kyc.secret.length >= 32 && !!config.kyc.usersMongoUri;
+    return !config.kyc.disabled && !!config.kyc.workerUrl && config.kyc.secret.length >= 32 && !!config.sources.usersUri;
 }
 
 // ---------------------------------------------------------------- one batch

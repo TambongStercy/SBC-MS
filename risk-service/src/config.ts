@@ -25,6 +25,34 @@ export const config = {
     thresholds: { requireCode: num('RISK_REQUIRE_CODE_AT', 40), hold: num('RISK_HOLD_AT', 70) },
     /** Rules switched off (comma-separated ids), without redeploying. */
     disabledRules: new Set((process.env.RISK_DISABLED_RULES || '').split(',').map(s => s.trim()).filter(Boolean)),
+    /** The other services' databases, read-only (facts behind events, weekly rebuild, KYC). */
+    sources: {
+        usersUri: process.env.USERS_MONGODB_URI || '',
+        paymentUri: process.env.PAYMENT_MONGODB_URI || '',
+    },
+    /**
+     * Security plan Phase 4, part 2: live events and the weekly rebuild. On when both source
+     * databases are set; RISK_LIVE_DISABLED=true stops both without a redeploy.
+     */
+    live: {
+        disabled: String(process.env.RISK_LIVE_DISABLED || '').toLowerCase() === 'true',
+        /** Events handled per second (one batch a second). */
+        perSecond: Math.max(1, Math.min(500, num('RISK_EVENTS_PER_SECOND', 50))),
+        /** New withdrawals and paid payments are read from the payment database every this many seconds. */
+        watchEverySec: Math.max(5, num('RISK_WATCH_EVERY_SEC', 15)),
+        /** A linked group larger than this is cut when rescored live (the weekly rebuild sees it whole). */
+        maxGroup: num('RISK_MAX_GROUP', 500),
+        /** Weekly rebuild: Douala weekday (0 = Sunday) and hour. */
+        rebuildDay: num('RISK_REBUILD_DAY', 0),
+        rebuildHour: num('RISK_REBUILD_HOUR', 1),
+        rebuildDisabled: String(process.env.RISK_REBUILD_DISABLED || '').toLowerCase() === 'true',
+        /** Signups under one sponsor from one network or device within 24 h that make a burst. */
+        signupBurst: Math.max(2, num('RISK_SIGNUP_BURST', 5)),
+        /** Extra hosting / VPN ASNs (comma-separated) on top of the built-in list. */
+        extraDatacenterAsns: (process.env.RISK_DATACENTER_ASNS || '').split(',').map(s => Number(s.trim())).filter(n => Number.isInteger(n) && n > 0),
+        /** Live events kept this long (TTL). */
+        eventRetentionDays: num('RISK_EVENT_RETENTION_DAYS', 90),
+    },
     /**
      * Security plan Phase 8: KYC level 1. On when the worker URL, its secret and the users
      * database are all set; hints are still queued without them (and checked once they are).
@@ -32,8 +60,6 @@ export const config = {
     kyc: {
         workerUrl: (process.env.KYC_WORKER_URL || '').replace(/\/+$/, ''),
         secret: process.env.KYC_SHARED_SECRET || '',
-        /** Read-only: the member fields the checks need (email, phone, MoMo, countries). */
-        usersMongoUri: process.env.USERS_MONGODB_URI || '',
         /** Members sent per second (one batch a second). 50/s backfills 386,000 members in ~2 h. */
         perSecond: Math.max(1, Math.min(500, num('KYC_PER_SECOND', 50))),
         /** Douala hours when the backfill / refresh runs (start inclusive, end exclusive). */

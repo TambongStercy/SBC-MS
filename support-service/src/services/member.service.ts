@@ -5,7 +5,8 @@ import { Approval } from '../database/models/approval.model';
 import { Ticket } from '../database/models/ticket.model';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../utils/errors';
 import { maskEmail, maskPhone } from '../utils/mask';
-import { contactChange, getSupportMember, searchMembers, SupportMember } from './clients/user.client';
+import { getRiskMember, riskConnected } from './clients/risk.client';
+import { contactChange, getSupportDetails, getSupportMember, searchMembers, SupportMember } from './clients/user.client';
 import { memberPayins, memberWithdrawals } from './clients/payment.client';
 import { AgentRef } from '../database/models/approval.model';
 import { createApproval } from './approval.service';
@@ -57,6 +58,29 @@ export const withdrawalsWithText = async (userId: string, limit: number) =>
     });
 
 export const payins = (userId: string, limit: number) => memberPayins(userId, limit);
+
+/**
+ * Security plan Phase 4: the fraud engine's view of the member, for finance
+ * managers (risk.read): score and decision, why, the linked accounts (with
+ * their names), the shared numbers/devices by their last 3 digits, recent
+ * events, KYC level 1. `available: false` when risk-service is not connected.
+ */
+export async function riskCard(userId: string) {
+    if (!/^[a-f0-9]{24}$/i.test(userId)) throw notFound('Membre introuvable.');
+    if (!riskConnected()) return { available: false as const };
+    const v = await getRiskMember(userId);
+    if (!v) return { available: false as const };
+    const names = new Map((await getSupportDetails(v.linked.map((l) => l.userId).slice(0, 50))).map((m) => [String(m._id), m]));
+    return {
+        available: true as const,
+        score: v.score, decision: v.decision, scoredAt: v.scoredAt, groupSize: v.groupSize,
+        reasons: [...(v.reasons ?? []).map((r) => ({ ...r, live: false })), ...(v.liveReasons ?? []).map((r) => ({ ...r, live: true }))],
+        linked: v.linked.map((l) => ({ ...l, name: names.get(l.userId)?.name ?? null, country: l.country ?? names.get(l.userId)?.country ?? null })),
+        identifiers: v.identifiers,
+        events: v.events ?? [],
+        kyc: v.kyc ? { score: v.kyc.score, band: v.kyc.band, reasons: v.kyc.reasons, emailDomain: v.kyc.signals?.email?.domain ?? null, checkedAt: v.kyc.checkedAt, variantAccounts: v.kyc.variantAccounts } : null,
+    };
+}
 
 /** A country team only sees the member's tickets from its countries (Phase 5). */
 export const memberTickets = (userId: string, team?: string[]) =>

@@ -15,8 +15,8 @@ import { formatDateTime, formatMoney } from '../../lib/format';
  * against B (opening + recorded movements), and the two requests support can
  * make about the account: remove a lost authenticator, freeze or unfreeze the
  * money. Each request is approved by another agent before anything happens.
- * Linked accounts and the risk score arrive with the fraud engine (Phase 4),
- * balance C with the second ledger (Phase 2).
+ * Linked accounts and the risk score are in MemberRiskPanel (Phase 4);
+ * balance C arrives with the second ledger (Phase 2).
  */
 const regionNames = (() => { try { return new Intl.DisplayNames(['fr'], { type: 'region' }); } catch { return null; } })();
 const country = (c: string | null | undefined) => (c ? `${regionNames?.of(c) ?? c} (${c})` : '—');
@@ -100,7 +100,6 @@ export function MemberSecurityPanel({ member: m }: { member: SupportMember }) {
             )}
           </div>
         )}
-        <p className="text-xs text-fg-muted">Comptes liés et score de risque : arrivent avec le moteur de fraude (phase 4).</p>
       </PanelBody>
 
       <ReasonDialog

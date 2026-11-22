@@ -1,6 +1,6 @@
 import { Schema, model } from 'mongoose';
 import { config } from '../config';
-import { Decision, IdentifierModel, RiskMemberModel } from '../database/models';
+import { Decision, IdentifierModel, RiskEventModel, RiskMemberModel } from '../database/models';
 import { childLogger } from '../lib/logger';
 import { readyRedis, redis, rkey } from '../lib/redis';
 
@@ -77,8 +77,10 @@ export async function decisionFor(userId: string): Promise<DecisionAnswer> {
     const cached = await fromCache(userId);
     if (cached) return cached;
     const m = await RiskMemberModel.findOne({ userId }).lean() as any;
+    const now = Date.now();
+    const live = (m?.liveReasons ?? []).filter((r: any) => new Date(r.expiresAt).getTime() > now);
     const a: DecisionAnswer = m
-        ? { decision: m.decision, score: m.score, groupSize: m.groupSize, reasons: (m.reasons ?? []).map((r: any) => ({ rule: r.rule, points: r.points, detail: r.detail })), scoredAt: m.scoredAt ? new Date(m.scoredAt).toISOString() : null }
+        ? { decision: m.decision, score: m.score, groupSize: m.groupSize, reasons: [...(m.reasons ?? []), ...live].map((r: any) => ({ rule: r.rule, points: r.points, detail: r.detail })), scoredAt: m.scoredAt ? new Date(m.scoredAt).toISOString() : null }
         : ALLOW;
     await toCache(userId, a);
     return a;
@@ -100,11 +102,19 @@ export async function memberView(userId: string) {
         ? (await RiskMemberModel.find({ groupId: m.groupId, userId: { $ne: userId } }).sort({ score: -1 }).limit(50).lean() as any[])
             .map(x => ({ userId: x.userId, score: x.score, decision: x.decision, country: x.country }))
         : [];
-    const identifiers = (await IdentifierModel.find({ accounts: userId }).limit(50).lean() as any[])
+    // shared identifiers only (the index also holds the member's own, unshared ones)
+    const identifiers = (await IdentifierModel.find({ accounts: userId, count: { $gte: 2 } }).limit(50).lean() as any[])
         .map(i => ({ kind: i.kind, uses: i.uses ?? [], tail: i.tail, count: i.count, hub: i.hub }));
+    const now = Date.now();
+    const liveReasons = (m?.liveReasons ?? []).filter((r: any) => new Date(r.expiresAt).getTime() > now)
+        .map((r: any) => ({ rule: r.rule, points: r.points, detail: r.detail, at: r.at, expiresAt: r.expiresAt }));
+    // what happened lately (types and dates only)
+    const events = (await RiskEventModel.find({ userId }, { _id: 0, type: 1, at: 1, 'data.kind': 1, 'data.amountXaf': 1, 'data.payoutTail': 1 }).sort({ at: -1 }).limit(20).lean() as any[])
+        .map(e => ({ type: e.type, at: e.at, kind: e.data?.kind ?? null, amountXaf: e.data?.amountXaf ?? null, numberTail: e.data?.payoutTail ?? null }));
     return {
         userId, scored: !!m,
         score: m?.score ?? 0, decision: (m?.decision ?? 'allow') as Decision, reasons: m?.reasons ?? [],
+        structuralScore: m?.structuralScore ?? m?.score ?? 0, liveReasons, events,
         groupId: m?.groupId ?? null, groupSize: m?.groupSize ?? 1, linked, identifiers,
         scoredAt: m?.scoredAt ?? null,
     };

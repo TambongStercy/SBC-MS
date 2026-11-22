@@ -32,6 +32,8 @@ export const IdentifierModel = model('Identifier', IdentifierSchema);
 
 export type Decision = 'allow' | 'require_code' | 'hold';
 export interface Reason { rule: string; points: number; detail: string; caseType?: string }
+/** A reason from a live event (Phase 4 part 2): it counts until `expiresAt`. */
+export interface LiveReason extends Reason { at: Date; expiresAt: Date }
 
 const MemberSchema = new Schema({
     userId: { type: String, required: true },
@@ -39,7 +41,11 @@ const MemberSchema = new Schema({
     groupSize: { type: Number, default: 1 },
     score: { type: Number, default: 0 },
     decision: { type: String, default: 'allow' },
+    /** Links and referral rules (look-back, weekly rebuild, live group rescoring). */
     reasons: { type: [{ _id: false, rule: String, points: Number, detail: String, caseType: String }], default: [] },
+    structuralScore: { type: Number, default: 0 },
+    /** Event rules (contact change then withdrawal, new device + country + number…), each until its expiry. */
+    liveReasons: { type: [{ _id: false, rule: String, points: Number, detail: String, caseType: String, at: Date, expiresAt: Date }], default: [] },
     country: { type: String, default: null },
     scoredAt: { type: Date, default: null },
     runId: { type: String, default: null },
@@ -47,6 +53,7 @@ const MemberSchema = new Schema({
 MemberSchema.index({ userId: 1 }, { unique: true });
 MemberSchema.index({ groupId: 1 });
 MemberSchema.index({ decision: 1, score: -1 });
+MemberSchema.index({ 'liveReasons.expiresAt': 1 }, { sparse: true });
 export const RiskMemberModel = model('RiskMember', MemberSchema);
 
 const RunSchema = new Schema({
@@ -58,6 +65,53 @@ const RunSchema = new Schema({
     stats: Schema.Types.Mixed,
 }, { collection: 'riskruns', versionKey: false });
 export const RiskRunModel = model('RiskRun', RunSchema);
+
+/**
+ * Security plan Phase 4, part 2: live events.
+ *   riskevents   one row per event, from user-service (signup, contact change, authenticator,
+ *                dormant account back, ledger mismatch) or read from the payment database by
+ *                the watcher (withdrawal requested, payment paid). `key` makes each one unique,
+ *                so a repeated hint or a second watcher pass adds nothing. Hashes only: never a
+ *                number, address or device in clear. Deleted after RISK_EVENT_RETENTION_DAYS.
+ *   riskcursors  where the watcher stopped reading the payment database.
+ *   riskcasessent what was last sent to support per case, so an unchanged case is not resent
+ *                on every event (support would count each as an occurrence).
+ */
+export type RiskEventType = 'signup' | 'contact_change' | 'authenticator_change' | 'dormant_reactivated' | 'balance_mismatch' | 'withdrawal_requested' | 'payin_succeeded';
+export const RISK_EVENT_TYPES: RiskEventType[] = ['signup', 'contact_change', 'authenticator_change', 'dormant_reactivated', 'balance_mismatch', 'withdrawal_requested', 'payin_succeeded'];
+const RiskEventSchema = new Schema({
+    key: { type: String, required: true },
+    type: { type: String, required: true },
+    userId: { type: String, required: true },
+    at: { type: Date, required: true },
+    data: { type: Schema.Types.Mixed, default: {} },
+    source: { type: String, default: null },
+    status: { type: String, default: 'pending' }, // pending | done | failed
+    attempts: { type: Number, default: 0 },
+    nextAt: { type: Date, required: true },
+    claimToken: { type: String, default: null },
+    claimedUntil: { type: Date, default: null },
+    lastError: { type: String, default: null },
+    processedAt: { type: Date, default: null },
+    expiresAt: { type: Date, required: true },
+}, { collection: 'riskevents', versionKey: false });
+RiskEventSchema.index({ key: 1 }, { unique: true });
+RiskEventSchema.index({ status: 1, nextAt: 1 });
+RiskEventSchema.index({ userId: 1, type: 1, at: -1 });
+RiskEventSchema.index({ type: 1, 'data.sponsorId': 1, at: -1 }, { partialFilterExpression: { type: 'signup' } });
+RiskEventSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+export const RiskEventModel = model('RiskEvent', RiskEventSchema);
+
+const CursorSchema = new Schema({ _id: String, lastId: { type: String, default: null }, at: Date }, { collection: 'riskcursors', versionKey: false });
+export const RiskCursorModel = model('RiskCursor', CursorSchema);
+
+const CaseSentSchema = new Schema({
+    _id: String, // dedupKey
+    severity: String,
+    accountCount: { type: Number, default: 0 },
+    sentAt: Date,
+}, { collection: 'riskcasessent', versionKey: false });
+export const RiskCaseSentModel = model('RiskCaseSent', CaseSentSchema);
 
 /**
  * Security plan Phase 8: KYC level 1.

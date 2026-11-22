@@ -18,6 +18,7 @@ import {
 } from '../../components/ui';
 import { formatDate, formatDateTime, formatMoney, formatRelative } from '../../lib/format';
 import { MemberSecurityPanel } from './MemberSecurityPanel';
+import { MemberRiskPanel } from './MemberRiskPanel';
 
 /** A member's record (masked per role), with payments, withdrawals and tickets. */
 export default function MemberDetailPage() {
@@ -102,6 +103,7 @@ export default function MemberDetailPage() {
       </div>
 
       <div className="mt-4"><MemberSecurityPanel member={m} /></div>
+      {perms.has('risk.read') && <div className="mt-4"><MemberRiskPanel memberId={m._id} /></div>}
 
       <Tabs defaultValue="payins" className="mt-6">
         <TabsList aria-label="Historique du membre">

@@ -119,6 +119,8 @@ function load() {
             payment: ensureNoTrailingSlash(process.env.PAYMENT_SERVICE_URL || 'http://localhost:3003'),
             advertising: ensureNoTrailingSlash(process.env.ADVERTISING_SERVICE_URL || 'http://localhost:3010'),
             notification: ensureNoTrailingSlash(process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3002'),
+            /** Security plan Phase 4: the fraud engine (internal only). Empty: the member card says it is not connected. */
+            risk: ensureNoTrailingSlash(process.env.RISK_SERVICE_URL || ''),
             timeoutMs: intEnv('SERVICE_TIMEOUT_MS', 8000),
         },
         /**

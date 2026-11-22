@@ -705,6 +705,28 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
   `assertWithdrawalsNotLocked` (100 ms budget), logs, never refuses. No enforce mode yet: it waits
   for Rufus's rules on held withdrawals.
 - Checks: `risk-service/src/scripts/check-risk.ts`, `payment-service/src/scripts/check-risk-silent.ts`.
+- **Part 2 (2026-11-22): live events.** Still silent.
+  - **Sources:**
+    - user-service `utils/risk-event.ts` sends hints (signup, contact_change,
+      authenticator_change, dormant_reactivated), fire-and-forget 1 s, to
+      `POST /api/risk/internal/events`. It replaces Phase 8's `kyc-hint.ts`: risk-service queues
+      the KYC check from those events. `RISK_EVENTS_DISABLED` (or `KYC_HINTS_DISABLED`) stops it.
+    - payment-service sends `balance_mismatch` from the ledger triple check.
+    - **Withdrawals and paid payments are read by risk-service from the payment database**
+      (`PAYMENT_MONGODB_URI`, read-only watcher). They are never sent.
+  - **Engine:** `riskevents` queue, one batch a second. The identifier index holds every number
+    and device seen. A new link rescores the linked group with the look-back's own `analyse()`
+    on that group's facts.
+  - **Live rules** (points until expiry): contact change → withdrawal ≤ 72 h 30; new device +
+    new country + new number the same day 40; hosting/VPN network 15; sign-up burst under one
+    sponsor (sponsor 30, recruits 20); dormant back 15; ledger mismatch 30. Score = structural +
+    live (`structuralScore`, `liveReasons`).
+  - **Weekly rebuild:** Sunday 01:00 Douala.
+  - **Support member card « Risque »:** `GET /desk/members/:id/risk` (`risk.read`), needs
+    `RISK_SERVICE_URL` in support-service.
+  - **Off** unless `USERS_MONGODB_URI` and `PAYMENT_MONGODB_URI` are set
+    (`RISK_LIVE_DISABLED=true`).
+  - Checks: `risk-service/src/scripts/check-live.ts`, `user-service/src/scripts/check-risk-events.ts`.
 
 ### KYC level 1 (Security plan Phase 8, part 1, 2026-11-21)
 
@@ -715,8 +737,9 @@ Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
   Level 1 is local computation (libphonenumber, a disposable-domain list, Gmail dots/+tag, a
   random-looking test) plus one DNS query per domain, cached in its SQLite. It stores no member data.
   Tests: `pytest` (CI job `test-kyc-worker`).
-- **user-service** `utils/kyc-hint.ts`: fire-and-forget hint (1 s) after `register` and in
-  `alertContactChange` (email/phone/MoMo, not crypto). `KYC_HINTS_DISABLED=true` stops it.
+- **user-service** sends a `signup` / `contact_change` event (`utils/risk-event.ts`, Phase 4 part 2;
+  was `kyc-hint.ts`) after `register` and in `alertContactChange`; risk-service queues the check
+  (not for crypto). `KYC_HINTS_DISABLED=true` or `RISK_EVENTS_DISABLED=true` stops it.
 - **risk-service** `services/kyc.service.ts`: `kycqueue` (one row per member, live first) → one
   batch a second (`KYC_PER_SECOND`, 50) → `kycresults` (signals, reasons, score, band; HMACs only,
   TTL 12 months). It reads members **read-only** from `USERS_MONGODB_URI`. A member whose checked fields
@@ -752,8 +775,8 @@ Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, p
 - **Case outbox** (user-service and payment-service `support.service.client.ts`): a case
   refused on the network / 5xx / 429 is kept in `support_case_outbox` and resent every 30 s
   (1–30 min backoff) until support answers; delivered rows expire after 30 days.
-- **Member card:** declared / usual / last country, frozen, balance A vs B (ledger); C and
-  linked accounts / risk score wait for Phases 2 and 4.
+- **Member card:** declared / usual / last country, frozen, balance A vs B (ledger); C waits
+  for Phase 2. Linked accounts and the risk score: « Risque » panel (Phase 4 part 2, `risk.read`).
 - Not done (need Phase 4 / 2): release of a held withdrawal, commission reversal approvals.
 - Checks: `user-service/src/scripts/check-support-phase5.ts`, support `src/tests/phase5.test.ts`,
   support-frontend `MemberSecurityPanel.test.tsx`.

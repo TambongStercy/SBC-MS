@@ -15,6 +15,7 @@ process.env.USER_SERVICE_URL = 'http://127.0.0.1:9';
 process.env.PAYMENT_SERVICE_URL = 'http://127.0.0.1:9';
 process.env.ADVERTISING_SERVICE_URL = 'http://127.0.0.1:9';
 process.env.NOTIFICATION_SERVICE_URL = 'http://127.0.0.1:9';
+process.env.RISK_SERVICE_URL = 'http://127.0.0.1:9';
 process.env.DEEPSEEK_API_KEY = 'test-deepseek-key';
 process.env.DEEPSEEK_BASE_URL = 'http://deepseek.test';
 process.env.TURNSTILE_SECRET = '';

@@ -113,7 +113,7 @@ const main = async () => {
     check('--apply: parrain scored 90 (hold), country upper-cased', pm?.score === 90 && pm?.decision === 'hold' && pm?.country === 'CM', `${pm?.score} ${pm?.country}`);
     check('G (failed withdrawal) and H linked by the number that paid: grouped, allow', (await RiskMemberModel.findOne({ userId: String(g) }).lean() as any)?.groupSize === 2);
     const idents = await IdentifierModel.find().lean() as any[];
-    check('identifiers in the risk DB carry no full number', idents.length === 2 && !JSON.stringify(idents).includes('699112233') && idents.some(i => i.tail === '233'));
+    check('identifiers in the risk DB (every one, shared or not) carry no full number', idents.filter(i => i.count >= 2).length === 2 && !JSON.stringify(idents).includes('699112233') && idents.some(i => i.tail === '233'));
     check('source databases untouched', before === await users.collection('users').countDocuments() + await payment.collection('transactions').countDocuments());
     check('support down → cases queued in the outbox', (run1.sent as any)?.queued === 2 && (await SupportCaseOutbox.countDocuments({ deliveredAt: null })) === 2, JSON.stringify(run1.sent));
 

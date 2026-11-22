@@ -5,6 +5,7 @@ import { RiskMemberModel } from '../database/models';
 import { redis } from '../lib/redis';
 import { requireService } from './service-auth';
 import { enqueue, kycStatus, kycView } from '../services/kyc.service';
+import { hintToEvent, liveStatus, recordEvent } from '../services/live.service';
 
 const ID = /^[a-f0-9]{24}$/i;
 
@@ -66,6 +67,22 @@ export function routes(): Router {
         await enqueue([userId], reason);
         return res.status(202).json({ success: true });
     });
+
+    /**
+     * POST /api/risk/internal/events {type, userId, …} (Phase 4 part 2): user-service's hints
+     * (signup, contact_change, authenticator_change, dormant_reactivated, balance_mismatch).
+     * Only stored here (202); the live loop handles it within seconds. Withdrawals and paid
+     * payments are not sent: risk-service reads them from the payment database.
+     */
+    r.post('/api/risk/internal/events', requireService, async (req, res) => {
+        const e = hintToEvent(req.body, String(req.header('x-service-name') || '').slice(0, 40) || 'unknown');
+        if ('error' in e) return res.status(400).json({ success: false, message: e.error });
+        await recordEvent(e);
+        return res.status(202).json({ success: true });
+    });
+
+    /** GET /api/risk/internal/live/status: events waiting/failed, last 24 h by type, watcher, last rebuild. */
+    r.get('/api/risk/internal/live/status', requireService, async (_req, res) => res.json({ success: true, data: await liveStatus() }));
 
     /** GET /api/risk/internal/kyc/status: queue size, results, bands (no member data). */
     r.get('/api/risk/internal/kyc/status', requireService, async (_req, res) => res.json({ success: true, data: await kycStatus() }));
