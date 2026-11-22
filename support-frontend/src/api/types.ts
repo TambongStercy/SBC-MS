@@ -319,7 +319,7 @@ export interface FinanceWithdrawal {
 
 // ── Approvals (assumed) ─────────────────────────────────────────────────
 
-export type ApprovalType = 'regularization' | 'manual_activation' | 'contact_change' | 'authenticator_reset' | 'account_freeze';
+export type ApprovalType = 'regularization' | 'manual_activation' | 'contact_change' | 'authenticator_reset' | 'account_freeze' | 'risk_release';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | 'expired' | 'cancelled';
 
 export interface Approval {
@@ -490,4 +490,6 @@ export type RiskCard =
       identifiers: { kind: 'phone' | 'device'; uses: string[]; tail: string; count: number; hub: boolean }[];
       events: { type: string; at: string; kind: string | null; amountXaf: number | null; numberTail: string | null }[];
       kyc: { score: number; band: 'low' | 'medium' | 'high'; reasons: string[]; emailDomain: string | null; checkedAt: string; variantAccounts: number } | null;
+      /** Blocking mode: support's approved release (allowed while the score stays at or under scoreAtRelease). */
+      release?: { at: string; by: { id: string; name: string } | null; reason: string | null; scoreAtRelease: number; endedAt: string | null; active: boolean } | null;
     };

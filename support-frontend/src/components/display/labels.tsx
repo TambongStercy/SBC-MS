@@ -96,6 +96,7 @@ export const APPROVAL_TYPE: Record<ApprovalType, string> = {
   contact_change: 'Changement de contact',
   authenticator_reset: 'Réinitialisation de l’authentificateur',
   account_freeze: 'Gel ou dégel de l’argent',
+  risk_release: 'Libération (moteur de fraude)',
 };
 
 export const APPROVAL_STATUS: Record<ApprovalStatus, { label: string; tone: Tone }> = {

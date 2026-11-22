@@ -1,6 +1,6 @@
 import config from '../config';
 import { AuditLog } from '../database/models/audit-log.model';
-import { desk, FetchCall, login, makeAgent, mockFetch, setupDb, teardown } from './helpers';
+import { desk, FetchCall, login, makeAgent, mockFetch, reauthToken, setupDb, teardown } from './helpers';
 
 /** Security plan Phase 4, part 2: the « Risque » card on the member page (risk.read). */
 
@@ -20,7 +20,9 @@ let f: { calls: FetchCall[]; restore: () => void };
 beforeEach(async () => {
     await setupDb();
     f = mockFetch({
-        '/api/risk/internal/members/': () => ({ json: { success: true, data: VIEW } }),
+        '/api/risk/internal/members/': (c) => (c.method === 'POST' && c.url.endsWith('/release')
+            ? { json: { success: true, data: { released: true, scoreAtRelease: VIEW.score, wasHeld: true } } }
+            : { json: { success: true, data: VIEW } }),
         '/api/users/internal/support-details': (c) => ({ json: { success: true, data: (c.body?.userIds ?? []).map((id: string) => ({ _id: id, name: `Membre ${id.slice(-2)}`, country: 'CM' })) } }),
     });
 });
@@ -64,5 +66,36 @@ describe('member risk card', () => {
         f = mockFetch({ '/api/users/internal/support-details': () => ({ json: { success: true, data: [] } }), '/api/risk/internal/members/': () => ({ status: 502, json: {} }) });
         const fm = await makeAgent(['finance_manager']);
         expect((await desk('get', `/members/${M1}/risk`, await login(fm))).status).toBe(503);
+    });
+
+    it('blocking mode: one finance manager asks to release a held member, another approves, risk-service records it', async () => {
+        const fm1 = await makeAgent(['finance_manager']);
+        const fm2 = await makeAgent(['finance_manager'], { email: 'fm2@e2e.test' });
+        const j1 = await login(fm1);
+        const j2 = await login(fm2);
+        const short = await desk('post', `/members/${M1}/risk/release`, j1, { 'x-reauth-token': await reauthToken(fm1, j1) }).send({ reason: 'ok' });
+        expect(short.status).toBe(400);
+        const r = await desk('post', `/members/${M1}/risk/release`, j1, { 'x-reauth-token': await reauthToken(fm1, j1) }).send({ reason: 'Appel vidéo avec le membre, famille qui partage un numéro.' });
+        expect(r.status).toBe(201);
+        const id = r.body.data.approvalId;
+        expect((await desk('post', `/approvals/${id}/approve`, j1, { 'x-reauth-token': await reauthToken(fm1, j1) }).send({})).body.code).toBe('SELF_APPROVAL');
+        const ok = await desk('post', `/approvals/${id}/approve`, j2, { 'x-reauth-token': await reauthToken(fm2, j2) }).send({});
+        expect(ok.body.data.status).toBe('executed');
+        const call = f.calls.find((c) => c.method === 'POST' && c.url.endsWith(`/members/${M1}/release`))!;
+        expect(call.body).toMatchObject({ approvalId: id, by: { name: expect.any(String) } });
+        expect(call.body.reason).toContain('Appel vidéo');
+    });
+
+    it('a member the engine does not hold cannot be « released »', async () => {
+        f.restore();
+        f = mockFetch({
+            '/api/risk/internal/members/': () => ({ json: { success: true, data: { ...VIEW, decision: 'require_code', score: 45 } } }),
+            '/api/users/internal/support-details': (c) => ({ json: { success: true, data: (c.body?.userIds ?? []).map((id: string) => ({ _id: id, name: 'M', country: 'CM' })) } }),
+        });
+        const fm = await makeAgent(['finance_manager']);
+        const j = await login(fm);
+        const r = await desk('post', `/members/${M1}/risk/release`, j, { 'x-reauth-token': await reauthToken(fm, j) }).send({ reason: 'x'.repeat(30) });
+        expect(r.status).toBe(409);
+        expect(r.body.code).toBe('NOT_HELD');
     });
 });

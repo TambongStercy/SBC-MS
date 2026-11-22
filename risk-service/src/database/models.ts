@@ -103,6 +103,23 @@ RiskEventSchema.index({ type: 1, 'data.sponsorId': 1, at: -1 }, { partialFilterE
 RiskEventSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 export const RiskEventModel = model('RiskEvent', RiskEventSchema);
 
+/**
+ * Support's release of a held member (approved in support, decided 2026-11-22):
+ * the member may withdraw again while their score stays at or under the score
+ * they had when released. A new reason that raises it holds them again.
+ */
+const ReleaseSchema = new Schema({
+    _id: String, // userId
+    scoreAtRelease: { type: Number, required: true },
+    reason: { type: String, default: null },
+    by: { type: Schema.Types.Mixed, default: null }, // { id, name } of the approving agent
+    approvalId: { type: String, default: null },
+    at: { type: Date, required: true },
+    /** Ended by support (kept, never deleted). */
+    endedAt: { type: Date, default: null },
+}, { collection: 'riskreleases', versionKey: false });
+export const RiskReleaseModel = model('RiskRelease', ReleaseSchema);
+
 const CursorSchema = new Schema({ _id: String, lastId: { type: String, default: null }, at: Date }, { collection: 'riskcursors', versionKey: false });
 export const RiskCursorModel = model('RiskCursor', CursorSchema);
 

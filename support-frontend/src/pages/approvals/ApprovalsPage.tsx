@@ -23,6 +23,7 @@ export const APPROVER_PERMISSION: Record<ApprovalType, Permission> = {
   regularization: 'finance.regularize.approve',
   authenticator_reset: 'authenticator.reset.approve',
   account_freeze: 'risk.decide',
+  risk_release: 'risk.decide',
 };
 
 /** The payload in plain words; known keys get French labels. */

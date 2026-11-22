@@ -17,9 +17,17 @@ export interface RiskMemberView {
     events?: { type: string; at: string; kind: string | null; amountXaf: number | null; numberTail: string | null }[];
     kyc: { level: number; score: number; band: 'low' | 'medium' | 'high'; reasons: string[]; signals: any; variantAccounts: number; checkedAt: string } | null;
     scoredAt: string | null;
+    release?: { at: string; by: { id: string; name: string } | null; reason: string | null; scoreAtRelease: number; endedAt: string | null; active: boolean } | null;
 }
 
 export const riskConnected = () => !!config.services.risk;
+
+/** Support's approved release of a held member (blocking mode). */
+export async function releaseRiskMember(input: { userId: string; reason: string; by: { id: string; name: string }; approvalId: string }) {
+    if (!riskConnected()) return { ok: false, code: 'RISK_NOT_CONNECTED', message: 'Le moteur de fraude n’est pas relié au support.' };
+    const r = await serviceRequest('risk', 'POST', `/api/risk/internal/members/${input.userId}/release`, { body: { reason: input.reason, by: input.by, approvalId: input.approvalId }, timeoutMs: 5000 });
+    return { ok: r.ok, code: r.code, message: r.message, data: r.data };
+}
 
 export async function getRiskMember(userId: string): Promise<RiskMemberView | null> {
     if (!riskConnected()) return null;

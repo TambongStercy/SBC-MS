@@ -5,7 +5,7 @@ import * as members from '../../../services/member.service';
 import { audit } from '../../../services/audit.service';
 import { hasPermission } from '../../../config/permissions';
 import { presentTickets } from '../../presenters';
-import { requestAuthenticatorReset, requestFreeze } from '../../../services/risk.service';
+import { requestAuthenticatorReset, requestFreeze, requestRiskRelease } from '../../../services/risk.service';
 
 const router = Router();
 const ref = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.name, roles: a.roles }; };
@@ -50,6 +50,12 @@ router.get('/:userId/risk', requirePermission('risk.read'), ah(async (req, res) 
     const card = await members.riskCard(req.params.userId);
     await audit({ actor: actorOf(req), action: 'member.risk.viewed', target: { type: 'member', id: req.params.userId }, meta: { available: card.available }, ...reqCtx(req) });
     res.json({ success: true, data: card });
+}));
+
+// Security plan Phase 4 blocking mode: release a member the fraud engine holds (another finance manager approves).
+router.post('/:userId/risk/release', requirePermission('risk.decide'), requireReauth, ah(async (req, res) => {
+    const a = await requestRiskRelease(req.params.userId, req.body ?? {}, ref(req), reqCtx(req));
+    res.status(201).json({ success: true, data: { approvalId: String(a._id), status: a.status } });
 }));
 
 // Security plan Phase 5: lost phone (after ID + selfie) → finance manager approves → user-service removes the app.

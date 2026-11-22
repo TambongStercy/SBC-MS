@@ -9,18 +9,28 @@ const log = logger.getLogger('RiskServiceClient');
  * whether money may leave a member's balance.
  *
  * RISK_MODE (payment-service .env):
- *   off     (default) never asked.
- *   silent  asked with a 100 ms budget, the answer is only logged (risk-service
- *           keeps every question in `decisionlogs`), nothing is ever refused.
- * An `enforce` mode comes later, after the silent weeks and Rufus's rules for
- * a held withdrawal. Never throws.
+ *   off      (default) never asked.
+ *   silent   asked with a 100 ms budget, the answer is only logged (risk-service
+ *            keeps every question in `decisionlogs`), nothing is ever refused.
+ *   enforce  (decided 2026-11-22) a member the engine marks `hold` cannot take
+ *            money out until support releases them; `require_code` passes (the
+ *            authenticator code is already asked). Asked with RISK_ENFORCE_TIMEOUT_MS
+ *            (1500); no answer = refused too (never paid blind), unless
+ *            RISK_FAIL_OPEN=true.
+ * askRisk never throws; the caller decides.
  */
-export interface RiskAnswer { decision: 'allow' | 'require_code' | 'hold'; score: number; reasons: { rule: string; points: number; detail: string }[] }
+export interface RiskAnswer { decision: 'allow' | 'require_code' | 'hold'; score: number; reasons: { rule: string; points: number; detail: string }[]; released?: boolean }
 
-export const riskMode = (): 'off' | 'silent' => (String(process.env.RISK_MODE || 'off').toLowerCase() === 'silent' ? 'silent' : 'off');
+export type RiskMode = 'off' | 'silent' | 'enforce';
+export const riskMode = (): RiskMode => {
+    const m = String(process.env.RISK_MODE || 'off').toLowerCase();
+    return m === 'enforce' ? 'enforce' : m === 'silent' ? 'silent' : 'off';
+};
+export const riskEnforceTimeoutMs = () => Math.min(Math.max(Number(process.env.RISK_ENFORCE_TIMEOUT_MS) || 1500, 100), 10_000);
+export const riskFailOpen = () => String(process.env.RISK_FAIL_OPEN || '').toLowerCase() === 'true';
 const riskUrl = () => String(process.env.RISK_SERVICE_URL || '').replace(/\/+$/, '');
 
-export async function askRisk(input: { userId: string; action: string; amount?: number; currency?: string; transactionId?: string }, timeoutMs = 100): Promise<RiskAnswer | null> {
+export async function askRisk(input: { userId: string; action: string; amount?: number; currency?: string; transactionId?: string; enforced?: boolean }, timeoutMs = 100): Promise<RiskAnswer | null> {
     if (riskMode() === 'off' || !riskUrl()) return null;
     try {
         const res = await axios.post(`${riskUrl()}/api/risk/internal/decision`, input, {

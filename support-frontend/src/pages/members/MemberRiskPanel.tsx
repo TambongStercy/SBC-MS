@@ -1,8 +1,13 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePermissions } from '../../auth/context';
+import { useReauth } from '../../auth/reauth';
+import { ReasonDialog } from '../../components/ReasonDialog';
+import { toast } from '../../components/toast';
 import { membersApi } from '../../api/members';
 import type { RiskCard } from '../../api/types';
-import { Badge, Panel, PanelBody, PanelHeader, Skeleton } from '../../components/ui';
+import { Badge, Button, Panel, PanelBody, PanelHeader, Skeleton } from '../../components/ui';
 import { formatDate, formatDateTime, formatMoney } from '../../lib/format';
 
 /**
@@ -10,13 +15,14 @@ import { formatDate, formatDateTime, formatMoney } from '../../lib/format';
  * fraud engine's score and what it would decide, why (links and referral rules;
  * recent events, each until its end date), the accounts linked to this one by a
  * number or a device, the shared numbers by their last 3 digits, the recent
- * events, and the KYC level 1 result. The engine is in observation mode: it
- * blocks nothing yet.
+ * events, and the KYC level 1 result. In blocking mode (2026-11-22) a member
+ * marked « Retrait à retenir » cannot take money out: a finance manager releases
+ * them here (another approves) or freezes the money from « Sécurité ».
  */
 const DECISION: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' }> = {
   allow: { label: 'Rien à signaler', tone: 'success' },
   require_code: { label: 'Vérification demandée', tone: 'warning' },
-  hold: { label: 'Retrait à retenir', tone: 'danger' },
+  hold: { label: 'Retraits bloqués', tone: 'danger' },
 };
 const DECISION_SHORT: Record<string, string> = { allow: 'OK', require_code: 'À vérifier', hold: 'À retenir' };
 
@@ -53,10 +59,20 @@ const KYC_REASON: Record<string, string> = {
 
 export function MemberRiskPanel({ memberId }: { memberId: string }) {
   const q = useQuery({ queryKey: ['members', memberId, 'risk'], queryFn: () => membersApi.risk(memberId), retry: false });
+  const perms = usePermissions();
+  const reauth = useReauth();
+  const qc = useQueryClient();
+  const [releasing, setReleasing] = useState(false);
+  const held = q.data?.available && q.data.decision === 'hold';
+  const canRelease = held && perms.has('risk.decide');
 
   return (
     <Panel>
-      <PanelHeader title="Risque" description="Moteur de fraude, en observation : il ne bloque encore rien." />
+      <PanelHeader
+        title="Risque"
+        description="Moteur de fraude : un compte « Retraits bloqués » ne peut rien retirer avant d’être libéré."
+        actions={canRelease ? <Button size="sm" variant="outline" onClick={() => setReleasing(true)}>Libérer le compte</Button> : undefined}
+      />
       <PanelBody className="space-y-4 text-sm">
         {q.isPending ? (
           <div className="space-y-2"><Skeleton className="h-5 w-48" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-2/3" /></div>
@@ -68,6 +84,22 @@ export function MemberRiskPanel({ memberId }: { memberId: string }) {
           <RiskBody card={q.data} />
         )}
       </PanelBody>
+      <ReasonDialog
+        open={releasing}
+        onOpenChange={o => { if (!o) setReleasing(false); }}
+        title="Libérer ce compte"
+        description="Le membre pourra de nouveau retirer, tant que son score ne dépasse pas le score actuel. Un autre responsable financier doit valider. Si le compte est frauduleux, gelez plutôt l’argent (panneau « Sécurité »)."
+        label="Ce que vous avez vérifié"
+        minLength={20}
+        confirmLabel="Envoyer pour validation"
+        onConfirm={async reason => {
+          const token = await reauth({ title: 'Confirmer la demande', description: 'Entrez le code de votre application d’authentification.' });
+          await membersApi.requestRiskRelease(memberId, reason, token);
+          toast.success('Demande envoyée pour validation.');
+          void qc.invalidateQueries({ queryKey: ['approvals'] });
+          setReleasing(false);
+        }}
+      />
     </Panel>
   );
 }
@@ -83,6 +115,11 @@ function RiskBody({ card }: { card: Extract<RiskCard, { available: true }> }) {
         {card.scoredAt && <span className="text-xs text-fg-muted">calculé le {formatDateTime(card.scoredAt)}</span>}
       </div>
 
+      {card.release?.active && (
+        <p role="status" className="rounded-control border border-success/30 bg-success-soft px-3 py-2 text-success">
+          Libéré par le support le {formatDate(card.release.at)}{card.release.by?.name ? ` (${card.release.by.name})` : ''} : retraits permis tant que le score reste à {card.release.scoreAtRelease} ou moins.
+        </p>
+      )}
       {card.reasons.length > 0 ? (
         <ul className="space-y-1.5" aria-label="Raisons du score">
           {card.reasons.map(r => (

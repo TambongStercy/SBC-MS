@@ -37,7 +37,7 @@ import {
     OPEN_WITHDRAWAL_STATUSES, COMPLETABLE_STATUSES,
 } from './withdrawal-lifecycle';
 import { openSupportCase } from './clients/support.service.client';
-import { askRisk, riskEvent } from './clients/risk.service.client';
+import { askRisk, riskEnforceTimeoutMs, riskEvent, riskFailOpen, riskMode } from './clients/risk.service.client';
 import { failureFromError, failureFromProviderResult } from '../utils/payment-failure';
 import { checkPayinNumber, numberCheckMode } from '../utils/payin-number';
 import { memberFailureText } from '../utils/member-failure-text';
@@ -657,15 +657,35 @@ class PaymentService {
     }
 
     /**
-     * Security plan Phase 4 (silent mode): what the fraud engine would answer
-     * for this member. Logged only, never refuses (RISK_MODE, see
-     * clients/risk.service.client.ts).
+     * Security plan Phase 4: the fraud engine's answer before money leaves a
+     * member's balance (RISK_MODE, see clients/risk.service.client.ts).
+     *   silent   logged only, never refuses.
+     *   enforce  `hold` refuses (member and admin paths alike) until support
+     *            releases the member; no answer refuses too, unless RISK_FAIL_OPEN.
+     * Called last in assertWithdrawalsNotLocked, so nothing has moved yet.
      */
     private async logRiskDecision(userId: string | Types.ObjectId, audience: 'member' | 'admin'): Promise<void> {
-        const a = await askRisk({ userId: userId.toString(), action: audience === 'admin' ? 'withdrawal_admin' : 'withdrawal' });
-        if (a && a.decision !== 'allow') {
-            log.warn(`Risk (silent) user ${userId}: would ${a.decision} (score ${a.score}: ${a.reasons.map(r => r.rule).join(', ')}) [${audience}]`);
+        const mode = riskMode();
+        if (mode === 'off') return;
+        const action = audience === 'admin' ? 'withdrawal_admin' : 'withdrawal';
+        if (mode === 'silent') {
+            const a = await askRisk({ userId: userId.toString(), action });
+            if (a && a.decision !== 'allow') {
+                log.warn(`Risk (silent) user ${userId}: would ${a.decision} (score ${a.score}: ${a.reasons.map(r => r.rule).join(', ')}) [${audience}]`);
+            }
+            return;
         }
+        const a = await askRisk({ userId: userId.toString(), action, enforced: true }, riskEnforceTimeoutMs());
+        if (!a) {
+            if (riskFailOpen()) { log.warn(`Risk unavailable for user ${userId}: allowed (RISK_FAIL_OPEN) [${audience}]`); return; }
+            log.error(`Risk unavailable for user ${userId}: withdrawal refused (never paid blind) [${audience}]`);
+            throw new AppError('Les retraits sont momentanément indisponibles (vérification de sécurité). Réessayez dans quelques minutes.', 503);
+        }
+        if (a.decision !== 'hold') return;
+        log.warn(`Risk HOLD user ${userId}: withdrawal refused (score ${a.score}: ${a.reasons.map(r => r.rule).join(', ')}) [${audience}]`);
+        throw new AppError(audience === 'admin'
+            ? `Retrait bloqué par le moteur de fraude (score ${a.score} : ${a.reasons.map(r => r.detail).slice(0, 2).join(' ; ')}). Un responsable financier peut le libérer depuis le support (fiche du membre → Risque).`
+            : 'Votre retrait est bloqué le temps d’une vérification de sécurité. Le support SBC va examiner votre compte ; vous pouvez aussi lui écrire depuis « Aide ».', 403);
     }
 
     public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {

@@ -78,6 +78,7 @@ export async function riskCard(userId: string) {
         linked: v.linked.map((l) => ({ ...l, name: names.get(l.userId)?.name ?? null, country: l.country ?? names.get(l.userId)?.country ?? null })),
         identifiers: v.identifiers,
         events: v.events ?? [],
+        release: v.release ?? null,
         kyc: v.kyc ? { score: v.kyc.score, band: v.kyc.band, reasons: v.kyc.reasons, emailDomain: v.kyc.signals?.email?.domain ?? null, checkedAt: v.kyc.checkedAt, variantAccounts: v.kyc.variantAccounts } : null,
     };
 }

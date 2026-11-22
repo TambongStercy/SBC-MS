@@ -2,6 +2,7 @@ import { Approval, AgentRef } from '../database/models/approval.model';
 import { badRequest, conflict, notFound } from '../utils/errors';
 import { createApproval, registerExecutor } from './approval.service';
 import { changeMemberMomo, freezeMember, getSupportMember, resetMemberAuthenticator } from './clients/user.client';
+import { getRiskMember, releaseRiskMember, riskConnected } from './clients/risk.client';
 
 /**
  * Security plan Phase 5: support actions on a member's security, each one a
@@ -58,11 +59,34 @@ export async function requestFreeze(userId: string, input: { action?: unknown; r
     }, ctx);
 }
 
+/**
+ * Blocking mode (decided 2026-11-22): a member held by the fraud engine cannot take money out.
+ * A finance manager asks to release them, another approves, risk-service records the release
+ * (allowed while the score stays at or under today's). The other answer is the freeze.
+ */
+export async function requestRiskRelease(userId: string, input: { reason?: unknown; caseId?: unknown; ticketId?: unknown }, by: AgentRef, ctx: Ctx) {
+    await assertMember(userId);
+    if (!riskConnected()) throw conflict('Le moteur de fraude n’est pas relié au support.', 'RISK_NOT_CONNECTED');
+    const v = await getRiskMember(userId);
+    if (!v || v.decision !== 'hold') throw conflict('Ce membre n’est pas retenu par le moteur de fraude.', 'NOT_HELD');
+    const reason = reasonOf(input.reason, 'Expliquez ce que vous avez vérifié avant de libérer ce compte');
+    await assertNoneOpen('risk_release', userId);
+    return createApproval({
+        type: 'risk_release', requestedBy: by, reason, payload: { score: v.score, rules: (v.reasons ?? []).map(r => r.rule).slice(0, 20) },
+        subject: { userId }, caseId: optId(input.caseId), ticketId: optId(input.ticketId),
+    }, ctx);
+}
+
 const ownerOutcome = (r: { ok: boolean; code?: string; message?: string; data?: unknown }) =>
     r.ok ? { ok: true, result: r.data ?? null } : { ok: false, code: r.code ?? 'REFUSED', message: r.message ?? 'Refusé par le service des comptes.' };
 
 registerExecutor('authenticator_reset', async (a) =>
     ownerOutcome(await resetMemberAuthenticator({ userId: a.subject.userId!, reason: a.reason.slice(0, 300), approvalId: String(a._id) })));
+
+registerExecutor('risk_release', async (a, approver) => {
+    const r = await releaseRiskMember({ userId: a.subject.userId!, reason: a.reason.slice(0, 500), by: { id: String(approver?.id ?? ''), name: String(approver?.name ?? '') }, approvalId: String(a._id) });
+    return r.ok ? { ok: true, result: r.data ?? null } : { ok: false, code: r.code ?? 'REFUSED', message: r.message ?? 'Refusé par le moteur de fraude.' };
+});
 
 registerExecutor('account_freeze', async (a) =>
     ownerOutcome(await freezeMember({

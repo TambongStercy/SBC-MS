@@ -1,6 +1,7 @@
 import { Schema, model } from 'mongoose';
 import { config } from '../config';
-import { Decision, IdentifierModel, RiskEventModel, RiskMemberModel } from '../database/models';
+import { Decision, IdentifierModel, RiskEventModel, RiskMemberModel, RiskReleaseModel } from '../database/models';
+import { sendCases } from './scoring';
 import { childLogger } from '../lib/logger';
 import { readyRedis, redis, rkey } from '../lib/redis';
 
@@ -19,6 +20,8 @@ export interface DecisionAnswer {
     decision: Decision; score: number; groupSize: number;
     reasons: { rule: string; points: number; detail: string }[];
     scoredAt: string | null;
+    /** Released by support (approved): allowed while the score stays at or under the release score. */
+    released?: boolean;
 }
 
 const ALLOW: DecisionAnswer = { decision: 'allow', score: 0, groupSize: 1, reasons: [], scoredAt: null };
@@ -82,12 +85,27 @@ export async function decisionFor(userId: string): Promise<DecisionAnswer> {
     const a: DecisionAnswer = m
         ? { decision: m.decision, score: m.score, groupSize: m.groupSize, reasons: [...(m.reasons ?? []), ...live].map((r: any) => ({ rule: r.rule, points: r.points, detail: r.detail })), scoredAt: m.scoredAt ? new Date(m.scoredAt).toISOString() : null }
         : ALLOW;
+    if (m && a.decision !== 'allow') {
+        const rel = await RiskReleaseModel.findById(userId).lean() as any;
+        if (rel && !rel.endedAt && a.score <= rel.scoreAtRelease) { a.decision = 'allow'; a.released = true; }
+    }
     await toCache(userId, a);
     return a;
 }
 
-export async function decide(input: { userId: string; action: string; amount?: number; currency?: string; transactionId?: string; caller?: string }): Promise<DecisionAnswer> {
+export async function decide(input: { userId: string; action: string; amount?: number; currency?: string; transactionId?: string; caller?: string; enforced?: boolean }): Promise<DecisionAnswer> {
     const a = await decisionFor(input.userId);
+    // Blocking mode: a refused withdrawal goes to support's fraud queue (once a day per member),
+    // where a finance manager releases the member or freezes the money.
+    if (input.enforced && a.decision === 'hold') {
+        const m = await RiskMemberModel.findOne({ userId: input.userId }, { country: 1 }).lean() as any;
+        sendCases([{
+            type: 'abnormal_behavior', dedupKey: `risk:withdrawal_held:${input.userId}:${new Date(Date.now() + 3_600_000).toISOString().slice(0, 10)}`,
+            severity: 'critical', subject: { userId: input.userId }, amount: input.amount ?? 0, country: m?.country ?? undefined,
+            summary: `Retrait refusé par le moteur de fraude (score ${a.score} : ${a.reasons.map(r => r.detail).slice(0, 3).join(' ; ')}). Vérifiez le compte, puis libérez-le (fiche du membre → Risque) ou gelez l’argent.`,
+            details: { rule: 'withdrawal_held', action: input.action, score: a.score, rules: a.reasons.map(r => r.rule) },
+        }], true, { source: 'enforce' }).catch((e: any) => log.warn({ message: e?.message }, 'held-withdrawal case not sent'));
+    }
     DecisionLogModel.create({
         userId: input.userId, action: input.action, amount: input.amount ?? null, currency: input.currency ?? null,
         transactionId: input.transactionId ?? null, decision: a.decision, score: a.score, rules: a.reasons.map(r => r.rule), caller: input.caller ?? null,
@@ -115,6 +133,10 @@ export async function memberView(userId: string) {
         userId, scored: !!m,
         score: m?.score ?? 0, decision: (m?.decision ?? 'allow') as Decision, reasons: m?.reasons ?? [],
         structuralScore: m?.structuralScore ?? m?.score ?? 0, liveReasons, events,
+        release: await (async () => {
+            const r = await RiskReleaseModel.findById(userId).lean() as any;
+            return r ? { at: r.at, by: r.by, reason: r.reason, scoreAtRelease: r.scoreAtRelease, endedAt: r.endedAt ?? null, active: !r.endedAt && (m?.score ?? 0) <= r.scoreAtRelease } : null;
+        })(),
         groupId: m?.groupId ?? null, groupSize: m?.groupSize ?? 1, linked, identifiers,
         scoredAt: m?.scoredAt ?? null,
     };
