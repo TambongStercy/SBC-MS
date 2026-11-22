@@ -1,5 +1,6 @@
 import { Schema, Document, Types, model, Query } from 'mongoose';
 import bcrypt from 'bcrypt';
+import { payoutSealPlugin } from '../../utils/payout-seal';
 
 // Define User Roles
 export enum UserRole {
@@ -300,7 +301,8 @@ const UserSchema = new Schema<IUser>(
         withdrawalsLockedUntil: { type: Date },
         withdrawalLockReason: { type: String, enum: ['email_change', 'phone_change', 'momo_change', 'crypto_change', 'authenticator_reset', 'authenticator_setup'] },
         frozen: {
-            type: new Schema({ at: { type: Date, required: true }, reason: { type: String }, approvalId: { type: String } }, { _id: false }),
+            // `by: 'payout_seal'` when frozen automatically by a broken payout seal (services/payout-seal.service.ts).
+            type: new Schema({ at: { type: Date, required: true }, reason: { type: String }, approvalId: { type: String }, by: { type: String } }, { _id: false }),
             default: undefined,
         },
         geo: {
@@ -593,6 +595,11 @@ UserSchema.index(
     { 'dormancy.status': 1, 'dormancy.heldXaf': -1, _id: -1 },
     { name: 'dormancy_list_all', partialFilterExpression: { 'dormancy.status': { $exists: true } } },
 );
+
+// Payout seal (utils/payout-seal.ts): every write of the MoMo / crypto destination through this model
+// reseals it; a change made directly in the database is caught before the next withdrawal.
+UserSchema.add({ payoutSeal: { type: Schema.Types.Mixed, select: false, default: undefined } } as any);
+UserSchema.plugin(payoutSealPlugin);
 
 const UserModel = model<IUser>('User', UserSchema);
 

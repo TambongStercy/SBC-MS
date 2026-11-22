@@ -223,6 +223,31 @@ router.use('/stats', statsRouter); // Mount stats routes under /internal/stats
 // --- End Admin Stats ---
 
 
+// --- Payout seal evidence (user-service services/payout-seal.service.ts, 2026-11-22) ---
+// Where each member's money really went: the MoMo numbers (last 9 digits) and crypto wallets of their
+// withdrawals that reached a provider (processing or completed), newest first, with counts.
+router.post('/withdrawal-destinations', async (req, res) => {
+    const ids = Array.isArray(req.body?.userIds) ? req.body.userIds.filter((x: unknown) => typeof x === 'string' && Types.ObjectId.isValid(x)).slice(0, 200) : [];
+    if (!ids.length) return res.status(400).json({ success: false, message: 'userIds: 1 to 200 ids' });
+    const rows = await TransactionModel.aggregate([
+        { $match: { userId: { $in: ids.map((x: string) => new Types.ObjectId(x)) }, type: TransactionType.WITHDRAWAL, status: { $in: [TransactionStatus.COMPLETED, TransactionStatus.PROCESSING] } } },
+        { $project: { userId: 1, createdAt: 1, momo: '$metadata.accountInfo.fullMomoNumber', crypto: '$metadata.cryptoAddress' } },
+        { $sort: { createdAt: -1 } },
+        { $limit: 20000 },
+    ]);
+    const out: Record<string, { momo: { n: string; at: string; count: number }[]; crypto: { a: string; at: string; count: number }[] }> = {};
+    for (const id of ids) out[id] = { momo: [], crypto: [] };
+    for (const r of rows) {
+        const o = out[String(r.userId)];
+        if (!o) continue;
+        const n = String(r.momo ?? '').replace(/\D/g, '').slice(-9);
+        if (n) { const m = o.momo.find((x) => x.n === n); if (m) m.count++; else o.momo.push({ n, at: new Date(r.createdAt).toISOString(), count: 1 }); }
+        const a = String(r.crypto ?? '').trim();
+        if (a) { const c = o.crypto.find((x) => x.a === a); if (c) c.count++; else o.crypto.push({ a, at: new Date(r.createdAt).toISOString(), count: 1 }); }
+    }
+    return res.json({ success: true, data: out });
+});
+
 // --- Failure drills (Security plan test strategy step 4, 2026-11-22) ---
 // Runs the exact check every member withdrawal runs first (withdrawal lock, ledger, fraud decision)
 // and says what it decided, without starting any payout. 404 unless DRILLS_ENABLED=true (preprod

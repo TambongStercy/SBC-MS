@@ -22,6 +22,9 @@ import { authenticatorAdoptionJob } from './jobs/authenticator-adoption.job';
 import { startSupportCaseOutbox } from './services/clients/support.service.client';
 import { httpMetrics, metricsHandler } from './utils/metrics';
 import './utils/mongo-metrics';
+import cron from 'node-cron';
+import { timeJob } from './utils/metrics';
+import { startPayoutSeal } from './services/payout-seal.service';
 
 // Create Express server
 const app: Express = express();
@@ -116,6 +119,7 @@ async function startServer() {
         authenticatorAdoptionJob.start(); // Security plan Phase 3: daily adoption among members above 5,000 F
         // Security plan Phase 5: cases opened while support was down are sent again.
         startSupportCaseOutbox();
+        startPayoutSeal(cron, timeJob); // payout destination changed outside the app → freeze + case
 
         // Build the first leaderboard snapshot now, so the first visitor after
         // a deploy is not the one who pays for the cold aggregation.

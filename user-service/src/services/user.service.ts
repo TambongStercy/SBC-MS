@@ -53,6 +53,7 @@ import { AdminFilters, dateMatch } from '../utils/admin-filters';
 import { alertContactChange } from './contact-change-alert';
 import { CURRENCY_CONVERSION_RATES, CurrencyConverter } from '../config/crypto-pricing';
 import { ADMIN_MONEY_REASON_MIN } from '../utils/admin-money';
+import { checkPayoutSeal } from './payout-seal.service';
 
 
 // Country Code to Prefix Mapping (for dashboard calculation)
@@ -4592,6 +4593,9 @@ export class UserService {
 
     /** Whether withdrawals are blocked after an email/phone change (utils/withdrawal-lock.ts). */
     async getWithdrawalLock(userId: string | Types.ObjectId): Promise<WithdrawalLockStatus | null> {
+        // Payout seal first: a destination changed outside the app freezes the money right here, so
+        // this very withdrawal (or approval) is refused (services/payout-seal.service.ts).
+        await checkPayoutSeal(userId, 'withdrawal check').catch((e) => log.error(`payout seal check failed for ${userId}: ${e?.message}`));
         const user = await userRepository.findById(userId);
         return user ? withdrawalLockStatus(user) : null;
     }
