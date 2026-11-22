@@ -568,8 +568,20 @@ push), so a hijacker cannot silence it.
 - **To switch on:** Rufus approves `docs/security-plan/privacy-signals-draft.md`
   → publish it and bump `PRIVACY_POLICY_VERSION` to `2026-12` (backend + app) →
   `ACTIVITY_SIGNALS_ENABLED=true` in gateway `.env`.
-- Not done: failed sign-in attempts, GeoLite2 fallback (needs a MaxMind key),
-  mobile-app install ID.
+- **Sign-in attempts (2026-11-22, plan item 3):** `signin_attempts` (TTL 180 days,
+  `services/signin-attempts.service.ts`).
+  - **What is recorded:** every `POST /users/login` with its outcome (`code_sent`,
+    `unknown_account`, `wrong_password`, `blocked`, `invalid`, `error`), and the `verify-otp`
+    that follows within 30 min (`signed_in` / `wrong_code`). Sign-up codes are left out:
+    `signup_attempts` has them.
+  - **How it is stored:** buffered and written after the answer. The typed email/number is kept
+    masked plus an HMAC; country from Cloudflare, source from `X-SBC-Client`.
+  - **On the boards:** rolled up into `activity_days.signins` and shown on both boards
+    (« Connexions réussies », refusals by reason).
+  - **Fraud engine:** a member's 10th wrong password within an hour sends `signin_failures` to
+    risk-service once (rule `password_guessing`, 15 points, 7 days).
+  - Check: `src/scripts/check-signin-attempts.ts`.
+- Not done: GeoLite2 fallback (needs a MaxMind key), mobile-app install ID.
 - Checks: `gateway-service/src/scripts/check-activity-signals.ts`,
   `user-service/src/scripts/check-activity-signals.ts`.
 
@@ -729,7 +741,7 @@ Design, look-back figures, deploy: `docs/security-plan/phase4-risk.md`. pm2 `ris
   - **Live rules** (points until expiry): contact change → withdrawal ≤ 72 h 30; new device +
     new country + new number the same day 40; hosting/VPN network 15; sign-up burst under one
     sponsor (sponsor 30, recruits 20); dormant back 15; ledger mismatch 30; automation seen by
-    the gateway (Phase 9) 20. Score = structural +
+    the gateway (Phase 9) 20; 10 wrong passwords in an hour (Phase 1) 15. Score = structural +
     live (`structuralScore`, `liveReasons`).
   - **Weekly rebuild:** Sunday 01:00 Douala.
   - **Support member card « Risque »:** `GET /desk/members/:id/risk` (`risk.read`), needs

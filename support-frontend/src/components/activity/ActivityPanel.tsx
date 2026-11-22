@@ -27,6 +27,15 @@ function Trend({ value }: { value: number | null }) {
   );
 }
 
+/** "N refusées : mot de passe erroné 12 · compte inconnu 5", the two biggest reasons. */
+function signinHint(t: ActivityRow, labels: { code: string; label: string }[] | undefined): string | undefined {
+  const s = t.signins;
+  if (!s || !s.failed) return undefined;
+  const label = (c: string) => labels?.find(l => l.code === c)?.label.toLowerCase() ?? c;
+  const top = Object.entries(s.reasons).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c, n]) => `${label(c)} ${formatNumber(n)}`);
+  return `${formatNumber(s.failed)} refusées : ${top.join(' · ')}`;
+}
+
 export function ActivityPanel() {
   const [range, setRange] = useState<Range>('today');
   const q = useQuery({ queryKey: ['activity', range], queryFn: () => activityApi.board({ range }), refetchInterval: 60_000 });
@@ -43,6 +52,7 @@ export function ActivityPanel() {
       <TD numeric>{formatNumber(r.signups.failed)}</TD>
       <TD numeric>{formatNumber(r.activated)}</TD>
       <TD numeric>{formatNumber(r.payments.failed)}</TD>
+      <TD numeric>{formatNumber(r.signins?.signedIn ?? 0)} <span className="text-xs text-fg-muted">/ {formatNumber(r.signins?.failed ?? 0)} refusées</span></TD>
     </TR>
   );
 
@@ -59,7 +69,7 @@ export function ActivityPanel() {
             {board && !board.connectedCollecting && (
               <p className="text-xs text-fg-muted">Les membres connectés seront comptés dès que la collecte des signaux sera activée.</p>
             )}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
               <Metric label={range === 'today' ? 'Membres connectés' : 'Connectés / jour'} value={t ? formatNumber(t.connected) : <Skeleton className="h-7 w-12" />} tone="primary" />
               <Metric label="Inscriptions terminées" value={t ? `${formatNumber(t.signups.completed)} / ${formatNumber(t.signups.started)}` : <Skeleton className="h-7 w-16" />} tone="success" />
               <Metric
@@ -69,12 +79,18 @@ export function ActivityPanel() {
                 tone={t?.signups.failedGroups.sbc_code || t?.signups.failedGroups.provider_api ? 'warning' : 'neutral'}
               />
               <Metric label="Activés" value={t ? formatNumber(t.activated) : <Skeleton className="h-7 w-12" />} hint={t ? `Paiements non aboutis : ${formatNumber(t.payments.failed)}` : undefined} />
+              <Metric
+                label="Connexions réussies"
+                value={t ? formatNumber(t.signins?.signedIn ?? 0) : <Skeleton className="h-7 w-12" />}
+                hint={t ? signinHint(t, board?.signinReasons) : undefined}
+                tone={t?.signins && t.signins.failed > t.signins.signedIn ? 'warning' : 'neutral'}
+              />
             </div>
             {board ? (
               board.rows.length ? (
                 <Table>
                   <THead>
-                    <TR><TH>Pays</TH><TH numeric>Connectés</TH><TH numeric>Inscriptions</TH><TH numeric>Terminées</TH><TH numeric>Échouées</TH><TH numeric>Activés</TH><TH numeric>Paiements non aboutis</TH></TR>
+                    <TR><TH>Pays</TH><TH numeric>Connectés</TH><TH numeric>Inscriptions</TH><TH numeric>Terminées</TH><TH numeric>Échouées</TH><TH numeric>Activés</TH><TH numeric>Paiements non aboutis</TH><TH numeric>Connexions</TH></TR>
                   </THead>
                   <TBody>
                     {row(board.total, true)}

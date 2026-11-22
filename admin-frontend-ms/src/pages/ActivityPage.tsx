@@ -228,6 +228,16 @@ function ListPanel({ open, range, source, onClose }: { open: Open; range: { from
   );
 }
 
+/** "N refusées : mot de passe erroné 12 · compte inconnu 5" (the two biggest reasons), or nothing. */
+function signinHint(t: ActivityRow, labels: { code: string; label: string }[] | undefined): string | undefined {
+  const s = t.signins;
+  if (!s) return undefined;
+  if (!s.failed) return `${formatNumber(s.attempts)} tentative(s)`;
+  const label = (c: string) => labels?.find(l => l.code === c)?.label.toLowerCase() ?? c;
+  const top = Object.entries(s.reasons).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c, n]) => `${label(c)} ${formatNumber(n)}`);
+  return `${formatNumber(s.failed)} refusées : ${top.join(' · ')}`;
+}
+
 const ActivityPage: React.FC = () => {
   const [range, setRange] = useState<Range>('today');
   const [country, setCountry] = useState('');
@@ -288,12 +298,19 @@ const ActivityPage: React.FC = () => {
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <Metric label={range === 'today' ? 'Membres connectés' : 'Connectés par jour (moy.)'} value={t ? formatNumber(t.connected) : <Skeleton className="h-7 w-16" />} hint={t ? <>{board?.connectedExact ? 'Compte exact' : 'Compte en direct (±1 %)'}<Trend value={t.connectedTrend} /></> : undefined} tone="primary" onClick={t?.connected ? () => openList({ kind: 'connected', title: 'Membres connectés' }) : undefined} />
         <Metric label="Inscriptions terminées" value={t ? `${formatNumber(t.signups.completed)} / ${formatNumber(t.signups.started)}` : <Skeleton className="h-7 w-24" />} hint={t ? <>Taux : {pct(t.signups.completed, t.signups.started)}<Trend value={t.completedTrend} /></> : undefined} tone="success" onClick={t?.signups.completed ? () => openList({ kind: 'signups', outcome: 'completed', title: 'Inscriptions terminées' }) : undefined} />
         <Metric label="Inscriptions échouées" value={t ? formatNumber(t.signups.failed) : <Skeleton className="h-7 w-16" />} hint={t ? `En cours : ${formatNumber(t.signups.inProgress)}` : undefined} tone={t?.signups.failedGroups.sbc_code ? 'danger' : 'warning'} onClick={t?.signups.failed ? () => openList({ kind: 'signups', outcome: 'failed', title: 'Inscriptions échouées' }) : undefined} />
         <Metric label="Activés (1er paiement)" value={t ? formatNumber(t.activated) : <Skeleton className="h-7 w-16" />} hint={t ? <Trend value={t.activatedTrend} /> : undefined} tone="success" onClick={t?.activated ? () => openList({ kind: 'activated', title: 'Membres activés' }) : undefined} />
         <Metric label="Paiements non aboutis" value={t ? formatNumber(t.payments.failed) : <Skeleton className="h-7 w-16" />} hint={t ? `${GROUPS.map(g => `${GROUP_LABEL[g]} ${formatNumber(t.payments.groups[g] || 0)}`).join(' · ')}` : undefined} />
+        {/* Security plan Phase 1: every sign-in attempt, success or not. */}
+        <Metric
+          label="Connexions réussies"
+          value={t ? formatNumber(t.signins?.signedIn ?? 0) : <Skeleton className="h-7 w-16" />}
+          hint={t ? signinHint(t, board?.signinReasons) : undefined}
+          tone={t?.signins && t.signins.failed > t.signins.signedIn ? 'warning' : 'neutral'}
+        />
       </div>
 
       <Panel>
@@ -329,7 +346,7 @@ const ActivityPage: React.FC = () => {
           <PanelHeader title="Par jour" description="La période et les 7 jours qui la précèdent." />
           <PanelBody className="overflow-x-auto">
             <Table>
-              <THead><TR><TH>Jour</TH><TH numeric>Connectés</TH><TH numeric>Inscriptions</TH><TH numeric>Terminées</TH><TH numeric>Échouées</TH><TH numeric>Activés</TH><TH numeric>Paiements non aboutis</TH></TR></THead>
+              <THead><TR><TH>Jour</TH><TH numeric>Connectés</TH><TH numeric>Inscriptions</TH><TH numeric>Terminées</TH><TH numeric>Échouées</TH><TH numeric>Activés</TH><TH numeric>Paiements non aboutis</TH><TH numeric>Connexions</TH><TH numeric>Refusées</TH></TR></THead>
               <TBody>
                 {board.daily.slice().reverse().map(d => (
                   <TR key={d.day} className={d.current ? undefined : 'text-fg-muted'}>
@@ -340,6 +357,8 @@ const ActivityPage: React.FC = () => {
                     <TD numeric>{formatNumber(d.failed)}</TD>
                     <TD numeric>{formatNumber(d.activated)}</TD>
                     <TD numeric>{formatNumber(d.paymentsFailed)}</TD>
+                    <TD numeric>{formatNumber(d.signedIn ?? 0)}</TD>
+                    <TD numeric>{formatNumber(d.signinsFailed ?? 0)}</TD>
                   </TR>
                 ))}
               </TBody>

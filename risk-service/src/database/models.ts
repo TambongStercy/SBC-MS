@@ -78,8 +78,8 @@ export const RiskRunModel = model('RiskRun', RunSchema);
  *   riskcasessent what was last sent to support per case, so an unchanged case is not resent
  *                on every event (support would count each as an occurrence).
  */
-export type RiskEventType = 'signup' | 'contact_change' | 'authenticator_change' | 'dormant_reactivated' | 'balance_mismatch' | 'withdrawal_requested' | 'payin_succeeded' | 'automation_seen';
-export const RISK_EVENT_TYPES: RiskEventType[] = ['signup', 'contact_change', 'authenticator_change', 'dormant_reactivated', 'balance_mismatch', 'withdrawal_requested', 'payin_succeeded', 'automation_seen'];
+export type RiskEventType = 'signup' | 'contact_change' | 'authenticator_change' | 'dormant_reactivated' | 'balance_mismatch' | 'withdrawal_requested' | 'payin_succeeded' | 'automation_seen' | 'signin_failures';
+export const RISK_EVENT_TYPES: RiskEventType[] = ['signup', 'contact_change', 'authenticator_change', 'dormant_reactivated', 'balance_mismatch', 'withdrawal_requested', 'payin_succeeded', 'automation_seen', 'signin_failures'];
 const RiskEventSchema = new Schema({
     key: { type: String, required: true },
     type: { type: String, required: true },

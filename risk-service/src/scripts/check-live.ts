@@ -206,6 +206,12 @@ const main = async () => {
     await RiskRunModel.deleteMany({ kind: 'rebuild' });
     check('rebuild schedule: due Sunday 01:xx Douala only once a week', !dueAfterRun && await live.rebuildDue(sunday) && !(await live.rebuildDue(new Date(sunday.getTime() + DAY))));
 
+    // ---- Phase 1: repeated wrong passwords ----
+    await axios.post(`${url}/api/risk/internal/events`, { type: 'signin_failures', userId: id('B'), count: 10 }, auth);
+    await live.processEvents(100, new Date());
+    const bg = await mem('B');
+    check('signin_failures → password_guessing 15 points', bg?.liveReasons?.some((x: any) => x.rule === 'password_guessing' && x.points === 15), rules(bg));
+
     // ---- Phase 9: automation seen by the gateway ----
     check('automation_seen with no count → 400', (await axios.post(`${url}/api/risk/internal/events`, { type: 'automation_seen', userId: id('G'), badSig: 0 }, { ...auth, validateStatus: () => true })).status === 400);
     await axios.post(`${url}/api/risk/internal/events`, { type: 'automation_seen', userId: id('G'), badSig: 2, tool: 1 }, { headers: { ...auth.headers, 'x-service-name': 'gateway-service' } });

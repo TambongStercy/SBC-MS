@@ -15,6 +15,8 @@ export interface ActivityRow {
   activated: number;
   activatedTrend: number | null;
   payments: { failed: number; waiting: number; abandoned: number; groups: Record<FailureGroup, number> };
+  /** Security plan Phase 1: sign-in steps (absent before the release that records them). */
+  signins?: { attempts: number; codeSent: number; signedIn: number; failed: number; reasons: Record<string, number> };
 }
 
 export interface ActivityBoard {
@@ -23,8 +25,9 @@ export interface ActivityBoard {
   countries: string[] | null;
   rows: ActivityRow[];
   total: ActivityRow;
-  daily: { day: string; current: boolean; connected: number; started: number; completed: number; failed: number; activated: number; paymentsFailed: number }[];
+  daily: { day: string; current: boolean; connected: number; started: number; completed: number; failed: number; activated: number; paymentsFailed: number; signedIn?: number; signinsFailed?: number }[];
   reasons: { code: string; group: FailureGroup; label: string }[];
+  signinReasons?: { code: string; label: string }[];
   connectedExact: boolean;
   connectedCollecting: boolean;
   updatedAt: string | null;

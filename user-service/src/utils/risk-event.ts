@@ -17,7 +17,7 @@ const log = logger.getLogger('RiskEvent');
  * Withdrawals and payments are not sent: risk-service reads them from the
  * payment database itself.
  */
-export type RiskEventType = 'signup' | 'contact_change' | 'authenticator_change' | 'dormant_reactivated' | 'balance_mismatch';
+export type RiskEventType = 'signup' | 'contact_change' | 'authenticator_change' | 'dormant_reactivated' | 'balance_mismatch' | 'signin_failures';
 
 const off = (name: string) => String(process.env[name] || '').toLowerCase() === 'true';
 
