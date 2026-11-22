@@ -13,7 +13,7 @@
 # the file refuses everything. Only when all four pass are they moved into
 # IPGEO_DIR (the previous ones kept as *.prev). The gateway notices the new files within 10 min.
 # One copy serves the prod and preprod gateways. Nightly, e.g. in sterling's crontab:
-#   30 4 * * * IPGEO_DIR=/home/sterling/sbc-ipgeo /var/www/SBC-MS/scripts/security-plan/update-ip-geo.sh >> /home/sterling/logs/ip-geo.log 2>&1
+#   30 4 * * * IPGEO_DIR=/home/sterling/sbc-ipgeo bash /var/www/SBC-MS/scripts/security-plan/update-ip-geo.sh >> /home/sterling/logs/ip-geo.log 2>&1
 set -euo pipefail
 
 DIR="${IPGEO_DIR:-/home/sterling/sbc-ipgeo}"

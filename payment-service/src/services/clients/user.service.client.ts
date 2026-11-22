@@ -465,6 +465,31 @@ class UserServiceClient {
         }
     }
 
+    /**
+     * Security plan Phase 3 item 6: the admin's own authenticator code (or a step-up made in the
+     * last ADMIN_STEPUP_MINUTES on the same admin session) before a money action. Refusals keep
+     * user-service's status and code (ADMIN_CODE_REQUIRED / _INVALID / _LOCKED, ADMIN_SESSION_ENDED);
+     * an unreachable user-service refuses with 503 (fail closed).
+     */
+    async adminStepUp(input: { userId: string; sid: string; code?: string; backupCode?: string; action: string; ip?: string; userAgent?: string }): Promise<{ until: string; method: string }> {
+        try {
+            const r = await axios.post(`${this.baseUrl}/users/internal/admin-step-up`, input, {
+                headers: { Authorization: `Bearer ${this.serviceSecret}`, 'x-service-name': 'payment-service' },
+                timeout: 8000,
+            });
+            return r.data?.data;
+        } catch (error: any) {
+            const status = error.response?.status;
+            if (status && status < 500) {
+                const refusal = new AppError(error.response?.data?.message || 'Code requis.', status);
+                if (error.response?.data?.code) (refusal as any).code = error.response.data.code;
+                throw refusal;
+            }
+            log.error(`Admin step-up check failed for ${input.userId}: ${error.message}`);
+            throw new AppError('La vérification du code est momentanément indisponible. Réessayez dans quelques minutes.', 503);
+        }
+    }
+
     async checkWithdrawalLimits(userId: string, amount: number, currency: 'USD' | 'XAF' = 'XAF'): Promise<WithdrawalLimitCheckResponse> {
         const path = `/users/internal/${userId}/withdrawal-limits/check`;
         try {

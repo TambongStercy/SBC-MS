@@ -1,4 +1,5 @@
 import { bindSessionKey, ingestBrowserChecks, ingestRobotChecks, sessionKeyFor } from '../../services/session-keys.service';
+import { stepUp as adminStepUp } from '../../services/admin-auth.service';
 import { adminAccessController } from '../controllers/admin-access.controller';
 import { supportController } from '../controllers/support.controller';
 import { Router, Request, Response, NextFunction } from 'express';
@@ -84,6 +85,19 @@ serviceRouter.get('/session-keys/:tokenHash', async (req: Request, res: Response
     } catch (err: any) {
         logger.getLogger('SessionKeys').error(`Session key lookup failed: ${err?.message ?? err}`);
         res.status(500).json({ success: false, message: 'Lookup failed' });
+    }
+});
+// Security plan Phase 3 item 6: an admin's own authenticator code before a money action (payment-service).
+serviceRouter.post('/admin-step-up', async (req: Request, res: Response) => {
+    try {
+        const b = req.body ?? {};
+        const data = await adminStepUp({ userId: b.userId, sid: b.sid, code: b.code, backupCode: b.backupCode, action: b.action },
+            { ip: String(b.ip || '').slice(0, 64), userAgent: String(b.userAgent || '').slice(0, 300) });
+        res.json({ success: true, data });
+    } catch (err: any) {
+        const status = Number(err?.statusCode) || 500;
+        if (status >= 500) logger.getLogger('AdminStepUp').error(`Admin step-up failed: ${err?.message ?? err}`);
+        res.status(status).json({ success: false, message: status >= 500 ? 'Vérification indisponible' : err.message, code: err?.code });
     }
 });
 serviceRouter.post('/browser-checks/batch', async (req: Request, res: Response) => {

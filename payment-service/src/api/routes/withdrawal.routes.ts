@@ -3,6 +3,7 @@ import { withdrawalController } from '../controllers/withdrawal.controller';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { validateWithdrawal, validateAdminUserWithdrawal, validateAdminDirectPayout } from '../middleware/validation';
 import { generalLimiter } from '../middleware/rate-limit.middleware';
+import { requireAdminStepUp } from '../middleware/admin-step-up.middleware';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.use(generalLimiter);     // Apply general rate limiting
  * @desc    [ADMIN] Initiate a withdrawal for a specific user's balance, bypassing OTP.
  * @access  Private (Admin only)
  */
-router.post('/admin/user', validateAdminUserWithdrawal, (req, res) => {
+router.post('/admin/user', requireAdminStepUp('admin_user_withdrawal'), validateAdminUserWithdrawal, (req, res) => {
     withdrawalController.initiateAdminUserWithdrawal(req, res);
 });
 
@@ -25,7 +26,7 @@ router.post('/admin/user', validateAdminUserWithdrawal, (req, res) => {
  * @desc    [ADMIN] Initiate a direct payout (e.g., from system balance), not linked to a user's wallet.
  * @access  Private (Admin only)
  */
-router.post('/admin/direct', validateAdminDirectPayout, (req, res) => {
+router.post('/admin/direct', requireAdminStepUp('admin_direct_payout'), validateAdminDirectPayout, (req, res) => {
     withdrawalController.initiateAdminDirectPayout(req, res);
 });
 

@@ -46,6 +46,8 @@ interface IConfig {
         totpEncKey: Buffer | null;
         idleTimeoutMs: number;
         absoluteTimeoutMs: number;
+        /** After an authenticator code, money actions need no new one for this long (same session). */
+        stepUpMs: number;
         challengeTtlMs: number;
         issuer: string;
     };
@@ -140,6 +142,7 @@ const config: IConfig = {
         })(),
         idleTimeoutMs: (parseInt(process.env.ADMIN_IDLE_TIMEOUT_MIN || '30', 10) || 30) * 60 * 1000,
         absoluteTimeoutMs: (parseInt(process.env.ADMIN_SESSION_MAX_HOURS || '12', 10) || 12) * 3600 * 1000,
+        stepUpMs: Math.min(Math.max(parseInt(process.env.ADMIN_STEPUP_MINUTES || '10', 10) || 10, 1), 30) * 60 * 1000,
         challengeTtlMs: 10 * 60 * 1000,
         issuer: process.env.ADMIN_TOTP_ISSUER || 'SBC Admin',
     },

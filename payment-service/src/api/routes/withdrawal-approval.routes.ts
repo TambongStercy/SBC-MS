@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { withdrawalApprovalController } from '../controllers/withdrawal-approval.controller';
 import { authenticate, requireWithdrawalAccess } from '../middleware/auth.middleware';
 import { generalLimiter } from '../middleware/rate-limit.middleware';
+import { requireAdminStepUp } from '../middleware/admin-step-up.middleware';
 
 const router = Router();
 
@@ -62,7 +63,7 @@ router.get('/history/:userId', (req, res) => {
  * @body    transactionIds: string[] (required)
  * @body    adminNotes: string (optional)
  */
-router.post('/bulk-approve', (req, res) => {
+router.post('/bulk-approve', requireAdminStepUp('withdrawal_bulk_approve'), (req, res) => {
     withdrawalApprovalController.bulkApproveWithdrawals(req, res);
 });
 
@@ -107,7 +108,7 @@ router.get('/:transactionId', (req, res) => {
  * @access  Private (Admin only)
  * @body    adminNotes: string (optional)
  */
-router.post('/:transactionId/approve', (req, res) => {
+router.post('/:transactionId/approve', requireAdminStepUp('withdrawal_approve'), (req, res) => {
     withdrawalApprovalController.approveWithdrawal(req, res);
 });
 
@@ -145,7 +146,7 @@ router.post('/:transactionId/reconcile-cinetpay', (req, res) => {
  * @access  Private (Admin only)
  * @body    adminNotes: string (optional)
  */
-router.post('/:transactionId/manual-complete', (req, res) => {
+router.post('/:transactionId/manual-complete', requireAdminStepUp('withdrawal_manual_complete'), (req, res) => {
     withdrawalApprovalController.manualCompleteMoneyFusionWithdrawal(req, res);
 });
 
