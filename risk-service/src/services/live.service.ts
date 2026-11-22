@@ -279,7 +279,7 @@ const sourceOf = async (db: 'users' | 'payment', name: string) => {
 export async function rescoreGroup(userId: string, now: Date = new Date()): Promise<{ members: number; cases: Record<string, number> }> {
     const ids = await groupOf(userId);
     const colls = new Map<string, any>();
-    for (const [db, name] of [['users', 'users'], ['users', 'referrals'], ['users', 'user_geo_days'], ['payment', 'transactions'], ['payment', 'paymentintents']] as const) {
+    for (const [db, name] of [['users', 'users'], ['users', 'referrals'], ['users', 'subscriptions'], ['users', 'user_geo_days'], ['payment', 'transactions'], ['payment', 'paymentintents']] as const) {
         colls.set(`${db}.${name}`, await sourceOf(db, name));
     }
     const facts = await collectFacts((db, name) => colls.get(`${db}.${name}`), { scope: ids });

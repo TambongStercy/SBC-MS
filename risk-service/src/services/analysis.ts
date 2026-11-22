@@ -17,6 +17,10 @@ import { hashOf, tailOf, UnionFind } from './identity';
  *   self_referral         sponsor and recruit (levels 1–3) in the same group 50
  *   multi_account         a group of 3+ accounts (+5 per extra, max 40)      20
  *   quick_withdrawal      withdrawal within 30 min of commissions it empties 10
+ *   inactive_recruits     a sponsor whose recruits (level 1) were activated and then never signed in
+ *                         again: ≥ 5 such recruits, ≥ 70 % of those activated ≥ 30 days ago   25
+ *                         Only activations since SIGNIN_TRACKING_SINCE (2026-11-21, the day member
+ *                         sign-ins started being recorded) count: older ones have no sign-in data.
  * Score = sum of the rules a member hits; decision from the thresholds.
  */
 
@@ -27,6 +31,8 @@ export interface Facts {
     withdrawals: { userId: string; amount: number; at: Date; completed: boolean }[];
     commissions: { userId: string; amount: number; at: Date }[];
     countries: Map<string, string>;
+    /** first CLASSIQUE/CIBLE activation and last sign-in, per member (inactive_recruits); optional */
+    activity?: Map<string, { activatedAt: Date | null; lastSignInAt: Date | null }>;
 }
 
 export interface AnalysisConfig {
@@ -34,7 +40,12 @@ export interface AnalysisConfig {
     thresholds: { requireCode: number; hold: number };
     disabledRules: Set<string>;
     quickWindowMs?: number;
+    /** "now" for the time-based rules (tests); default the real time */
+    now?: Date;
 }
+
+/** Member sign-ins are recorded since this day (user-service dormancy.lastSignInAt / lastLoginAt). */
+export const SIGNIN_TRACKING_SINCE = new Date('2026-11-21T00:00:00Z');
 
 export interface CaseOut {
     type: 'shared_payout_number' | 'self_referral' | 'multi_account' | 'abnormal_behavior';
@@ -47,7 +58,7 @@ export interface MemberOut { userId: string; groupId: string; groupSize: number;
 /** Accounts listed in a case (the rest are on the member card's linked accounts). */
 const MAX_LISTED = 50;
 
-export const RULE_POINTS = { shared_payout_number: 40, self_referral: 50, multi_account: 20, quick_withdrawal: 10 } as const;
+export const RULE_POINTS = { shared_payout_number: 40, self_referral: 50, multi_account: 20, quick_withdrawal: 10, inactive_recruits: 25 } as const;
 
 export function decide(score: number, t: { requireCode: number; hold: number }): Decision {
     return score >= t.hold ? 'hold' : score >= t.requireCode ? 'require_code' : 'allow';
@@ -194,6 +205,35 @@ export function analyse(f: Facts, cfg: AnalysisConfig) {
                     details: { withdrawals: n },
                 });
             }
+        }
+    }
+
+    // ---- inactive_recruits ----
+    if (on('inactive_recruits') && f.activity?.size) {
+        const now = (cfg.now ?? new Date()).getTime();
+        const DAY = 86_400_000;
+        const bySponsor = new Map<string, { eligible: number; silent: string[] }>();
+        for (const r of f.referrals) {
+            if (r.level !== 1) continue;
+            const a = f.activity.get(r.referred);
+            const act = a?.activatedAt?.getTime();
+            if (!act || act < SIGNIN_TRACKING_SINCE.getTime() || now - act < 30 * DAY) continue;
+            const e = bySponsor.get(r.referrer) ?? { eligible: 0, silent: [] };
+            e.eligible++;
+            // never seen again after the day of the activation
+            const seen = a?.lastSignInAt?.getTime();
+            if (!seen || seen < act + DAY) e.silent.push(r.referred);
+            bySponsor.set(r.referrer, e);
+        }
+        for (const [sponsor, e] of bySponsor) {
+            if (e.silent.length < 5 || e.silent.length < 0.7 * e.eligible) continue;
+            add(sponsor, { rule: 'inactive_recruits', points: RULE_POINTS.inactive_recruits, detail: `${e.silent.length} filleul(s) activé(s) sur ${e.eligible} ne se sont jamais reconnectés ensuite` });
+            cases.push({
+                type: 'multi_account', dedupKey: `risk:inactive_recruits:${sponsor}`, severity: e.silent.length >= 15 ? 'critical' : 'warning',
+                summary: `${e.silent.length} filleuls activés puis jamais revenus : possibles comptes créés pour toucher les commissions.`,
+                subject: { userId: sponsor }, amount: Math.round(withdrawnBy.get(sponsor) ?? 0), country: f.countries.get(sponsor),
+                details: { rule: 'inactive_recruits', recruits: e.silent.slice(0, MAX_LISTED), silent: e.silent.length, eligible: e.eligible },
+            });
         }
     }
 
