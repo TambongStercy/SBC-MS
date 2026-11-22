@@ -37,6 +37,8 @@ export const PERMISSIONS = [
   'authenticator.reset.request',
   'authenticator.reset.approve',
   'approvals.override',
+  // KYC level 3 (2026-11-22).
+  'identity.review',
   'agents.manage',
   'settings.manage',
   'audit.read',
@@ -63,30 +65,30 @@ export const roleLabel = (r: string) => ROLE_LABEL[r as Role] ?? r;
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   support_agent: [
     'members.read', 'members.contact.request', 'tickets.read', 'tickets.reply',
-    'activation.check', 'activation.manual.request', 'kb.edit', 'activity.read', 'authenticator.reset.request',
+    'activation.check', 'activation.manual.request', 'kb.edit', 'activity.read', 'authenticator.reset.request', 'identity.review',
   ],
   finance_agent: [
     'members.read', 'tickets.read', 'tickets.reply', 'activation.check', 'activation.manual.request',
-    'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'reports.read', 'activity.read',
+    'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'reports.read', 'activity.read', 'identity.review',
   ],
   finance_manager: [
     'members.read', 'members.read.full', 'members.contact.approve', 'tickets.read', 'tickets.reply', 'tickets.assign',
     'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'finance.regularize.approve',
     'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read',
-    'risk.read', 'risk.decide', 'authenticator.reset.approve',
+    'risk.read', 'risk.decide', 'authenticator.reset.approve', 'identity.review',
   ],
   verifier: ['views.verify'],
   views_supervisor: [
     'members.read', 'tickets.read', 'tickets.reply', 'tickets.assign', 'views.verify', 'views.supervise',
-    'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read',
+    'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read', 'identity.review',
   ],
   support_admin: [
     'members.read', 'members.read.full', 'members.contact.request', 'members.contact.approve',
     'tickets.read', 'tickets.reply', 'tickets.assign', 'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'views.supervise', 'kb.edit', 'kb.publish', 'templates.manage',
     'reports.read', 'export', 'analytics.read', 'errors.manage', 'activity.read', 'agents.manage', 'settings.manage', 'audit.read',
-    'risk.read', 'authenticator.reset.request',
+    'risk.read', 'authenticator.reset.request', 'identity.review',
   ],
   super_manager: [], // filled just below
 };

@@ -384,3 +384,14 @@ export async function guestChatLink(ticketId: string): Promise<string | null> {
     }
 }
 
+
+/**
+ * A note written by the system on a ticket (KYC level 3: « pièce + selfie reçus », the decision).
+ * `internal`: agents only. A visible note moves a ticket waiting for the member back to « ouvert ».
+ */
+export async function addSystemNote(ticketId: Types.ObjectId | string, body: string, internal: boolean): Promise<void> {
+    const t = await Ticket.findById(ticketId, { memberId: 1, status: 1 }).lean();
+    if (!t) return;
+    await TicketMessage.create({ ticketId: t._id, author: { type: 'system', name: 'SBC Support' }, body: body.slice(0, 10000), internal, attachmentIds: [] });
+    publishTicketEvent({ ticketId: String(t._id), memberId: t.memberId, kind: 'message', forMember: !internal });
+}

@@ -897,8 +897,19 @@ Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
   `USERS_MONGODB_URI` are set.
   - Routes: `POST /api/risk/internal/kyc/hint`, `GET /api/risk/internal/kyc/status`, and `kyc` in
     the member view.
-- The score feeds no decision yet (Phase 4 is silent). Level 2 (SEON/Holehe) and level 3 (Smile ID)
-  wait for decisions.
+- The score feeds no decision yet. Level 2 (SEON/Holehe) waits for a decision.
+- **Level 3: ID document + selfie (2026-11-22, open source, not Smile ID).**
+  - **Asked on:** a fraud-engine hold, a lost authenticator phone, or lost account details (also
+    from a guest request). Not for large withdrawals.
+  - **Who decides:** any support agent, in support « Identités » (`identity.review`).
+  - **Where things live:** images only on the secondary server, encrypted with `KYC_L3_KEY`
+    (never rotate). They are deleted 30 days after the decision; the decision is kept 12 months.
+  - **Hints, never a verdict:** kyc-runner runs OpenCV YuNet + SFace (models in
+    `/opt/kyc-<env>/models`): face match, blur/darkness, the same face or image on another account.
+  - **What approving does:** it proves identity only. Release, authenticator reset and contact
+    change keep their own approvals; the reset request cites the accepted check.
+  - **support-service:** `KYC_WORKER_URL` + `KYC_SHARED_SECRET`.
+  - Details: `docs/security-plan/phase8-kyc.md` « Level 3 ». The member app screens are part 2.
 - Checks: `risk-service/src/scripts/check-kyc.ts` (fake secondary; `KYC_REAL_WORKER_URL` for a real one), kyc-worker `pytest`.
 
 ### Support integration (Security plan Phase 5, 2026-11-21)

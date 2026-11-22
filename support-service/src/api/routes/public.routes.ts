@@ -9,6 +9,8 @@ import { badRequest, notFound, tooMany } from '../../utils/errors';
 import { clientIp, userAgent } from '../../utils/client-ip';
 import { MAX_ATTACHMENT_BYTES, storeAttachment } from '../../services/attachment.service';
 import { guestRealtimeToken } from '../../services/realtime.service';
+import { guestLatest, guestSubmit } from '../../services/identity.service';
+import { identityUpload } from './me.routes';
 
 /**
  * « Signaler un problème » without an account (`/api/support/public/*`), for
@@ -78,6 +80,16 @@ const perTicket = (name: string, max: number, message: string) => async (req: Re
 
 const guest = (req: Request) => ({ guestTicketId: req.params.id });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 } });
+
+// KYC level 3 for a person who lost access: ID + selfie on their request (purpose lost_access).
+router.post('/tickets/:id/identity-verification', requireGuestKey, perTicket('identity', 3, 'Vous avez envoyé plusieurs vérifications aujourd’hui. Réessayez demain.'),
+    identityUpload, ah(async (req, res) => {
+        res.status(201).json({ success: true, data: await guestSubmit(req.params.id, req.files as any, { ip: clientIp(req), userAgent: userAgent(req) }) });
+    }));
+
+router.get('/tickets/:id/identity-verification', requireGuestKey, ah(async (req, res) => {
+    res.json({ success: true, data: await guestLatest(req.params.id) });
+}));
 
 router.get('/tickets/:id', requireGuestKey, ah(async (req, res) => {
     res.json({ success: true, data: await tickets.getRequesterTicket(req.params.id, guest(req)) });

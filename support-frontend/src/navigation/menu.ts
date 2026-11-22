@@ -6,6 +6,7 @@ import {
   CheckListIcon,
   FileSecurityIcon,
   Home01Icon,
+  IdVerifiedIcon,
   Money03Icon,
   Settings01Icon,
   Ticket01Icon,
@@ -53,6 +54,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Tickets', path: '/tickets', icon: Ticket01Icon, access: { all: ['tickets.read'] } },
       { label: 'Membres', path: '/membres', icon: UserSearch01Icon, access: { all: ['members.read'] } },
       { label: 'Activation', path: '/activation', icon: Activity01Icon, access: { all: ['activation.check'] } },
+      { label: 'Identités', path: '/identites', icon: IdVerifiedIcon, access: { all: ['identity.review'] } },
     ],
   },
   {

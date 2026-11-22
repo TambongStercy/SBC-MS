@@ -5,6 +5,8 @@
 # kyc-runner checks the queue (one batch a second, backfill 02:00–05:00 Douala). Both share
 # data/kyc.sqlite (WAL). The runner reads KYC_PER_SECOND, KYC_NIGHT_FROM/TO,
 # KYC_BACKFILL_ANYTIME, KYC_RETENTION_DAYS, KYC_EMAIL_VARIANT_POINTS from .env.
+# Level 3 (ID + selfie, 2026-11-22): KYC_L3_KEY in .env encrypts the images; the runner reads the
+# two OpenCV face models from ./models (read-only), see .env.example.
 services:
   kyc-worker:
     build: ./src
@@ -31,15 +33,19 @@ services:
     command: ["python", "-m", "app.runner"]
     restart: unless-stopped
     env_file: .env
+    environment:
+      KYC_MODELS_DIR: /models
+      OPENCV_IO_MAX_IMAGE_PIXELS: "40000000"   # refuses decompression bombs
     volumes:
       - ./data:/data
+      - ./models:/models:ro
     read_only: true
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 256M }
+        limits: { cpus: "0.5", memory: 512M }
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }

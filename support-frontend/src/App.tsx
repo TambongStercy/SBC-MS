@@ -19,6 +19,7 @@ const MemberDetailPage = lazy(() => import('./pages/members/MemberDetailPage'));
 const ActivationPage = lazy(() => import('./pages/activation/ActivationPage'));
 const FinancePage = lazy(() => import('./pages/finance/FinancePage'));
 const ApprovalsPage = lazy(() => import('./pages/approvals/ApprovalsPage'));
+const IdentityPage = lazy(() => import('./pages/identity/IdentityPage'));
 const VerificationsPage = lazy(() => import('./pages/views/VerificationsPage'));
 const SupervisionPage = lazy(() => import('./pages/views/SupervisionPage'));
 const ContentPage = lazy(() => import('./pages/content/ContentPage'));
@@ -85,6 +86,8 @@ export default function App() {
         <Route path="membres" element={<Guard><MembersPage /></Guard>} />
         <Route path="membres/:id" element={<Guard><MemberDetailPage /></Guard>} />
         <Route path="activation" element={<Guard><ActivationPage /></Guard>} />
+        <Route path="identites" element={<Guard><IdentityPage /></Guard>} />
+        <Route path="identites/:id" element={<Guard><IdentityPage /></Guard>} />
         <Route path="finance" element={<Guard><FinancePage /></Guard>} />
         <Route path="approbations" element={<Guard><ApprovalsPage /></Guard>} />
         <Route path="verifications" element={<Guard><VerificationsPage /></Guard>} />

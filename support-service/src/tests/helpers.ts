@@ -121,7 +121,7 @@ export const memberToken = (userId = '6e2e00000000000000000b01') =>
 export interface FetchCall { url: string; method: string; headers: Record<string, string>; body: any }
 
 /** Replaces global fetch: routes by URL substring, records every call, refuses anything unrouted. */
-export function mockFetch(routes: Record<string, (call: FetchCall) => { status?: number; json?: unknown }>) {
+export function mockFetch(routes: Record<string, (call: FetchCall) => { status?: number; json?: unknown; raw?: Buffer; contentType?: string }>) {
     const calls: FetchCall[] = [];
     const spy = jest.spyOn(global, 'fetch').mockImplementation(async (input: any, init: any = {}) => {
         const url = String(input);
@@ -134,6 +134,7 @@ export function mockFetch(routes: Record<string, (call: FetchCall) => { status?:
         const key = Object.keys(routes).find((k) => url.includes(k));
         if (!key) throw new TypeError(`fetch failed (unmocked ${url})`);
         const r = routes[key](call);
+        if (r.raw) return new Response(new Uint8Array(r.raw), { status: r.status ?? 200, headers: { 'Content-Type': r.contentType ?? 'application/octet-stream' } });
         return new Response(JSON.stringify(r.json ?? {}), { status: r.status ?? 200, headers: { 'Content-Type': 'application/json' } });
     });
     return { calls, restore: () => spy.mockRestore() };

@@ -31,6 +31,7 @@ const PAYLOAD_LABEL: Record<string, string> = {
   userId: 'Membre', memberName: 'Membre', field: 'Champ', newValue: 'Nouvelle valeur', gateway: 'Prestataire', externalRef: 'Référence prestataire',
   plan: 'Offre', transactionId: 'Retrait', action: 'Action', amount: 'Montant', currency: 'Devise', evidence: 'Preuves', ticketId: 'Ticket', caseId: 'Dossier',
   momoNumber: 'Nouveau numéro Mobile Money', momoOperator: 'Opérateur',
+  identityVerification: 'Identité vérifiée (pièce + selfie)', identityCheckedBy: 'Identité vérifiée par',
 };
 const VALUE_LABEL: Record<string, string> = {
   complete: 'Marquer réussi', fail: 'Marquer échoué', email: 'E-mail', phoneNumber: 'Téléphone', momo: 'Mobile Money',

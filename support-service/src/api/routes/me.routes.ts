@@ -16,10 +16,14 @@ import { notFound } from '../../utils/errors';
 import { memberRealtimeToken } from '../../services/realtime.service';
 import { cleanContact } from '../../services/contact.service';
 import { recordClientErrors } from '../../services/client-error.service';
+import { MAX_IMAGE_BYTES, memberLatest, memberSubmit } from '../../services/identity.service';
 
 /** Member help space (/api/support/me/*), member JWT, any role. */
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 } });
+/** KYC level 3: recto (+ verso) of the ID and a selfie, 4 MB each at most. */
+export const identityUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_BYTES, files: 3, fields: 4 } })
+    .fields([{ name: 'id_front', maxCount: 1 }, { name: 'id_back', maxCount: 1 }, { name: 'selfie', maxCount: 1 }]);
 
 router.use(requireMember);
 
@@ -104,6 +108,18 @@ router.post('/client-errors', memberLimit('client-errors', 500, 24 * 3600, 'Trop
 router.post('/attachments', memberLimit('attachments', 30, 24 * 3600, 'Trop de fichiers envoyés aujourd’hui.'), upload.single('file'), ah(async (req, res) => {
     const r = await storeAttachment(req.file, { type: 'member', id: memberOf(req).userId });
     res.status(201).json({ success: true, data: r });
+}));
+
+// ---- identity (KYC level 3): ID document + selfie, reviewed by an agent ----
+router.post('/identity-verifications',
+    memberLimit('identity', 3, 24 * 3600, 'Vous avez envoyé plusieurs vérifications aujourd’hui. Réessayez demain.'),
+    identityUpload,
+    ah(async (req, res) => {
+        res.status(201).json({ success: true, data: await memberSubmit(memberOf(req).userId, req.body ?? {}, req.files as any) });
+    }));
+
+router.get('/identity-verifications/latest', ah(async (req, res) => {
+    res.json({ success: true, data: await memberLatest(memberOf(req).userId) });
 }));
 
 // ---- activation ----

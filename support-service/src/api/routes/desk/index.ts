@@ -11,6 +11,7 @@ import viewRoutes from './views.routes';
 import reportRoutes from './reports.routes';
 import analyticsRoutes from './analytics.routes';
 import activityRoutes from './activity.routes';
+import identityRoutes from './identity.routes';
 
 /** Agent desk (/api/support/desk/*). CSRF + Origin on every mutation, agent session on everything but sign-in. */
 const router = Router();
@@ -27,5 +28,6 @@ router.use('/views', viewRoutes);
 router.use('/', reportRoutes);
 router.use('/', analyticsRoutes);
 router.use('/', activityRoutes);
+router.use('/identity', identityRoutes);
 
 export default router;

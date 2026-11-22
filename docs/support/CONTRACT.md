@@ -250,6 +250,22 @@ countries; asking for another country returns `board: null`.
   reasons[{ rule, points, detail, live, expiresAt? }], linked[{ userId, name, country, score,
   decision }], identifiers[{ kind, uses, tail, count, hub }], events[{ type, at, kind, amountXaf,
   numberTail }], kyc{ score, band, reasons, emailDomain, checkedAt, variantAccounts } | null }`.
+- **Identity, KYC level 3 (2026-11-22):** an ID document (recto, optional verso) + a selfie, stored
+  only on the secondary server (kyc-worker, encrypted; `KYC_WORKER_URL` + `KYC_SHARED_SECRET`).
+  Collection `identityverifications` keeps who, why, status, hints and the decision.
+  - Member: `POST /me/identity-verifications` (multipart `id_front`, `id_back?`, `selfie`, ≤ 4 MB
+    each, JPEG/PNG/WebP; `purpose` fraud_hold | authenticator_reset | lost_access; `ticketId?`
+    of their own open ticket, else a ticket is opened; one open at a time, 3 a day) and
+    `GET /me/identity-verifications/latest` (status only).
+  - Guest (lost access): `POST /public/tickets/:id/identity-verification` with the request's key
+    (purpose lost_access), `GET` the same path for the status.
+  - Desk (`identity.review`): `GET /identity?status=open|approved|refused|all`, `GET /identity/:id`
+    (hints in French, face match, same face on another account; audited `identity.viewed`),
+    `GET /identity/:id/images/:kind` (streamed, `no-store`, audited `identity.image.viewed`),
+    `POST /identity/:id/decision { decision: approved|refused, reason ≥ 10 }` (reauth; refused on
+    the agent's own account or referral tree; notes on the ticket, member pushed or guest emailed).
+  - Approving proves identity only. An authenticator reset request cites the latest accepted
+    verification (`payload.identityVerification`).
   Numbers and devices by their last 3 digits only.
 
 Desk shapes follow `support-frontend/src/api/types.ts` (feature/support-frontend). Lists are
@@ -361,6 +377,7 @@ a reliable data message on topic `support` after every ticket change
 | `risk.decide` (act on fraud cases, freeze / unfreeze) | | | ✓ | | | |
 | `authenticator.reset.request` | ✓ | | | | | ✓ |
 | `authenticator.reset.approve` | | | ✓ | | | |
+| `identity.review` (KYC level 3, « Identités ») | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | `agents.manage`, `settings.manage`, `audit.read` | | | | | | ✓ |
 
 An approver must differ from the requester (except a super_manager, see above). Masking: `+237 6•• •• 34`, `j•••@gmail.com`.

@@ -29,4 +29,5 @@ const SERVICE_LABELS: Record<string, string> = {
     notification: 'Service notifications',
     storage: 'Stockage des fichiers',
     deepseek: 'Assistant',
+    kyc: 'Vérification d’identité',
 };

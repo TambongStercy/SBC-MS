@@ -21,3 +21,5 @@ process.env.DEEPSEEK_BASE_URL = 'http://deepseek.test';
 process.env.LOGIN_MIN_MS = '60';
 process.env.JOBS_ENABLED = 'false';
 process.env.LOG_LEVEL = 'silent';
+process.env.KYC_WORKER_URL = 'http://kyc.test';
+process.env.KYC_SHARED_SECRET = 'k'.repeat(40);

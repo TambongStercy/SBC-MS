@@ -135,6 +135,16 @@ function load() {
             apiKey: process.env.LIVEKIT_API_KEY || '',
             apiSecret: process.env.LIVEKIT_API_SECRET || '',
         },
+        /**
+         * KYC level 3 (ID document + selfie, 2026-11-22): the kyc-worker on the secondary server
+         * stores the images (encrypted, deleted 30 days after the decision) and runs the face
+         * checks. Signed requests (same KYC_SHARED_SECRET as risk-service). Off without both.
+         */
+        kyc: {
+            url: ensureNoTrailingSlash(process.env.KYC_WORKER_URL || ''),
+            secret: (process.env.KYC_SHARED_SECRET || '').length >= 32 ? process.env.KYC_SHARED_SECRET! : '',
+            timeoutMs: intEnv('KYC_TIMEOUT_MS', 20000),
+        },
         /** Phone notifications for new requests (ntfy); off without url + topic. */
         ntfy: {
             url: ensureNoTrailingSlash(process.env.NTFY_URL || ''),

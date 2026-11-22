@@ -3,6 +3,7 @@ import { badRequest, conflict, notFound } from '../utils/errors';
 import { createApproval, registerExecutor } from './approval.service';
 import { changeMemberMomo, freezeMember, getSupportMember, resetMemberAuthenticator } from './clients/user.client';
 import { getRiskMember, releaseRiskMember, riskConnected } from './clients/risk.client';
+import { latestApproved } from './identity.service';
 
 /**
  * Security plan Phase 5: support actions on a member's security, each one a
@@ -42,7 +43,9 @@ export async function requestAuthenticatorReset(userId: string, input: { reason?
     await assertMember(userId);
     const reason = reasonOf(input.reason, 'Décrivez la vérification faite (pièce d’identité + selfie)');
     await assertNoneOpen('authenticator_reset', userId);
-    return createApproval({ type: 'authenticator_reset', requestedBy: by, reason, payload: {}, subject: { userId }, ticketId: optId(input.ticketId) }, ctx);
+    // KYC level 3: the accepted ID + selfie, when there is one, shown to the approver.
+    const identity = await latestApproved(userId);
+    return createApproval({ type: 'authenticator_reset', requestedBy: by, reason, payload: identity ? { identityVerification: identity.id, identityCheckedBy: identity.decidedBy } : {}, subject: { userId }, ticketId: optId(input.ticketId) }, ctx);
 }
 
 export async function requestFreeze(userId: string, input: { action?: unknown; reason?: unknown; caseId?: unknown; ticketId?: unknown }, by: AgentRef, ctx: Ctx) {
