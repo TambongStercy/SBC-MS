@@ -137,9 +137,10 @@ export function hintToEvent(body: any, source: string): EventIn | { error: strin
             return { type, userId, at, source, data: { count } };
         }
         case 'automation_seen': {
-            // Phase 9: counts for one member over the gateway's last minute
+            // Phase 9: counts for one member over the gateway's last minute (robot = forged or
+            // replayed anti-robot answers, ALTCHA, 2026-11-22)
             const n = (v: unknown) => Math.min(Math.max(Math.floor(Number(v) || 0), 0), 100_000);
-            const counts = { badSig: n(body.badSig), replay: n(body.replay), bodyMismatch: n(body.bodyMismatch), tool: n(body.tool) };
+            const counts = { badSig: n(body.badSig), replay: n(body.replay), bodyMismatch: n(body.bodyMismatch), tool: n(body.tool), robot: n(body.robot) };
             if (!Object.values(counts).some(Boolean)) return { error: 'automation_seen: no count' };
             return { type, userId, at, source, data: counts };
         }
@@ -434,6 +435,7 @@ async function handle(e: any, now: Date): Promise<{ rescore: string[]; touched: 
                 sum('replay') && `${sum('replay')} requête(s) rejouée(s)`,
                 sum('bodyMismatch') && `${sum('bodyMismatch')} contenu(s) modifié(s) après signature`,
                 sum('tool') && `${sum('tool')} requête(s) depuis un outil (Postman, curl, script…)`,
+                sum('robot') && `${sum('robot')} vérification(s) anti-robot falsifiée(s) ou rejouée(s)`,
             ].filter(Boolean);
             await addLiveReason(userId, { rule: 'automation', points: LIVE_POINTS.automation, detail: `Compte utilisé hors de l’application web en 24 h : ${parts.join(', ')}` }, 7, now);
             return { rescore: [], touched: [userId] };

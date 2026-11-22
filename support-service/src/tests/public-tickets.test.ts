@@ -20,7 +20,7 @@ beforeEach(async () => {
         '127.0.0.1:9/api/users': () => ({ json: { success: true, data: [] } }),
     });
 });
-afterEach(() => { f.restore(); config.turnstileSecret = ''; });
+afterEach(() => { f.restore(); });
 afterAll(teardown);
 
 describe('« Signaler un problème » without an account', () => {
@@ -58,16 +58,6 @@ describe('« Signaler un problème » without an account', () => {
         const fourth = await report(valid, '198.51.100.9');
         expect(fourth.status).toBe(429);
         expect((await report(valid, '198.51.100.10')).status).toBe(201);
-    });
-
-    it('requires the anti-robot check when Turnstile is configured', async () => {
-        config.turnstileSecret = 'ts-secret';
-        f.restore();
-        f = mockFetch({ 'challenges.cloudflare.com': () => ({ json: { success: false } }) });
-        const r = await report(valid);
-        expect(r.status).toBe(400);
-        expect(r.body.code).toBe('TURNSTILE_FAILED');
-        expect(await Ticket.countDocuments()).toBe(0);
     });
 
     it('emails the agent’s reply to the address given (never an internal note)', async () => {

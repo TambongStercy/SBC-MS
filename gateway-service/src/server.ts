@@ -9,6 +9,7 @@ import { errorHandler } from './api/middleware/error.middleware';
 import { adminAllowlist } from './api/middleware/admin-allowlist.middleware';
 import { activitySignals, startSignalsFlush } from './api/middleware/activity-signals.middleware';
 import { browserChecks, startBrowserChecksFlush } from './api/middleware/browser-checks.middleware';
+import { altchaChallenge, robotCheck, startRobotChecksFlush } from './api/middleware/robot-check.middleware';
 
 // Initialize logger
 const log = logger.getLogger('Server');
@@ -42,6 +43,12 @@ startSignalsFlush();
 // Security plan Phase 9: signed-request / browser checks, log-only (off unless BROWSER_CHECKS=log).
 app.use(browserChecks);
 startBrowserChecksFlush();
+
+// Phase 9 rule 3: anti-robot check (ALTCHA, self-hosted) on the sensitive actions
+// (off unless ROBOT_CHECK=log|enforce and ALTCHA_HMAC_KEY is set).
+app.get('/api/altcha/challenge', altchaChallenge);
+app.use(robotCheck);
+startRobotChecksFlush();
 
 // Health check endpoint
 app.get('/health', (req, res) => {

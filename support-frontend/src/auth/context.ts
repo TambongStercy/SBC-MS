@@ -5,7 +5,7 @@ import type { Permission, PermissionSet } from '../lib/permissions';
 
 export interface AuthContextValue {
   state: AuthState;
-  login: (email: string, password: string, turnstileToken?: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   submitTotp: (input: { code?: string; backupCode?: string }) => Promise<void>;
   startEnroll: () => Promise<void>;
   confirmEnroll: (code: string) => Promise<void>;

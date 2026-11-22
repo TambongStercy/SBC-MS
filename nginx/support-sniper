@@ -49,9 +49,9 @@ server {
     index index.html;
     server_tokens off;
 
-    # Turnstile (challenges.cloudflare.com) for the login; R2 public media and
+    # R2 public media and
     # presigned URLs for attachments and proof videos. No inline script or style.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data: blob: https://media.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; media-src 'self' blob: https://media.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; frame-src https://challenges.cloudflare.com https://media.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; connect-src 'self' wss://livekit.sniperbuisnesscenter.com https://livekit.sniperbuisnesscenter.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://media.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; media-src 'self' blob: https://media.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; frame-src https://media.sniperbuisnesscenter.com https://*.r2.cloudflarestorage.com; connect-src 'self' wss://livekit.sniperbuisnesscenter.com https://livekit.sniperbuisnesscenter.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;

@@ -255,18 +255,27 @@ export async function recordBrowserCheck(req: Request, now = Date.now(), watched
 }
 
 // ---- automation signals per member → the fraud engine (plan item 8) ----
-interface Seen { userId: string; day: string; badSig: number; replay: number; bodyMismatch: number; tool: number }
+interface Seen { userId: string; day: string; badSig: number; replay: number; bodyMismatch: number; tool: number; robot: number }
 const automation = new Map<string, Seen>();
 export const automationStats = { sent: 0, dropped: 0 };
 
 function noteAutomation(userId: string | undefined, row: Row) {
     if (!userId || !/^[a-f0-9]{24}$/i.test(userId)) return;
     const k = `${userId}|${row.day}`;
-    const e = automation.get(k) ?? { userId, day: row.day, badSig: 0, replay: 0, bodyMismatch: 0, tool: 0 };
+    const e = automation.get(k) ?? { userId, day: row.day, badSig: 0, replay: 0, bodyMismatch: 0, tool: 0, robot: 0 };
     if (row.signature === 'bad_sig') e.badSig++;
     if (row.signature === 'replay') e.replay++;
     if (row.body === 'mismatch') e.bodyMismatch++;
     if (row.tool) e.tool++;
+    if (automation.has(k) || automation.size < HARD_CAP) automation.set(k, e);
+}
+
+/** A member sent a forged or replayed anti-robot answer (robot-check.middleware.ts). */
+export function noteRobotAutomation(userId: string, day: string) {
+    if (!/^[a-f0-9]{24}$/i.test(userId)) return;
+    const k = `${userId}|${day}`;
+    const e = automation.get(k) ?? { userId, day, badSig: 0, replay: 0, bodyMismatch: 0, tool: 0, robot: 0 };
+    e.robot++;
     if (automation.has(k) || automation.size < HARD_CAP) automation.set(k, e);
 }
 
@@ -283,7 +292,7 @@ export async function flushAutomation(): Promise<number> {
             const r = await fetch(`${base}/api/risk/internal/events`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.services.serviceSecret}`, 'X-Service-Name': 'gateway-service' },
-                body: JSON.stringify({ type: 'automation_seen', userId: e.userId, day: e.day, badSig: e.badSig, replay: e.replay, bodyMismatch: e.bodyMismatch, tool: e.tool }),
+                body: JSON.stringify({ type: 'automation_seen', userId: e.userId, day: e.day, badSig: e.badSig, replay: e.replay, bodyMismatch: e.bodyMismatch, tool: e.tool, robot: e.robot }),
                 signal: AbortSignal.timeout(2000),
             });
             if (r.ok) sent++; else automationStats.dropped++;

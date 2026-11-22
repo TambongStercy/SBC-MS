@@ -3,7 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import { Download04Icon } from '@hugeicons/core-free-icons';
 import { errorMessage } from '../../api/http';
 import { useAuth } from '../../auth/context';
-import { Turnstile, TURNSTILE_SITE_KEY } from '../../auth/Turnstile';
+import { prepareRobotAnswer } from '../../auth/robotCheck';
 import { CopyButton } from '../../components/CopyButton';
 import { Button, Checkbox, Field, Input, Skeleton } from '../../components/ui';
 import { downloadBlob } from '../../lib/download';
@@ -28,25 +28,23 @@ function PasswordStep({ notice }: { notice?: string }) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [token, setToken] = useState<string | null>(null);
-  const [resetKey, setResetKey] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const needsTurnstile = !!TURNSTILE_SITE_KEY;
+  // Anti-robot answer solved while the agent types (auth/robotCheck.ts).
+  useEffect(() => { prepareRobotAnswer(); }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     if (!email.trim() || !password) { setError('Entrez votre e-mail et votre mot de passe.'); return; }
-    if (needsTurnstile && !token) { setError('Patientez pendant la vérification anti-robot.'); return; }
     setBusy(true);
     try {
-      await login(email.trim(), password, token ?? undefined);
+      await login(email.trim(), password);
     } catch (err) {
       // Same message whatever the reason (the server does the same).
       setError(errorMessage(err, 'Connexion refusée. Vérifiez vos identifiants.'));
       setPassword('');
-      if (needsTurnstile) setResetKey(k => k + 1);
+      prepareRobotAnswer();
     } finally {
       setBusy(false);
     }
@@ -62,7 +60,6 @@ function PasswordStep({ notice }: { notice?: string }) {
       <Field label="Mot de passe">
         <Input type="password" autoComplete="current-password" className="h-11 text-base md:text-sm" value={password} onChange={e => setPassword(e.target.value)} disabled={busy} />
       </Field>
-      {needsTurnstile && <Turnstile onToken={setToken} resetKey={resetKey} onError={() => setError('La vérification anti-robot n’a pas pu se charger. Rechargez la page.')} />}
       <Button type="submit" variant="primary" size="lg" className="mt-2 w-full" loading={busy}>Se connecter</Button>
       <p className="text-xs text-fg-muted">Accès réservé aux agents du support SBC. Chaque connexion est journalisée.</p>
     </form>

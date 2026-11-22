@@ -71,6 +71,19 @@ SOURCE_USERS_MONGODB_URI=…/sbc_users SOURCE_PAYMENT_MONGODB_URI=…/sbc_paymen
   - by country: CM 109, BJ 85, TG 55, BF 24, CI 16, CG 8, CD 2, GA 1, SN 1.
 - The plan's target (at least 137 shared numbers) is measured on prod data, which needs approval.
 
+**Prod dry run (2026-11-22, user's OK; read-only, nothing written; risk-service is not on prod):**
+- Input: 375,968 members with a country, 48,513 identifier uses, 1,022,093 referral links,
+  53,654 withdrawals, 94,269 commissions (read in 24 s).
+- 515 shared identifiers (no hubs), forming 380 groups (the largest has 82 accounts).
+- **173 withdrawal numbers shared inside a referral tree: 257 accounts, 212,147,673 F withdrawn.**
+  The plan's target (≥ 137) is met.
+- 1,059 members scored: **439 `hold`**, 244 `require_code`, 376 `allow`. With `RISK_MODE=enforce`
+  (decided 2026-11-22) the 439 could not withdraw until support releases them: review the holds
+  before enforcing on prod.
+- Cases:
+  - by type: 173 shared number, 226 self-referral, 75 multi-account, 6 abnormal behaviour;
+  - by country: CM 163, BJ 132, TG 95, CI 27, BF 26, CG 17, ML 8, SN 6, CD 3, NE 2, GA 1.
+
 ## Deploy
 
 - pm2: `risk-service` on 3013 (prod) and `risk-preprod` on 6013, with databases `sbc_risk` and

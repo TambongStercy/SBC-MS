@@ -13,7 +13,6 @@ import {
     decryptSecret, encryptSecret, enrollmentPayload, generateBackupCodes, generateSecret, hashBackupCode, verifyTotp,
 } from './totp.service';
 import { createSession, IssuedSession, revokeAllSessions } from './session.service';
-import { verifyTurnstile } from './turnstile.service';
 
 /** The one answer to every failed sign-in, whatever the reason (no enumeration). */
 export const INVALID_CREDENTIALS = () => new AppError(401, 'Identifiants ou code invalides.', 'INVALID_CREDENTIALS');
@@ -78,14 +77,13 @@ async function loadChallenge(id: unknown): Promise<Challenge | null> {
     return raw ? (JSON.parse(raw) as Challenge) : null;
 }
 
-/** Step 1: email + password (+ Turnstile). Same error and timing for every refusal. */
-export async function login(input: { email?: unknown; password?: unknown; turnstileToken?: unknown }, ctx: ReqCtx): Promise<{ step: 'totp' | 'enroll'; challengeId: string }> {
+/**
+ * Step 1: email + password. Same error and timing for every refusal. The anti-robot check
+ * (ALTCHA) is done by the gateway before this (ROBOT_CHECK, action `desk_login`).
+ */
+export async function login(input: { email?: unknown; password?: unknown }, ctx: ReqCtx): Promise<{ step: 'totp' | 'enroll'; challengeId: string }> {
     const ipHit = await hit(`login-ip:${ctx.ip}`, 30, 15 * 60);
     if (!ipHit.allowed) throw tooMany('Trop de tentatives depuis cette adresse. Réessayez plus tard.', ipHit.retryAfterSec);
-
-    if (!(await verifyTurnstile(typeof input.turnstileToken === 'string' ? input.turnstileToken : undefined, ctx.ip))) {
-        throw badRequest('La vérification anti-robot a échoué. Rechargez la page.', 'TURNSTILE_FAILED');
-    }
 
     const email = typeof input.email === 'string' ? input.email.trim().toLowerCase().slice(0, 200) : '';
     const password = typeof input.password === 'string' ? input.password.slice(0, 200) : '';
