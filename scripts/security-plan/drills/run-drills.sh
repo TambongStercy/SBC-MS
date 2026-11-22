@@ -25,11 +25,13 @@ probe() {
     m "cd /var/www/SBC-MS-preprod/payment-service && S=\$(grep -E '^SERVICE_SECRET=' .env | cut -d= -f2-) && curl -s -m 20 -X POST -H \"Authorization: Bearer \$S\" -H 'Content-Type: application/json' -d '{\"userId\":\"$U\"}' localhost:6003/api/internal/drills/withdrawal-check" \
         | python3 -c 'import json,sys
 try:
-    d=json.load(sys.stdin)["data"]; print(("allowed" if d["allowed"] else f"refused {d.get(\"status\")} {d.get(\"message\",\"\")[:90]}") + f" ({d[\"ms\"]} ms)")
+    d = json.load(sys.stdin)["data"]
+    word = "allowed" if d["allowed"] else "refused %s %s" % (d.get("status"), (d.get("message") or "")[:90])
+    print("%s (%s ms)" % (word, d["ms"]))
 except Exception as e: print("probe failed:", e)'
 }
 health() { m "for p in 6000 6001 6003 6012 6013; do printf \"\$p=\"; curl -s -o /dev/null -m 5 -w '%{http_code} ' localhost:\$p/health; done"; }
-restarts() { m "pm2 jlist" | python3 -c 'import json,sys; print(" ".join(f"{p[\"name\"]}:{p[\"pm2_env\"][\"restart_time\"]}" for p in json.load(sys.stdin) if p["name"] in ("payment-preprod","gateway-preprod","user-preprod","risk-preprod","support-preprod","blnk-sync-preprod")))'; }
+restarts() { m "pm2 jlist" | python3 -c 'import json,sys; print(" ".join("%s:%s" % (p["name"], p["pm2_env"]["restart_time"]) for p in json.load(sys.stdin) if p["name"] in ("payment-preprod","gateway-preprod","user-preprod","risk-preprod","support-preprod","blnk-sync-preprod")))'; }
 gw() { m "curl -s -o /dev/null -m 30 -w '%{http_code} in %{time_total}s' -X POST -H 'Content-Type: application/json' -d '{\"email\":\"drill-nobody@example.invalid\",\"password\":\"x\"}' https://preprod.sniperbuisnesscenter.com/api/users/login"; }
 
 out() { echo "$*" | tee -a "$REPORT"; }
