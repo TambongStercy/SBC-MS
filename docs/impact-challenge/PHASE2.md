@@ -135,17 +135,17 @@ videoFileId? }, review: { reason, at } | null, publishedAt, externalUrl, created
 | `POST /admin/editions/:id/launch-competition` | — | `Edition`. 409 `PROFILES_TO_REVIEW` (`details.candidates: [{ _id, name }]`), `NOT_ENOUGH_CANDIDATES`, `SUSPENDED_CANDIDATES` |
 | `POST /admin/editions/:id/advance-stage` | — | `Edition` (WEEK1 → WEEK2 → WEEK3). 409 `ROUND_OPEN` |
 | `PUT /admin/editions/:id/rounds/:key` (`FREE` or `PAID`) | `{ opensAt, closesAt }` | `Edition`. 409 `ROUND_STARTED`; 400 `INVALID_SCHEDULE` (`details.field` = `rounds.<KEY>.closesAt`) |
-| `POST /admin/editions/:id/rounds/:key/open` | — | `Edition`. 409 `WRONG_STAGE`, `ROUND_NOT_SCHEDULED`, `ROUND_NOT_OPENABLE` |
+| `POST /admin/editions/:id/rounds/:key/open` | — | `Edition`. 409 `WRONG_STAGE`, `ROUND_NOT_SCHEDULED` (no end date), `ROUND_STARTED`; 400 `INVALID_SCHEDULE` with `details.field` `rounds.<KEY>.closesAt` when the end date has passed |
 | `POST /admin/editions/:id/rounds/:key/close` | `{ reason }` (≥ 5) | `Edition` |
-| `GET /admin/editions/:id/top3` | — | `{ ranking: Row[], finalistsCount, tieAtCut, blockers: [{ code, message }], flaggedPurchases, decided }` |
+| `GET /admin/editions/:id/top3` | query `recount=1` to recount the ledgers first (otherwise a read writes nothing) | `{ ranking: Row[], finalistsCount, tieAtCut, blockers: [{ code, message, until? }], flaggedPurchases, decided, decidedAt }`. Once decided: the frozen podium with its names, never recomputed |
 | `POST /admin/editions/:id/top3` **(admin code)** | `{ expectedOrder: candidateId[] }` (the order the admin saw) | `{ edition, ranking }`. 409 `STALE`, `ALREADY_DECIDED`, or the code of the first blocker |
-| `GET /admin/editions/:id/submissions` | query `kind`, `status` | `(Submission & { candidate: { name, projectName, photoFileId, seatNumber, status } })[]` (current versions; pending first) |
+| `GET /admin/editions/:id/submissions` | query `kind`, `status` | `(Submission & { candidate: { name, projectName, photoFileId, seatNumber, status } })[]` (current versions, at most 500: pending first, oldest first, then new version requested, accepted, refused) |
 | `POST /admin/submissions/:id/review` | `{ decision: 'accept' \| 'reject' \| 'resubmit', reason (≥ 10 unless accept), updatedAt? }` | `Submission`. 409 `ALREADY_REVIEWED`, `STALE` |
 | `PATCH /admin/submissions/:id` | `{ externalUrl }` (https, or `''` to remove) | `Submission`. 409 `NOT_PUBLISHED` |
-| `GET /admin/editions/:id/free-votes` | query `candidateId`, `page`, `limit` | `{ items: [{ _id, candidateId, voterUserId, voterName, at }], total, page, limit }` |
-| `GET /admin/editions/:id/purchases` | query `status`, `method`, `candidateId`, `flagged=1`, `page`, `limit` | `{ items: (Purchase & { userId, buyerName, flags, refundUncertain, providerStatus })[], total, page, limit, totals: { byStatus: { [status]: { count, amount, votes, countedVotes } }, revenue, countedVotes } }` |
+| `GET /admin/editions/:id/free-votes` | query `candidateId`, `page`, `limit` | `{ items: [{ _id, candidateId, candidateName, voterUserId, voterName, at }], total, page, limit }` |
+| `GET /admin/editions/:id/purchases` | query `status`, `method`, `candidateId`, `flagged=1`, `refundUncertain=1`, `page`, `limit` | `{ items: (Purchase & { userId, buyerName, candidateName, flags, refundUncertain, providerStatus })[], total, page, limit, totals: { byStatus: { [status]: { count, amount, votes, countedVotes } }, revenue, countedVotes, uncertainRefunds } }` |
 | `POST /admin/purchases/:id/refund` **(admin code)** | `{ reason }` (≥ 10; the buyer reads it) | `Purchase & { refundCompleted }`. 409 `NOT_REFUNDABLE`, `REFUND_IN_PROGRESS`, `ALREADY_DECIDED` |
-| `GET /admin/editions/:id/anomalies` | — | `{ freeVotes: { sharedNetworks, sharedDevices, bursts }, paidVotes: { topBuyers, flagged, uncertainRefunds } }` |
+| `GET /admin/editions/:id/anomalies` | — | `{ freeVotes: { sharedNetworks, sharedDevices, bursts (with candidateName) }, paidVotes: { topBuyers, flagged, uncertainRefunds } }`; flagged and uncertain purchases carry `userId`, `buyerName`, `candidateName` |
 | `GET /admin/editions/:id/candidates.csv` | — | CSV of the official candidates (flyers, Facebook posts) |
 
 **Admin code:** a route marked "admin code" answers 403 `ADMIN_CODE_REQUIRED` without it. The admin
@@ -153,7 +153,7 @@ app's `apiClient` interceptor asks for it and sends the request again. One code 
 
 **Admin answers:**
 - `Row` = `{ candidateId, name, projectName, seatNumber, status, paidVotes, paidAmount, freeVotes,
-  lastPaidAt, rank, finalist }`.
+  lastPaidAt, rank, finalist }`. The stored `top3.ranking` keeps the same fields, names included.
 - The admin `Edition` now carries `stage`, `stageHistory`, `competitionStartedAt`,
   `rounds { FREE, PAID }` and `top3 { decidedAt, by, ranking }`.
 - Admin candidate items add `votes`, `rank` and `publishedAt`.
@@ -172,7 +172,7 @@ Buyers (push only, since e-mail is the mail server's scarcest resource):
 
 ## Checks
 
-event-service `src/scripts/check-impact-phase2.ts` has 75 checks (real Mongo; user-, payment- and
+event-service `src/scripts/check-impact-phase2.ts` has 81 checks (real Mongo; user-, payment- and
 notification-service stubbed with the same exactly-once-per-reference behaviour). It covers:
 - launch, publication, submissions and versions;
 - free-vote rules and 10 simultaneous votes;
