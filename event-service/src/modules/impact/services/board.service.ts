@@ -5,6 +5,7 @@ import {
     CandidateStatus, CompetitionStage, EditionStatus, STATUS_LABEL_FR, SubmissionKind, SubmissionStatus,
 } from '../types';
 import { presentSubmission } from './submission.service';
+import { currentEdition } from './edition.service';
 
 /**
  * The public side of the competition (spec §5, §8.2): the published
@@ -80,7 +81,7 @@ const build = async (e: IImpactEdition): Promise<PublicBoard> => {
     }));
     const stage = e.stage ?? null;
     rows.sort((a, b) => {
-        if (stage === CompetitionStage.TOP3) return (a.rank ?? 999) - (b.rank ?? 999);
+        if (stage === CompetitionStage.TOP3 || stage === CompetitionStage.LIVE || stage === CompetitionStage.RESULT) return (a.rank ?? 999) - (b.rank ?? 999);
         if (stage === CompetitionStage.WEEK3) return b.votes.paid - a.votes.paid || (a.seatNumber ?? 0) - (b.seatNumber ?? 0);
         if (stage === CompetitionStage.WEEK2) return b.votes.free - a.votes.free || (a.seatNumber ?? 0) - (b.seatNumber ?? 0);
         return (a.seatNumber ?? 0) - (b.seatNumber ?? 0);
@@ -94,7 +95,7 @@ const build = async (e: IImpactEdition): Promise<PublicBoard> => {
 
 /** The board of the live edition, or null before the competition. */
 export const currentBoard = async (): Promise<PublicBoard | null> => {
-    const e = await ImpactEdition.findOne({ status: { $in: [EditionStatus.COMPETITION, EditionStatus.FINAL] } }).sort({ competitionStartedAt: -1 });
+    const e = await currentEdition();
     if (!e || !isPublic(e)) return null;
     if (cache && cache.editionId === String(e._id) && Date.now() - cache.at < TTL_MS) return cache.value;
     const value = await build(e);

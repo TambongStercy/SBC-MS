@@ -238,3 +238,23 @@ export const adminStepUp = async (input: {
         throw new AppError('La vérification du code est momentanément indisponible. Réessayez dans quelques minutes.', 503, true, 'STEP_UP_UNAVAILABLE');
     }
 };
+
+/**
+ * A member's authenticator-app code (Security plan Phase 3), for an SBC Impact
+ * juror confirming their scores. Keeps user-service's refusal (400 wrong code,
+ * 429 locked, 403 AUTHENTICATOR_REQUIRED when the member never set it up);
+ * unreachable → 503.
+ */
+export const verifyMemberAuthenticator = async (userId: string, code: string): Promise<void> => {
+    try {
+        const { data } = await client.post(`/users/internal/${encodeURIComponent(userId)}/authenticator/verify`, { code, action: 'impact_jury' }, { timeout: 8000 });
+        if (!data?.success || !data?.data?.ok) throw new AppError(data?.message || 'Code refusé.', 400, true, 'AUTH_CODE_INVALID');
+    } catch (err: any) {
+        if (err instanceof AppError) throw err;
+        const status = err?.response?.status;
+        if (status && status < 500) {
+            throw new AppError(err.response?.data?.message || 'Code refusé.', status, true, err.response?.data?.code || (status === 403 ? 'AUTHENTICATOR_REQUIRED' : 'AUTH_CODE_INVALID'));
+        }
+        throw new AppError('La vérification du code est momentanément indisponible. Réessayez dans un instant.', 503, true, 'STEP_UP_UNAVAILABLE');
+    }
+};

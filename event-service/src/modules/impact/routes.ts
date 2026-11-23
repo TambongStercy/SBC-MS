@@ -12,6 +12,8 @@ import * as stages from './services/stage.service';
 import * as submissions from './services/submission.service';
 import * as votes from './services/vote.service';
 import * as board from './services/board.service';
+import * as final from './services/final.service';
+import { lookupEventMember } from '../../services/clients/user.service.client';
 
 /**
  * SBC Impact Challenge v2 routes (gateway: /api/tickets/impact/*).
@@ -61,6 +63,11 @@ publicRouter.get('/board', h(async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=10');
     return board.currentBoard();
 }));
+// The live final screen (finalists, on stage, vote state, then the result), cached 5 s.
+publicRouter.get('/final', h(async (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=5');
+    return final.liveScreen();
+}));
 publicRouter.get('/candidates/:id', h(async (req, res) => {
     res.set('Cache-Control', 'public, max-age=10');
     return board.publicCandidate(req.params.id);
@@ -78,6 +85,10 @@ memberRouter.post('/me/submissions/:kind', throttle('submit', 10, 60), h(async (
 memberRouter.post('/free-votes', throttle('free-vote', 10, 60), h(async (req) => votes.castFreeVote(uid(req), req.body ?? {}, signals(req))));
 memberRouter.post('/vote-purchases', throttle('purchase', 10, 60), h(async (req) => votes.startPurchase(uid(req), req.body ?? {}, signals(req))));
 memberRouter.get('/me/votes', h(async (req) => votes.myVotes(uid(req))));
+memberRouter.post('/final-votes', throttle('final-vote', 10, 60), h(async (req) => votes.castFinalVote(uid(req), req.body ?? {}, signals(req))));
+// Jury space (a juror is an SBC account added by the administration).
+memberRouter.get('/jury/me', h(async (req) => final.myJury(uid(req))));
+memberRouter.put('/jury/editions/:id/candidates/:cid/score', throttle('jury-score', 30, 60), h(async (req) => final.saveScore(uid(req), req.params.id, req.params.cid, req.body ?? {})));
 memberRouter.get('/me/vote-purchases/:id', h(async (req) => votes.getMyPurchase(uid(req), req.params.id)));
 
 // ---------- Administration ----------
@@ -119,6 +130,21 @@ adminRouter.get('/editions/:id/free-votes', h(async (req) => votes.listFreeVotes
 adminRouter.get('/editions/:id/purchases', h(async (req) => votes.listPurchases(req.params.id, req.query)));
 adminRouter.post('/purchases/:id/refund', requireAdminStepUp('impact_vote_refund'), h(async (req) => votes.refundPurchase(admin(req), req.params.id, req.body ?? {})));
 adminRouter.get('/editions/:id/anomalies', h(async (req) => votes.anomalies(req.params.id)));
+// ----- Phase 3: jury, live final, result -----
+adminRouter.get('/members/lookup', h(async (req) => {
+    const contact = String(req.query.contact ?? '').trim();
+    if (contact.length < 5) throw new AppError('Saisissez l’e-mail ou le numéro du membre.', 400, true, 'BAD_REQUEST');
+    return lookupEventMember(contact);
+}));
+adminRouter.get('/editions/:id/jury', h(async (req) => final.listJury(req.params.id)));
+adminRouter.get('/editions/:id/jury/scores', h(async (req) => final.juryScoresDetail(req.params.id)));
+adminRouter.post('/editions/:id/jury', h(async (req) => final.addJuror(admin(req), req.params.id, req.body ?? {})));
+adminRouter.post('/editions/:id/jury/:jurorId/remove', h(async (req) => final.removeJuror(admin(req), req.params.id, req.params.jurorId, reasonOf(req))));
+adminRouter.post('/editions/:id/jury/lock', h(async (req) => editions.adminEdition(await final.lockJury(admin(req), req.params.id))));
+adminRouter.post('/editions/:id/final/start', h(async (req) => editions.adminEdition(await final.startFinal(admin(req), req.params.id))));
+adminRouter.post('/editions/:id/final/on-stage', h(async (req) => editions.adminEdition(await final.setOnStage(admin(req), req.params.id, req.body ?? {}))));
+adminRouter.get('/editions/:id/result', h(async (req) => final.resultPreview(req.params.id)));
+adminRouter.post('/editions/:id/result', requireAdminStepUp('impact_result'), h(async (req) => editions.adminEdition(await final.publishResult(admin(req), req.params.id, req.body ?? {}))));
 adminRouter.get('/editions/:id/candidates.csv', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const csv = await candidates.exportCandidatesCsv(req.params.id);

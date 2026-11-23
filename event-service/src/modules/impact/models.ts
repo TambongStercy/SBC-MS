@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 import {
-    CandidateStatus, CompetitionStage, DEFAULT_SETTINGS, EditionSettings, EditionStatus, PayMethod, ProfileReview,
+    CandidateStatus, CompetitionStage, DEFAULT_SETTINGS, EditionSettings, EditionStatus, LivePhase, PayMethod, ProfileReview,
     RoundStatus, SubmissionKind, SubmissionStatus, VoteTxStatus,
 } from './types';
 
@@ -36,7 +36,11 @@ export interface IImpactEdition extends Document {
     stage?: CompetitionStage;
     stageHistory: { stage: string; at: Date; by?: Types.ObjectId }[];
     competitionStartedAt?: Date;
-    rounds: { FREE: IRound; PAID: IRound };
+    rounds: { FREE: IRound; PAID: IRound; FINAL: IRound };
+    // ----- Phase 3: the live final -----
+    jury?: { lockedAt?: Date; lockedBy?: Types.ObjectId };
+    live?: { onStageCandidateId?: Types.ObjectId | null; phase?: LivePhase | null; startedAt?: Date; updatedAt?: Date };
+    result?: IFinalResult;
     /** The TOP 3 as decided (frozen): ranking by paid votes, ties to the earliest to reach the total. */
     top3?: {
         decidedAt: Date;
@@ -49,6 +53,30 @@ export interface IImpactEdition extends Document {
     createdBy: Types.ObjectId;
     createdAt: Date;
     updatedAt: Date;
+}
+
+export interface FinalResultRow {
+    candidateId: Types.ObjectId;
+    name: string;
+    projectName: string;
+    paidVotes: number;
+    finalVotes: number;
+    /** Average of the jurors' totals, and the highest possible total. */
+    juryAverage: number;
+    juryMax: number;
+    jurorsCount: number;
+    /** Each part on 0–100 (the best finalist of that part gets 100), then the weighted score. */
+    components: { paidVotes: number; publicVote: number; jury: number };
+    score: number;
+    rank: number;
+}
+
+export interface IFinalResult {
+    publishedAt: Date;
+    by: Types.ObjectId;
+    weights: { paidVotes: number; publicVote: number; jury: number };
+    rows: FinalResultRow[];
+    winnerCandidateId: Types.ObjectId;
 }
 
 export interface IRound {
@@ -96,6 +124,21 @@ const EditionSchema = new Schema<IImpactEdition>({
     rounds: {
         FREE: { type: RoundSchema, default: () => ({}) },
         PAID: { type: RoundSchema, default: () => ({}) },
+        FINAL: { type: RoundSchema, default: () => ({}) },
+    },
+    jury: { lockedAt: Date, lockedBy: S.ObjectId },
+    live: { onStageCandidateId: S.ObjectId, phase: String, startedAt: Date, updatedAt: Date },
+    result: {
+        publishedAt: Date,
+        by: S.ObjectId,
+        weights: { paidVotes: Number, publicVote: Number, jury: Number },
+        rows: [{
+            candidateId: S.ObjectId, name: String, projectName: String, paidVotes: Number, finalVotes: Number,
+            juryAverage: Number, juryMax: Number, jurorsCount: Number,
+            components: { paidVotes: Number, publicVote: Number, jury: Number },
+            score: Number, rank: Number, _id: false,
+        }],
+        winnerCandidateId: S.ObjectId,
     },
     top3: {
         decidedAt: Date,
@@ -400,3 +443,86 @@ VoteTxSchema.index({ userId: 1, createdAt: -1 });
 VoteTxSchema.index({ status: 1, method: 1, createdAt: 1 });
 
 export const ImpactVoteTx = mongoose.model<IImpactVoteTx>('ImpactVoteTx', VoteTxSchema);
+
+// ---------- Phase 3: jury (§11) ----------
+
+export interface IImpactJuror extends Document {
+    editionId: Types.ObjectId;
+    userId: Types.ObjectId;
+    /** Name when added (the juror list shows it without a lookup). */
+    name: string;
+    addedBy: Types.ObjectId;
+    addedAt: Date;
+    /** Removed jurors keep their row; their scores no longer count. */
+    removedAt?: Date;
+    removedBy?: Types.ObjectId;
+}
+
+const JurorSchema = new Schema<IImpactJuror>({
+    editionId: { type: S.ObjectId, required: true },
+    userId: { type: S.ObjectId, required: true },
+    name: { type: String, default: '' },
+    addedBy: { type: S.ObjectId, required: true },
+    addedAt: { type: Date, default: Date.now },
+    removedAt: Date,
+    removedBy: S.ObjectId,
+});
+JurorSchema.index({ editionId: 1, userId: 1 }, { unique: true });
+JurorSchema.index({ userId: 1, removedAt: 1 });
+
+export const ImpactJuror = mongoose.model<IImpactJuror>('ImpactJuror', JurorSchema);
+
+export interface IImpactJuryScore extends Document {
+    editionId: Types.ObjectId;
+    jurorUserId: Types.ObjectId;
+    candidateId: Types.ObjectId;
+    /** One mark per criterion key (settings.juryCriteria). */
+    scores: Record<string, number>;
+    total: number;
+    comment?: string;
+    /** Every earlier version, oldest first (§17: « journalisation des modifications »). */
+    history: { scores: Record<string, number>; total: number; comment?: string; at: Date }[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const JuryScoreSchema = new Schema<IImpactJuryScore>({
+    editionId: { type: S.ObjectId, required: true },
+    jurorUserId: { type: S.ObjectId, required: true },
+    candidateId: { type: S.ObjectId, required: true },
+    scores: { type: S.Mixed, required: true },
+    total: { type: Number, required: true },
+    comment: String,
+    history: [{ scores: S.Mixed, total: Number, comment: String, at: Date, _id: false }],
+}, { timestamps: true });
+// One score per juror and finalist (§17: « une notation par étape/candidat »).
+JuryScoreSchema.index({ editionId: 1, jurorUserId: 1, candidateId: 1 }, { unique: true });
+JuryScoreSchema.index({ editionId: 1, candidateId: 1 });
+
+export const ImpactJuryScore = mongoose.model<IImpactJuryScore>('ImpactJuryScore', JuryScoreSchema);
+
+// ---------- Phase 3: final public vote (§12) ----------
+
+export interface IImpactFinalVote extends Document {
+    editionId: Types.ObjectId;
+    candidateId: Types.ObjectId;
+    voterUserId: Types.ObjectId;
+    ipHash?: string;
+    uaHash?: string;
+    at: Date;
+}
+
+const FinalVoteSchema = new Schema<IImpactFinalVote>({
+    editionId: { type: S.ObjectId, required: true },
+    candidateId: { type: S.ObjectId, required: true },
+    voterUserId: { type: S.ObjectId, required: true },
+    ipHash: String,
+    uaHash: String,
+    at: { type: Date, default: Date.now },
+});
+// 1 compte = 1 vote public final.
+FinalVoteSchema.index({ editionId: 1, voterUserId: 1 }, { unique: true });
+FinalVoteSchema.index({ editionId: 1, candidateId: 1 });
+FinalVoteSchema.index({ editionId: 1, ipHash: 1 });
+
+export const ImpactFinalVote = mongoose.model<IImpactFinalVote>('ImpactFinalVote', FinalVoteSchema);

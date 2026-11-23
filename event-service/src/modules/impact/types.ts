@@ -77,10 +77,16 @@ export enum CompetitionStage {
     WEEK2 = 'WEEK2',   // Vidéo « Ma vision de SBC » + vote gratuit (§6)
     WEEK3 = 'WEEK3',   // Présentation des projets + votes payants (§7–§8)
     TOP3 = 'TOP3',     // Finalistes désignés (§9)
+    LIVE = 'LIVE',     // Grande finale en direct : présentations, jury, vote public final (§10–§12)
+    RESULT = 'RESULT', // Résultat publié, gagnant désigné (§12)
 }
 
+/** What the live screen says is happening on stage. */
+export enum LivePhase { PRESENTATION = 'PRESENTATION', QUESTIONS = 'QUESTIONS', SCORING = 'SCORING' }
+
 /** The two vote rounds: the free vote of week 2, the paid votes of week 3. */
-export enum RoundKey { FREE = 'FREE', PAID = 'PAID' }
+/** FREE = week-2 free vote, PAID = week-3 paid votes, FINAL = the final public vote (free, 1 per account). */
+export enum RoundKey { FREE = 'FREE', PAID = 'PAID', FINAL = 'FINAL' }
 export enum RoundStatus { SCHEDULED = 'SCHEDULED', OPEN = 'OPEN', CLOSED = 'CLOSED' }
 
 export enum SubmissionKind { VIDEO = 'VIDEO', PROJECT = 'PROJECT' }
