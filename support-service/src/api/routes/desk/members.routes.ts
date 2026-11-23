@@ -100,6 +100,11 @@ router.post('/:userId/commission-reversal', requirePermission('finance.regulariz
     res.status(201).json({ success: true, data: { approvalId: String(a._id), status: a.status } });
 }));
 
+// Account suspension (2026-11-23): lift it (finance managers, support administrators), code + reason, audited.
+router.post('/:userId/unban', requirePermission('members.unban'), requireReauth, ah(async (req, res) => {
+    res.json({ success: true, data: await members.unban(req.params.userId, req.body ?? {}, ref(req), reqCtx(req)) });
+}));
+
 // Contact change for a member who lost access: request → approval → code to the new contact → apply.
 router.post('/:userId/contact-change', requirePermission('members.contact.request'), requireReauth, ah(async (req, res) => {
     const a = await members.requestContactChange(req.params.userId, req.body ?? {}, ref(req), reqCtx(req));

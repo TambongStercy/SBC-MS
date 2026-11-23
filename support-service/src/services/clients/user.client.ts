@@ -17,6 +17,9 @@ export interface SupportMember {
     frozen?: { at: string; reason: string | null } | null;
     momoNumber?: string | null;
     momoOperator?: string | null;
+    /** Account suspended (user-service account-ban.service, 2026-11-23). */
+    ban?: { at: string; reason: string; by?: string | null; details?: Record<string, any> | null } | null;
+    banHistory?: { at: string | null; reason: string | null; liftedAt: string | null; liftedBy: string | null; liftReason: string | null }[];
 }
 
 export interface MemberSearchHit { _id: string; name: string; country?: string; role?: string; createdAt?: string }
@@ -86,6 +89,11 @@ export const resetMemberAuthenticator = (body: { userId: string; reason: string;
 /** Freezes (withdrawals and transfers suspended until unfrozen) or unfreezes the member's money. */
 export const freezeMember = (body: { userId: string; action: 'freeze' | 'unfreeze'; reason: string; approvalId: string }) =>
     ownerAction('/support/freeze', body);
+
+/** Lifts the member's suspension (`409 NOT_BANNED` when there is none). `by` is the desk actor. */
+export async function unbanMember(userId: string, body: { by: string; reason: string }): Promise<OwnerActionResult> {
+    return ownerAction(`/${userId}/unban`, body);
+}
 
 /** Replaces the member's Mobile Money number and operator (locks withdrawals, alerts the account e-mail). */
 export const changeMemberMomo = (body: { userId: string; momoNumber: string; momoOperator: string; approvalId: string }) =>

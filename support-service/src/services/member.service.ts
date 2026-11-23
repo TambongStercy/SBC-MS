@@ -6,12 +6,12 @@ import { Ticket } from '../database/models/ticket.model';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../utils/errors';
 import { maskEmail, maskPhone } from '../utils/mask';
 import { getRiskMember, riskConnected } from './clients/risk.client';
-import { contactChange, getSupportDetails, getSupportMember, searchMembers, SupportMember } from './clients/user.client';
+import { contactChange, getSupportDetails, getSupportMember, searchMembers, SupportMember, unbanMember } from './clients/user.client';
 import { memberPayins, memberWithdrawals } from './clients/payment.client';
 import { AgentRef } from '../database/models/approval.model';
 import { createApproval } from './approval.service';
 import { audit } from './audit.service';
-import { teamFilter } from './scope.service';
+import { assertNoConflict, teamFilter } from './scope.service';
 
 /** Masking per permission (CONTRACT §4). Balances only for finance or full readers. */
 export function presentMember(m: SupportMember, roles: string[]) {
@@ -34,6 +34,10 @@ export function presentMember(m: SupportMember, roles: string[]) {
         ...(money ? { ledger: m.ledger ?? null } : {}),
         momoNumber: m.momoNumber ? (full ? m.momoNumber : maskPhone(m.momoNumber)) : null,
         momoOperator: m.momoOperator ?? null,
+        // Account suspension (2026-11-23): everyone who sees the card sees that it is suspended and why;
+        // the figures behind it (balances, commissions, the withdrawal) only for money readers.
+        ban: m.ban?.at ? { at: m.ban.at, reason: m.ban.reason, ...(money ? { details: m.ban.details ?? null } : {}) } : null,
+        banHistory: (m.banHistory ?? []).map((h) => ({ at: h.at, reason: h.reason, liftedAt: h.liftedAt, liftedBy: h.liftedBy, liftReason: h.liftReason })),
     };
 }
 
@@ -202,4 +206,36 @@ export async function applyContactChange(approvalId: string, code: unknown, agen
         after: { field: p.field, value: p.field === 'email' ? maskEmail(p.newValue) : maskPhone(p.newValue) }, meta: { approvalId, recorded: u.modifiedCount === 1 }, reason: a.reason, ...ctx,
     });
     return { ok: true };
+}
+
+// ---------- Account suspension (no-referral withdrawal rule, 2026-11-23) ----------
+
+const UNBAN_REASON_MIN = 20;
+
+/**
+ * « Lever la suspension »: `members.unban` + the agent's authenticator code (route), a reason,
+ * never on the agent's own account or referral tree, audited. user-service lifts it (blocked off,
+ * the ban kept in banHistory, sessions may start again; a member blocked by an admin before stays blocked).
+ */
+export async function unban(userId: string, input: { reason?: unknown; caseId?: unknown }, by: AgentRef, ctx: { ip?: string; userAgent?: string }) {
+    if (!/^[a-f0-9]{24}$/i.test(userId)) throw notFound('Membre introuvable.');
+    const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 1000) : '';
+    if (reason.length < UNBAN_REASON_MIN) throw badRequest(`Expliquez pourquoi lever la suspension (${UNBAN_REASON_MIN} caractères au moins).`, 'REASON_REQUIRED');
+    const member = await getSupportMember(userId);
+    if (!member) throw notFound('Membre introuvable.');
+    if (!member.ban?.at) throw conflict('Ce compte n’est pas suspendu.', 'NOT_BANNED');
+    await assertNoConflict({ id: by.id, name: by.name, roles: by.roles }, userId, { ...ctx, action: 'member.unban' });
+    const r = await unbanMember(userId, { by: `support:${by.id}|${by.roles[0] ?? 'none'}`, reason });
+    if (!r.ok) {
+        await audit({ actor: { type: 'agent', ...by }, action: 'member.unban', result: 'error', target: { type: 'member', id: userId }, meta: { code: r.code ?? null }, ...ctx });
+        if (r.code === 'NOT_BANNED' || r.code === 'STATE_CHANGED') throw conflict(r.message || 'Ce compte n’est pas suspendu.', r.code);
+        throw new AppError(502, 'La suspension n’a pas pu être levée. Réessayez.', r.code || 'UNBAN_FAILED');
+    }
+    await audit({
+        actor: { type: 'agent', ...by }, action: 'member.unban', target: { type: 'member', id: userId }, reason,
+        before: { banned: true }, after: { banned: false },
+        meta: { banAt: member.ban.at, banReason: member.ban.reason, caseId: typeof input.caseId === 'string' ? input.caseId.slice(0, 40) : null, stillBlocked: !!r.data?.stillBlocked },
+        ...ctx,
+    });
+    return { unbanned: true, stillBlocked: !!r.data?.stillBlocked };
 }

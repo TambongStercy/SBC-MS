@@ -87,11 +87,21 @@ export async function upsertCase(input: CaseInput, source: string): Promise<{ ca
 
 async function alertForCase(doc: { _id: unknown; type: string; summary: string }, severity: CaseSeverity) {
     // Fraud cases go to finance managers only (Phase 5); a critical one also rings their phones.
-    const roles = doc.type === 'activation' ? ['support_agent'] : isFraudCase(doc.type) || severity === 'critical' ? ['finance_manager'] : ['finance_agent'];
-    if (isFraudCase(doc.type) && severity === 'critical') notifyManagers({ title: 'Dossier fraude critique', message: doc.summary.slice(0, 300), priority: 5, click: `/cases/${doc._id}` });
+    // An account suspended on a withdrawal (2026-11-23) also reaches the support administrators,
+    // who may lift it (members.unban), and is e-mailed even as a warning (log mode) is not.
+    const banCase = doc.type === 'no_referral_withdrawal_ban';
+    const roles = doc.type === 'activation' ? ['support_agent']
+        : banCase && severity === 'critical' ? ['finance_manager', 'support_admin', 'super_manager']
+        : isFraudCase(doc.type) || severity === 'critical' ? ['finance_manager'] : ['finance_agent'];
+    if (isFraudCase(doc.type) && severity === 'critical') {
+        notifyManagers({
+            title: banCase ? 'Compte suspendu automatiquement (retrait sans filleul)' : 'Dossier fraude critique',
+            message: doc.summary.slice(0, banCase ? 600 : 300), priority: 5, click: `/cases/${doc._id}`,
+        });
+    }
     for (const role of roles) {
         await notifyAgents({
-            role, kind: `case.${severity}`, title: severity === 'critical' ? 'Dossier critique' : 'Nouveau dossier',
+            role, kind: `case.${severity}`, title: banCase && severity === 'critical' ? 'Compte suspendu : retrait sans filleul' : severity === 'critical' ? 'Dossier critique' : 'Nouveau dossier',
             body: doc.summary.slice(0, 160), link: `/cases/${doc._id}`, dedupKey: `case:${doc._id}:${role}:${severity}`,
             email: severity === 'critical',
         });
