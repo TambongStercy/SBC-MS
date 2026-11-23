@@ -247,7 +247,9 @@ const main = async () => {
     await qualificationTick(); // first pass: full recount
     check('first pass recounts everyone (no cursor)', invitationCalls.length === 1 && !invitationCalls[0].changedSince);
     invitationCalls.length = 0;
+    const stampBefore = (await ImpactEdition.findById(e2._id).lean())!.updatedAt.getTime();
     await qualificationTick(); // later passes: only what changed
+    check('a quiet pass does not touch the edition’s updatedAt', (await ImpactEdition.findById(e2._id).lean())!.updatedAt.getTime() === stampBefore);
     check('later passes ask only for changes since the cursor', invitationCalls.length === 1 && invitationCalls[0].changedSince instanceof Date);
     reach(G, 3, new Date());
     await qualificationTick();

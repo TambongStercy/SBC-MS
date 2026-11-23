@@ -233,11 +233,12 @@ export const qualificationTick = async (now = new Date()): Promise<number> => {
                 const full = !e.lastFullRecountAt || now.getTime() - e.lastFullRecountAt.getTime() >= FULL_RECOUNT_MS;
                 if (full) {
                     await refreshInvitations(e);
-                    await ImpactEdition.updateOne({ _id: e._id }, { $set: { lastFullRecountAt: now, pollCursor: now } });
+                    await ImpactEdition.updateOne({ _id: e._id }, { $set: { lastFullRecountAt: now, pollCursor: now } }, { timestamps: false });
                 } else {
                     const since = new Date((e.pollCursor ?? e.schedule.qualificationOpensAt).getTime() - POLL_OVERLAP_MS);
                     await refreshInvitations(e, { statuses: [CandidateStatus.QUALIFYING], changedSince: since });
-                    await ImpactEdition.updateOne({ _id: e._id }, { $set: { pollCursor: now } });
+                    // The job's cursor is not a change of the edition: leave updatedAt alone.
+                    await ImpactEdition.updateOne({ _id: e._id }, { $set: { pollCursor: now } }, { timestamps: false });
                 }
             }
             changes += await assignSeats(e._id);
