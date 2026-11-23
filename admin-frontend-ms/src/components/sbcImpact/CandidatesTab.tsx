@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { UserMultipleIcon } from '@hugeicons/core-free-icons';
+import { toast } from 'sonner';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Download01Icon, UserMultipleIcon } from '@hugeicons/core-free-icons';
 import { Button, EmptyState, Pagination, Panel, PanelHeader, ResponsiveList, type ListColumn } from '../ui';
 import { ErrorState, FilterBar, FilterSelect, SearchInput, formatNumber, plural, useUrlFilters } from '../moduleKit';
 import {
-    CANDIDATE_STATUS_LABELS, REVIEW_LABELS, impactErrorMessage, listCandidates,
+    CANDIDATE_STATUS_LABELS, REVIEW_LABELS, downloadCandidatesCsv, impactErrorMessage, listCandidates,
     type CandidateRow, type CandidateStatus, type Edition, type ReviewStatus,
 } from '../../services/impactV2Api';
 import { BelowRequirementBadge, CandidateStatusBadge, CandidateThumb, ReviewBadge } from './shared';
@@ -11,8 +14,22 @@ import { CANDIDATE_FILTER_KEYS } from './status';
 
 const PAGE_SIZE = 20;
 
-/** Statuses a Phase 1 edition can hold (the later stages are left out of the filter until they exist). */
-const STATUS_OPTIONS: CandidateStatus[] = ['QUALIFYING', 'WAITLIST', 'OFFICIAL', 'NOT_SELECTED', 'SUSPENDED', 'DISQUALIFIED', 'WITHDRAWN'];
+/** Statuses an edition can hold up to the TOP 3 (the final's statuses come with Phase 3). */
+const STATUS_OPTIONS: CandidateStatus[] = [
+    'QUALIFYING', 'WAITLIST', 'OFFICIAL', 'STAGE_2', 'STAGE_3', 'FINALIST', 'ELIMINATED', 'NOT_SELECTED', 'SUSPENDED', 'DISQUALIFIED', 'WITHDRAWN',
+];
+
+/** Free and paid votes (competition), and the TOP 3 rank once decided. */
+function Votes({ c }: { c: CandidateRow }) {
+    return (
+        <span className="inline-flex flex-col items-end leading-tight md:items-start">
+            <span className="tabular-nums text-fg">{formatNumber(c.votes?.paid ?? 0)} <span className="text-xs text-fg-muted">payants</span></span>
+            <span className="text-xs tabular-nums text-fg-muted">{formatNumber(c.votes?.free ?? 0)} gratuits</span>
+        </span>
+    );
+}
+
+const rankText = (rank?: number | null) => (rank ? (rank === 1 ? '1er' : `${rank}e`) : '—');
 
 /** Seat n°, or rank on the waiting list. */
 function Place({ c }: { c: CandidateRow }) {
@@ -55,6 +72,18 @@ export default function CandidatesTab({ edition, onOpen }: { edition: Edition; o
     const rows = list.data?.items ?? [];
     const total = list.data?.total ?? 0;
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const competition = !!edition.stage;
+    const [exporting, setExporting] = useState(false);
+    const exportCsv = async () => {
+        setExporting(true);
+        try {
+            await downloadCandidatesCsv(edition._id);
+        } catch (err) {
+            toast.error(impactErrorMessage(err, 'L’export n’a pas pu être téléchargé.'));
+        } finally {
+            setExporting(false);
+        }
+    };
 
     const columns: ListColumn<CandidateRow>[] = [
         {
@@ -69,7 +98,12 @@ export default function CandidatesTab({ edition, onOpen }: { edition: Edition; o
             ),
         },
         { key: 'place', header: 'Place', cell: c => <Place c={c} /> },
-        { key: 'invitations', header: 'Invitations', cell: c => <Invitations c={c} /> },
+        ...(competition
+            ? [
+                { key: 'votes', header: 'Votes', cell: (c: CandidateRow) => <Votes c={c} /> },
+                { key: 'rank', header: 'Rang', cell: (c: CandidateRow) => <span className="tabular-nums">{rankText(c.rank)}</span> },
+            ]
+            : [{ key: 'invitations', header: 'Invitations', cell: (c: CandidateRow) => <Invitations c={c} /> }]),
         { key: 'status', header: 'Statut', cell: c => <StatusCell c={c} /> },
         { key: 'review', header: 'Profil', cell: c => <ReviewBadge status={c.review.status} /> },
     ];
@@ -90,10 +124,16 @@ export default function CandidatesTab({ edition, onOpen }: { edition: Edition; o
                     <ReviewBadge status={c.review.status} />
                     {c.belowRequirement && <BelowRequirementBadge />}
                 </div>
-                <p className="text-xs text-fg-muted">
-                    Invitations : {formatNumber(c.invitations.valid)} / {formatNumber(c.invitations.required)}
-                    {c.invitations.pending > 0 ? ` (+${formatNumber(c.invitations.pending)} en attente)` : ''}
-                </p>
+                {competition ? (
+                    <p className="text-xs text-fg-muted">
+                        Votes : {formatNumber(c.votes?.paid ?? 0)} payants · {formatNumber(c.votes?.free ?? 0)} gratuits{c.rank ? ` · ${rankText(c.rank)}` : ''}
+                    </p>
+                ) : (
+                    <p className="text-xs text-fg-muted">
+                        Invitations : {formatNumber(c.invitations.valid)} / {formatNumber(c.invitations.required)}
+                        {c.invitations.pending > 0 ? ` (+${formatNumber(c.invitations.pending)} en attente)` : ''}
+                    </p>
+                )}
             </div>
         </div>
     );
@@ -103,6 +143,13 @@ export default function CandidatesTab({ edition, onOpen }: { edition: Edition; o
             <PanelHeader
                 title="Candidats"
                 description={list.data ? `${formatNumber(total)} ${plural(total, 'candidat')}${activeCount ? ' avec ces filtres' : ''}` : undefined}
+                actions={(
+                    <Button variant="outline" size="sm" className="h-11 sm:h-8" onClick={() => void exportCsv()} loading={exporting}
+                        title="Les candidats officiels, pour les visuels et les publications">
+                        <HugeiconsIcon icon={Download01Icon} size={14} aria-hidden="true" />
+                        <span className="hidden sm:inline">Exporter les candidats (CSV)</span><span className="sm:hidden">CSV</span>
+                    </Button>
+                )}
             />
             <div className="px-4 pb-3 sm:px-5">
                 <FilterBar

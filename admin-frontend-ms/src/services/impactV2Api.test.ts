@@ -12,7 +12,7 @@ describe('readImpactError / impactErrorMessage', () => {
     it('shows the backend’s French message, code and field', () => {
         const err = httpError(400, { success: false, message: 'La pondération finale doit faire 100 % au total.', code: 'INVALID_SETTINGS', details: { field: 'weights' } });
         expect(readImpactError(err)).toEqual({
-            message: 'La pondération finale doit faire 100 % au total.', code: 'INVALID_SETTINGS', status: 400, fields: ['weights'],
+            message: 'La pondération finale doit faire 100 % au total.', code: 'INVALID_SETTINGS', status: 400, fields: ['weights'], details: { field: 'weights' },
         });
         expect(impactErrorMessage(err)).toBe('La pondération finale doit faire 100 % au total.');
     });
@@ -74,6 +74,8 @@ describe('lockReason (PHASE1.md « Locks »)', () => {
 
     it('freezes the competition rules from COMPETITION on', () => {
         expect(lockReason('COMPETITION', 'votePacks')).toMatch(/début de la compétition/);
+        expect(lockReason('COMPETITION', 'freeVote')).toMatch(/début de la compétition/);
+        expect(lockReason('QUALIFICATION_CLOSED', 'settlementGraceMin')).toBeNull();
         expect(lockReason('FINAL', 'competitionStartsAt')).not.toBeNull();
     });
 
@@ -144,6 +146,15 @@ describe('diffEdition (the save sends only what changed)', () => {
         expect(changes).toEqual({
             schedule: { finalAt: null },
             settings: { votePrice: 250, categories: ['Commerce', 'Services', 'Artisanat'] },
+        });
+    });
+
+    it('fills the vote rules with the defaults on an older edition, and sends only a changed rule', () => {
+        const d = toDraft(edition);
+        expect([d.freeVoteMembersOnly, d.freeVoteAccountsOlderThanRound, d.freeVoteSelfVote, d.paidSelfVote, d.balancePayment, d.settlementGraceMin])
+            .toEqual([true, true, false, true, true, '15']);
+        expect(diffEdition(d, { ...d, freeVoteSelfVote: true, settlementGraceMin: '30' })).toEqual({
+            settings: { freeVote: { membersOnly: true, accountsOlderThanRound: true, selfVote: true }, settlementGraceMin: 30 },
         });
     });
 

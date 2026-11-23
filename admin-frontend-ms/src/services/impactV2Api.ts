@@ -44,6 +44,11 @@ export interface EditionSettings {
     showcaseMonths: number;
     categories: string[];
     profileFields: ProfileField[];
+    // Phase 2 (absent on editions created before; the server applies the defaults)
+    freeVote?: { membersOnly: boolean; accountsOlderThanRound: boolean; selfVote: boolean };
+    paidSelfVote?: boolean;
+    balancePayment?: boolean;
+    settlementGraceMin?: number;
 }
 
 export interface EditionSchedule {
@@ -73,6 +78,20 @@ export interface Edition {
     createdBy?: string;
     /** Seats held now (only on `GET /admin/editions` items). */
     seatsTaken?: number;
+    // Phase 2
+    stage?: Stage | null;
+    stageHistory?: { stage: string; at: string; by?: string }[];
+    competitionStartedAt?: string | null;
+    rounds?: Partial<Record<RoundKey, Round>>;
+    /** Frozen at the decision; names stored since the fix of 2026-11-23 (older ones may lack them). */
+    top3?: {
+        decidedAt: string;
+        by?: string;
+        ranking: {
+            candidateId: string; rank: number; paidVotes: number; lastPaidAt?: string | null; finalist: boolean;
+            name?: string | null; projectName?: string | null; seatNumber?: number | null; paidAmount?: number | null; freeVotes?: number | null;
+        }[];
+    } | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -107,6 +126,10 @@ export interface Candidate {
     review: { status: ReviewStatus; reason?: string; at?: string };
     profileUpdatedAt: string;
     statusHistory: StatusChange[];
+    // Phase 2
+    votes?: { free: number; paid: number; paidAmount: number };
+    rank?: number | null;
+    publishedAt?: string | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -181,17 +204,19 @@ export interface ImpactApiError {
     status?: number;
     /** `details.field` / `details.fields` of the answer, as a list. */
     fields: string[];
+    /** The answer's `details`, as sent (PROFILES_TO_REVIEW candidates, TOP 3 blockers…). */
+    details?: Record<string, unknown>;
 }
 
 /** The backend's own answer to a failed call (code, French message, fields). */
 export function readImpactError(err: unknown, fallback = 'L’action a échoué.'): ImpactApiError {
     if (axios.isAxiosError(err)) {
-        const data = (err.response?.data ?? {}) as { message?: string; code?: string; details?: { field?: string; fields?: string[] } };
+        const data = (err.response?.data ?? {}) as { message?: string; code?: string; details?: { field?: string; fields?: string[]; [k: string]: unknown } };
         const fields = Array.isArray(data.details?.fields)
             ? data.details!.fields!.map(String)
             : data.details?.field ? [String(data.details.field)] : [];
         const message = data.message || (err.response ? fallback : 'Le serveur ne répond pas. Vérifiez la connexion, puis réessayez.');
-        return { message, code: data.code, status: err.response?.status, fields };
+        return { message, code: data.code, status: err.response?.status, fields, ...(data.details ? { details: data.details } : {}) };
     }
     if (err instanceof Error && err.message) return { message: err.message, fields: [] };
     return { message: fallback, fields: [] };
@@ -346,6 +371,22 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
     'candidate.reinstated': 'Candidat rétabli',
     'candidate.disqualified': 'Candidat disqualifié',
     'candidate.withdrawn': 'Candidature retirée',
+    // Phase 2
+    'edition.competition_started': 'Compétition lancée (profils publiés)',
+    'edition.stage_advanced': 'Passage à l’étape suivante',
+    'edition.top3_decided': 'TOP 3 désigné',
+    'round.scheduled': 'Dates du vote programmées',
+    'round.opened': 'Vote ouvert',
+    'round.closed': 'Vote clos',
+    'submission.video_submitted': 'Vidéo déposée',
+    'submission.project_submitted': 'Projet déposé',
+    'submission.accept': 'Contenu validé et publié',
+    'submission.reject': 'Contenu refusé',
+    'submission.resubmit': 'Nouvelle version demandée',
+    'submission.external_url': 'Lien de publication modifié',
+    'vote.purchase_started': 'Achat de votes lancé',
+    'vote.late_refund': 'Paiement tardif remboursé',
+    'vote.refunded_by_admin': 'Achat remboursé par l’administration',
 };
 
 export const auditActionLabel = (action: string) => AUDIT_ACTION_LABELS[action] ?? action;
@@ -392,6 +433,14 @@ const FIELD_LABELS: Record<string, string> = {
     showcaseMonths: 'durée SBC Impact',
     categories: 'catégories',
     profileFields: 'questions du profil',
+    freeVote: 'règles du vote gratuit',
+    paidSelfVote: 'vote payant pour soi-même',
+    balancePayment: 'paiement par le solde SBC',
+    settlementGraceMin: 'délai de confirmation des paiements',
+    'rounds.FREE.opensAt': 'ouverture du vote gratuit',
+    'rounds.FREE.closesAt': 'fin du vote gratuit',
+    'rounds.PAID.opensAt': 'ouverture des votes payants',
+    'rounds.PAID.closesAt': 'fin des votes payants',
 };
 
 /** "settings.maxCandidates" → "nombre de candidats" (unknown keys as they are). */
@@ -406,6 +455,7 @@ export const editionRank = (s: EditionStatus) => RANK.indexOf(s);
 export const QUALIFICATION_LOCKED = ['maxCandidates', 'invitationsRequired', 'waitlistSize', 'categories', 'profileFields'] as const;
 export const COMPETITION_LOCKED = [
     'finalistsCount', 'votePrice', 'votePacks', 'weights', 'juryCriteria', 'ticketTiers', 'prizeCooldownDays', 'showcaseMonths',
+    'freeVote', 'paidSelfVote', 'balancePayment', 'settlementGraceMin',
 ] as const;
 
 export type LockableField =
@@ -467,3 +517,302 @@ export function photoUrl(fileId?: string | null, width?: number): string {
     if (/^https?:\/\//i.test(fileId)) return fileId;
     return `${fileProxyUrl(fileId)}${width ? `?w=${width}` : ''}`;
 }
+
+// =====================================================================
+// Phase 2: weeks 1–3, contents, votes, TOP 3 (docs/impact-challenge/PHASE2.md)
+// =====================================================================
+
+export type Stage = 'WEEK1' | 'WEEK2' | 'WEEK3' | 'TOP3';
+export type RoundKey = 'FREE' | 'PAID';
+export type RoundStatus = 'SCHEDULED' | 'OPEN' | 'CLOSED';
+
+export interface Round {
+    status: RoundStatus;
+    opensAt?: string | null;
+    closesAt?: string | null;
+    openedAt?: string | null;
+    closedAt?: string | null;
+}
+
+/** The week a round belongs to: it opens only then (backend ROUND_STAGE). */
+export const ROUND_STAGE: Record<RoundKey, Stage> = { FREE: 'WEEK2', PAID: 'WEEK3' };
+
+export type SubmissionKind = 'VIDEO' | 'PROJECT';
+export type SubmissionStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'RESUBMIT_REQUESTED';
+
+export interface ProjectContent {
+    problem: string; solution: string; howItWorks: string; targetCustomers: string;
+    businessModel: string; expectedImpact: string; fundingUse: string; outlook: string;
+    videoFileId?: string;
+}
+
+export interface Submission {
+    _id: string;
+    candidateId: string;
+    kind: SubmissionKind;
+    version: number;
+    status: SubmissionStatus;
+    video?: { videoFileId: string; caption?: string };
+    project?: ProjectContent;
+    review: { reason: string | null; at: string } | null;
+    publishedAt: string | null;
+    externalUrl: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export type SubmissionRow = Submission & {
+    candidate: { name: string; projectName: string; photoFileId: string; seatNumber?: number; status: CandidateStatus } | null;
+};
+
+export type PurchaseStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
+export type PayMethod = 'MOBILE_MONEY' | 'BALANCE';
+
+export interface Purchase {
+    _id: string;
+    candidateId: string;
+    votes: number;
+    amount: number;
+    method: PayMethod;
+    status: PurchaseStatus;
+    /** The votes are in the candidate's total. */
+    counted: boolean;
+    /** Paid too late (or refunded by the administration): never counted. */
+    lateSettlement: boolean;
+    paymentSessionId: string | null;
+    /** Set once a refund started; `at` once it is done. */
+    refund: { reason: string; at: string | null } | null;
+    createdAt: string;
+    settledAt: string | null;
+}
+
+export type PurchaseRow = Purchase & {
+    userId: string;
+    buyerName: string | null;
+    candidateName: string | null;
+    flags: string[];
+    refundUncertain: boolean;
+    providerStatus: string | null;
+};
+
+export interface PurchaseList {
+    items: PurchaseRow[];
+    total: number;
+    page: number;
+    limit: number;
+    totals: {
+        byStatus: Partial<Record<PurchaseStatus, { count: number; amount: number; votes: number; countedVotes: number }>>;
+        revenue: number;
+        countedVotes: number;
+        /** Purchases whose refund could not be confirmed (whole edition, not filtered). */
+        uncertainRefunds: number;
+    };
+}
+
+export interface FreeVoteRow { _id: string; candidateId: string; candidateName: string | null; voterUserId: string; voterName: string | null; at: string }
+export interface FreeVoteList { items: FreeVoteRow[]; total: number; page: number; limit: number }
+
+type AnomalyBuyer = { userId: string; buyerName: string | null; candidateName: string | null };
+
+export interface Anomalies {
+    freeVotes: {
+        sharedNetworks: { network: string; voters: number; candidates: number }[];
+        sharedDevices: { device: string; voters: number }[];
+        bursts: { candidateId: string; candidateName: string | null; at: string; votes: number }[];
+    };
+    paidVotes: {
+        topBuyers: { userId: string; name: string | null; amount: number; votes: number; purchases: number; candidates: number }[];
+        flagged: (Purchase & AnomalyBuyer & { flags: string[]; providerStatus: string | null })[];
+        uncertainRefunds: (Purchase & AnomalyBuyer)[];
+    };
+}
+
+export interface Top3Row {
+    candidateId: string;
+    /** May be null on a podium frozen before names were stored. */
+    name: string | null;
+    projectName: string | null;
+    seatNumber?: number | null;
+    status: CandidateStatus;
+    paidVotes: number;
+    paidAmount: number | null;
+    freeVotes: number | null;
+    /** When the candidate reached their total (time of their last counted vote): breaks ties. */
+    lastPaidAt: string | null;
+    rank: number;
+    finalist: boolean;
+}
+
+export interface Top3Preview {
+    ranking: Top3Row[];
+    finalistsCount: number;
+    tieAtCut: boolean;
+    /** `until` (PAYMENTS_SETTLING): when the confirmation delay ends. */
+    blockers: { code: string; message: string; until?: string }[];
+    flaggedPurchases: number;
+    decided: boolean;
+    decidedAt?: string | null;
+}
+
+// ---------- Calls ----------
+
+export const launchCompetition = async (id: string): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/launch-competition`), 'La compétition n’a pas pu être lancée.');
+
+export const advanceStage = async (id: string): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/advance-stage`), 'L’étape suivante n’a pas pu commencer.');
+
+export const scheduleRound = async (id: string, key: RoundKey, body: { opensAt: string; closesAt: string }): Promise<Edition> =>
+    unwrap(await apiClient.put(`${BASE}/editions/${id}/rounds/${key}`, body), 'Les dates du vote n’ont pas pu être enregistrées.');
+
+export const openRoundNow = async (id: string, key: RoundKey): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/rounds/${key}/open`), 'Le vote n’a pas pu être ouvert.');
+
+export const closeRoundNow = async (id: string, key: RoundKey, reason: string): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/rounds/${key}/close`, { reason }), 'Le vote n’a pas pu être clos.');
+
+/**
+ * The ranking (a plain read), or the frozen podium once decided. `recount`
+ * recounts the votes from the ledgers first (« Recompter »); the decision
+ * always recounts on the server.
+ */
+export const getTop3 = async (id: string, opts: { recount?: boolean } = {}): Promise<Top3Preview> =>
+    unwrap(await apiClient.get(`${BASE}/editions/${id}/top3`, opts.recount ? { params: { recount: 1 } } : undefined), 'Impossible de charger le classement.');
+
+/** Needs the admin's code (the apiClient interceptor asks for it). `expectedOrder` = the ids in the order shown. */
+export const decideTop3 = async (id: string, expectedOrder: string[]): Promise<{ edition: Edition; ranking: Top3Row[] }> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/top3`, { expectedOrder }), 'Le TOP 3 n’a pas pu être désigné.');
+
+export const listSubmissions = async (id: string, q: { kind?: SubmissionKind | ''; status?: SubmissionStatus | '' } = {}): Promise<SubmissionRow[]> => {
+    const params: Record<string, string> = {};
+    if (q.kind) params.kind = q.kind;
+    if (q.status) params.status = q.status;
+    return unwrap(await apiClient.get(`${BASE}/editions/${id}/submissions`, { params }), 'Impossible de charger les contenus.') ?? [];
+};
+
+export const reviewSubmission = async (
+    id: string,
+    body: { decision: 'accept' | 'reject' | 'resubmit'; reason?: string; updatedAt?: string },
+): Promise<Submission> =>
+    unwrap(await apiClient.post(`${BASE}/submissions/${id}/review`, body), 'La décision n’a pas pu être enregistrée.');
+
+/** https, or '' to remove the link. */
+export const setSubmissionExternalUrl = async (id: string, externalUrl: string): Promise<Submission> =>
+    unwrap(await apiClient.patch(`${BASE}/submissions/${id}`, { externalUrl }), 'Le lien n’a pas pu être enregistré.');
+
+export const listFreeVotes = async (id: string, q: { candidateId?: string; page?: number; limit?: number } = {}): Promise<FreeVoteList> => {
+    const params: Record<string, string | number> = {};
+    if (q.candidateId) params.candidateId = q.candidateId;
+    if (q.page) params.page = q.page;
+    if (q.limit) params.limit = q.limit;
+    return unwrap(await apiClient.get(`${BASE}/editions/${id}/free-votes`, { params }), 'Impossible de charger les votes gratuits.');
+};
+
+export interface PurchaseQuery {
+    status?: PurchaseStatus | '';
+    method?: PayMethod | '';
+    candidateId?: string;
+    flagged?: boolean;
+    refundUncertain?: boolean;
+    page?: number;
+    limit?: number;
+}
+
+export const listPurchases = async (id: string, q: PurchaseQuery = {}): Promise<PurchaseList> => {
+    const params: Record<string, string | number> = {};
+    if (q.status) params.status = q.status;
+    if (q.method) params.method = q.method;
+    if (q.candidateId) params.candidateId = q.candidateId;
+    if (q.flagged) params.flagged = 1;
+    if (q.refundUncertain) params.refundUncertain = 1;
+    if (q.page) params.page = q.page;
+    if (q.limit) params.limit = q.limit;
+    return unwrap(await apiClient.get(`${BASE}/editions/${id}/purchases`, { params }), 'Impossible de charger les achats de votes.');
+};
+
+/** Needs the admin's code (the apiClient interceptor asks for it). The buyer reads `reason`. */
+export const refundPurchase = async (purchaseId: string, reason: string): Promise<Purchase & { refundCompleted: boolean }> =>
+    unwrap(await apiClient.post(`${BASE}/purchases/${purchaseId}/refund`, { reason }), 'Le remboursement a échoué.');
+
+export const getAnomalies = async (id: string): Promise<Anomalies> =>
+    unwrap(await apiClient.get(`${BASE}/editions/${id}/anomalies`), 'Impossible de charger les anomalies.');
+
+/** Reads a JSON error sent back as a Blob (responseType: 'blob'). */
+async function blobError(err: unknown, fallback: string): Promise<Error> {
+    const data = (err as { response?: { data?: unknown } })?.response?.data;
+    if (data instanceof Blob) {
+        try {
+            const body = JSON.parse(await data.text());
+            if (typeof body?.message === 'string') return new Error(body.message);
+        } catch { /* not JSON */ }
+    }
+    return new Error(impactErrorMessage(err, fallback));
+}
+
+/** The official candidates as CSV, downloaded through apiClient (admin token attached). */
+export async function downloadCandidatesCsv(id: string): Promise<void> {
+    let res;
+    try {
+        res = await apiClient.get(`${BASE}/editions/${id}/candidates.csv`, { responseType: 'blob' });
+    } catch (err) {
+        throw await blobError(err, 'L’export n’a pas pu être téléchargé.');
+    }
+    const disposition = String(res.headers?.['content-disposition'] ?? '');
+    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+    const filename = match ? decodeURIComponent(match[1]) : 'candidats-sbc-impact.csv';
+    const url = URL.createObjectURL(res.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ---------- Labels ----------
+
+export const STAGE_LABELS: Record<Stage, string> = {
+    WEEK1: 'Semaine 1 · Présentation',
+    WEEK2: 'Semaine 2 · Vidéo et vote gratuit',
+    WEEK3: 'Semaine 3 · Projet et votes payants',
+    TOP3: 'TOP 3',
+};
+
+export const ROUND_LABELS: Record<RoundKey, string> = { FREE: 'Vote gratuit', PAID: 'Votes payants' };
+export const ROUND_STATUS_LABELS: Record<RoundStatus, string> = { SCHEDULED: 'Programmé', OPEN: 'Ouvert', CLOSED: 'Clos' };
+
+export const SUBMISSION_KIND_LABELS: Record<SubmissionKind, string> = { VIDEO: 'Vidéo « Ma vision de SBC »', PROJECT: 'Présentation du projet' };
+export const SUBMISSION_STATUS_LABELS: Record<SubmissionStatus, string> = {
+    PENDING: 'À valider',
+    ACCEPTED: 'Validé et publié',
+    REJECTED: 'Refusé',
+    RESUBMIT_REQUESTED: 'Nouvelle version demandée',
+};
+
+/** The 8 headings of the project presentation (spec §7), in order, worded as the backend's. */
+export const PROJECT_HEADINGS: [keyof Omit<ProjectContent, 'videoFileId'>, string][] = [
+    ['problem', 'Le problème'],
+    ['solution', 'La solution'],
+    ['howItWorks', 'Le fonctionnement'],
+    ['targetCustomers', 'La clientèle cible'],
+    ['businessModel', 'Le modèle économique'],
+    ['expectedImpact', 'L’impact attendu'],
+    ['fundingUse', 'L’utilisation d’un éventuel financement'],
+    ['outlook', 'Les perspectives de développement'],
+];
+
+export const PURCHASE_STATUS_LABELS: Record<PurchaseStatus, string> = {
+    PENDING: 'En attente',
+    SUCCESS: 'Payé',
+    FAILED: 'Échoué',
+    CANCELLED: 'Annulé',
+    REFUNDED: 'Remboursé',
+};
+
+export const PAY_METHOD_LABELS: Record<PayMethod, string> = { MOBILE_MONEY: 'Mobile Money', BALANCE: 'Solde SBC' };
+
+const FLAG_LABELS: Record<string, string> = {
+    AMOUNT_MISMATCH: 'Montant payé différent',
+};
+export const flagLabel = (f: string) => FLAG_LABELS[f] ?? f;
