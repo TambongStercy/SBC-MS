@@ -87,9 +87,10 @@ const MATRIX: Record<Permission, Role[]> = {
     'identity.review': [A, FA, FM, VS, SA],
     // Session replay (2026-11-23): a member's recordings and live screen, from the member card.
     'replay.read': [A, FA, FM, VS, SA],
-    // Live assistance with remote control (2026-11-23): support administrators only. The member
-    // still has to accept every control request, and sensitive screens refuse it.
-    'assist.control': [SA],
+    // Live assistance with remote control (2026-11-23): support agents and support administrators
+    // (agents added the same day, user's call). The member still has to accept every control
+    // request, and sensitive screens refuse it.
+    'assist.control': [A, SA],
 };
 
 // The super manager can do everything a finance manager can (plus approvals.override).

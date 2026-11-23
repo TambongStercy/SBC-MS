@@ -2121,7 +2121,7 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   (passwords, codes, authenticator key/QR, backup codes and identity photos never recorded) and
   sends the session with each ticket (« Revoir la session », audited `ticket.replay.opened`).
   The member page has « Sessions » (`replay.read`, audited list and openings; « Regarder » live =
-  watch-only grant) and, for support administrators (`assist.control`), « Assistance en direct »
+  watch-only grant) and, for support agents and administrators (`assist.control`), « Assistance en direct »
   (also on tickets): a 30-min desk grant that allows asking for control (`assistgrants`, audited
   `assist.started`/`ended`). The member app asks `GET /me/assist/grant` before showing the viewing
   prompt and the control prompt, the member must accept each (policy section 13), and

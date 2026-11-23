@@ -80,7 +80,7 @@ describe('member sessions on the desk (OpenReplay)', () => {
 
 describe('live assistance (remote control) from the desk', () => {
     it('only an agent with assist.control opens it; the member app sees the grant for that agent only, until it ends', async () => {
-        const plain = await login(await makeAgent(['support_agent']));
+        const plain = await login(await makeAgent(['finance_agent'], { email: 'agent-support@agents.test' }));
         expect((await desk('post', `/members/${MEMBER}/assist`, plain)).status).toBe(403);
         // the refusal is audited (written in the background)
         let denied = 0;
