@@ -60,6 +60,10 @@ const main = async () => {
     // Not counted: paid before the window, upgraded during it (first pack is what counts).
     const old = await user(); await refer(cand, old, 1, new Date('2026-10-01'));
     await sub(old, SubscriptionType.CLASSIQUE, new Date('2026-10-02')); await sub(old, SubscriptionType.CIBLE, day(4));
+    // Not counted: an old pack stored without `category` (older rows), upgraded during the window.
+    const legacy = await user(); await refer(cand, legacy, 1, new Date('2025-01-01'));
+    await SubscriptionModel.collection.insertOne({ user: legacy, subscriptionType: SubscriptionType.CLASSIQUE, status: SubscriptionStatus.ACTIVE, startDate: new Date('2025-01-02'), endDate: new Date('9999-12-31'), createdAt: new Date('2025-01-02'), updatedAt: new Date('2025-01-02') });
+    await sub(legacy, SubscriptionType.CIBLE, day(6));
     // Not counted: paid after the window.
     const late = await user(); await refer(cand, late); await sub(late, SubscriptionType.CLASSIQUE, new Date('2027-01-02'));
     // Not counted: level 2.

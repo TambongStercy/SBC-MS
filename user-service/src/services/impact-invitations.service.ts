@@ -1,8 +1,6 @@
 import { Types } from 'mongoose';
 import ReferralModel from '../database/models/referral.model';
-import SubscriptionModel, {
-    SubscriptionCategory, SubscriptionStatus, SubscriptionType,
-} from '../database/models/subscription.model';
+import SubscriptionModel, { SubscriptionStatus, SubscriptionType } from '../database/models/subscription.model';
 import UserModel from '../database/models/user.model';
 
 /**
@@ -49,8 +47,9 @@ const firstMembership = async (userIds: Types.ObjectId[]) => {
         {
             $match: {
                 user: { $in: userIds },
+                // By type only, like referral-stats: CLASSIQUE/CIBLE are always the
+                // membership, and older rows carry no `category`.
                 subscriptionType: { $in: MEMBERSHIP_TYPES },
-                category: SubscriptionCategory.REGISTRATION,
                 status: { $ne: SubscriptionStatus.CANCELLED },
             },
         },
@@ -99,7 +98,6 @@ export const invitationStats = async (args: {
         const recent = await SubscriptionModel.find({
             _id: { $gte: Types.ObjectId.createFromTime(Math.floor(args.changedSince.getTime() / 1000)) },
             subscriptionType: { $in: MEMBERSHIP_TYPES },
-            category: SubscriptionCategory.REGISTRATION,
         }).select('user').lean();
         if (recent.length === 0) return [];
         const changed = await ReferralModel.distinct('referrer', {
