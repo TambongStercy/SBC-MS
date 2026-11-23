@@ -36,6 +36,15 @@ export const robotCheckMode = (): RobotMode => {
     const m = String(process.env.ROBOT_CHECK || 'off').toLowerCase();
     return m === 'enforce' ? 'enforce' : m === 'log' ? 'log' : 'off';
 };
+/**
+ * ROBOT_CHECK_ENFORCE=login,signup (2026-11-23): with ROBOT_CHECK=log, refuse only these actions
+ * (sign-up no longer asks for an e-mailed code, so the robot check is what stops scripted sign-ups);
+ * the others stay counted only. ROBOT_CHECK=enforce refuses every action as before.
+ */
+export const enforcedActions = (): Set<string> =>
+    new Set(String(process.env.ROBOT_CHECK_ENFORCE || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean));
+export const refusesAction = (mode: RobotMode, action: string): boolean =>
+    mode === 'enforce' || (mode === 'log' && enforcedActions().has(action));
 const hmacKey = () => process.env.ALTCHA_HMAC_KEY || '';
 export const robotCheckReady = () => hmacKey().length >= 32;
 /** Work asked of the browser: the answer is a random counter in [min, max] (SHA-256, one round each). */
@@ -192,7 +201,7 @@ export const robotCheck = async (req: Request, res: Response, next: NextFunction
     let outcome: RobotOutcome = 'malformed';
     try { outcome = await checkAnswer(header(req, 'x-sbc-altcha')); } catch { outcome = 'malformed'; }
     try { count(req, action, outcome, memberOf(req)); } catch { /* counting never blocks */ }
-    if (mode === 'enforce' && outcome !== 'valid') {
+    if (outcome !== 'valid' && refusesAction(mode, action)) {
         robotStats.refused++;
         return res.status(403).json({ success: false, code: 'ROBOT_CHECK_FAILED', message: 'La vérification de sécurité a échoué. Rechargez la page puis réessayez.' });
     }

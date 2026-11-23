@@ -10,6 +10,7 @@ import { effectivePermissions } from '../config/admin-modules';
 import { userRepository } from '../database/repositories/user.repository';
 import { PopulatedReferredUserInfo, referralRepository, ReferralStatsResponse } from '../database/repositories/referral.repository';
 import { signToken } from '../utils/jwt';
+import { codeFreeAccess, needsEmailVerification } from './email-verification.service';
 import { generateReferralCode } from '../utils/referral.utils';
 import { maskEmail, maskPhone } from '../utils/mask-email';
 import { Types, FilterQuery, FlattenMaps } from 'mongoose';
@@ -176,6 +177,7 @@ interface AdminDashboardData {
 // Inherit from the OMITTED type to match mapUserToResponse
 interface IUserProfileResponse extends Omit<IUser, 'password' | 'otps' | 'contactsOtps' | 'token'> {
     activeSubscriptions?: string[];
+    emailVerificationRequired?: boolean;
     totalBenefits?: number;
 }
 
@@ -229,7 +231,7 @@ export const toPlainPermissions = (p: unknown): Record<string, unknown> =>
 export class UserService {
     private subscriptionRepository = subscriptionRepository; // Inject repository
 
-    private isValidEmailDomain(email: string) {
+    isValidEmailDomain(email: string) {
         const emailRegex = /@(gmail|outlook|hotmail|yahoo|icloud|aol|protonmail|zoho|mail|gmx|yandex|fastmail|tutanota|me|mac|live|msn)\.(com|net|org|ru|de|uk|fr|ca|au|in|it|es|br)$/i;
         return config.nodeEnv === 'development' ? true : emailRegex.test(email);
     }
@@ -239,7 +241,7 @@ export class UserService {
         registrationData: IRegistrationData,
         ipAddress?: string
         // No longer returns token directly
-    ): Promise<{ message: string; userId: string }> {
+    ): Promise<{ message: string; userId: string; token?: string }> {
         // Extract both possible referrer fields and the rest of the user data
         const { referrerCode, referralCode: frontendBugReferralCode, ...userDataWithoutReferrerInfo } = registrationData;
 
@@ -373,6 +375,14 @@ export class UserService {
         }
         // --- End Transaction Recovery ---
 
+        // Email verified after payment (services/email-verification.service.ts): a member sign-up
+        // opens the session at once, no code. Annonceurs and SIGNUP_EMAIL_CODE=at_signup keep the code.
+        if (await codeFreeAccess(newUser as any)) {
+            const token = await this.issueSessionToken(newUser);
+            this.sendWelcome(newUser, referrer);
+            return { message: 'Registration successful.', userId: newUser._id.toString(), token };
+        }
+
         // --- Trigger OTP Generation --- 
         try {
             await this.issueAccountAccessOtp(newUser, { isRegistration: true });
@@ -384,7 +394,18 @@ export class UserService {
         }
         // --- End OTP Generation ---
 
-        // --- Send Welcome Email (non-blocking) ---
+        this.sendWelcome(newUser, referrer);
+
+        // Don't generate JWT here anymore.
+        // Return success message and userId to indicate OTP step is next.
+        return {
+            message: 'Registration successful. Please verify your account with the OTP sent.',
+            userId: newUser._id.toString()
+        };
+    }
+
+    /** Welcome e-mail after sign-up (non-blocking). */
+    private sendWelcome(newUser: IUser, referrer: IUser | null | undefined): void {
         try {
             notificationService.sendWelcomeEmail({
                 email: newUser.email,
@@ -397,14 +418,13 @@ export class UserService {
             log.error(`Failed to send welcome email to ${newUser.email}:`, welcomeError);
             // Non-critical, continue
         }
-        // --- End Welcome Email ---
+    }
 
-        // Don't generate JWT here anymore.
-        // Return success message and userId to indicate OTP step is next.
-        return {
-            message: 'Registration successful. Please verify your account with the OTP sent.',
-            userId: newUser._id.toString()
-        };
+    /** A session token, stored on the account as the code step does (without marking the email verified). */
+    async issueSessionToken(user: Pick<IUser, '_id' | 'email' | 'role'>): Promise<string> {
+        const token = signToken({ userId: user._id, id: user._id, email: user.email, role: user.role });
+        await userRepository.updateById(user._id, { token });
+        return token;
     }
 
     /**
@@ -482,7 +502,7 @@ export class UserService {
         passwordAttempt?: string,
         ipAddress?: string
         // No longer returns token directly
-    ): Promise<{ message: string; userId: string; otpSent: boolean; otpRetryAfterSeconds: number }> {
+    ): Promise<{ message: string; userId: string; otpSent: boolean; otpRetryAfterSeconds: number; token?: string }> {
         // Validate input parameters
         if ((!email && !phoneNumber) || !passwordAttempt) { 
             throw new Error('Email or phone number and password are required'); 
@@ -539,6 +559,12 @@ export class UserService {
 
         // Update IP Address (async)
         if (ipAddress && ipAddress !== user.ipAddress) { /* ... IP update logic ... */ }
+
+        // Unpaid and unverified (services/email-verification.service.ts): the password is enough.
+        if (await codeFreeAccess(user)) {
+            const token = await this.issueSessionToken(user);
+            return { message: 'Signed in.', userId: user._id.toString(), otpSent: false, otpRetryAfterSeconds: 0, token };
+        }
 
         // --- Trigger OTP Generation ---
         // A throttled login is NOT refused: the password was right and the user was
@@ -600,7 +626,9 @@ export class UserService {
                 ...userResponse,
                 activeSubscriptions: activeSubscriptions.length > 0 ? activeSubscriptions as string[] : undefined,
                 totalBenefits: totalBenefits,
-                partnerPack: activePartner ? activePartner.pack : undefined // Add partnerPack
+                partnerPack: activePartner ? activePartner.pack : undefined, // Add partnerPack
+                // Paid but email never verified (sign-ups from 2026-11-23): the app blocks on « Vérifiez votre e-mail ».
+                emailVerificationRequired: needsEmailVerification(user as any, activeSubscriptions.length),
             };
 
             return extendedResponse;

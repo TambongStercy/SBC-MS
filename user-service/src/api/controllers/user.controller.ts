@@ -34,6 +34,7 @@ import { riskEvent } from '../../utils/risk-event';
 import { recordCodeStep, recordPasswordStep, signinContext } from '../../services/signin-attempts.service';
 import { PRIVACY_POLICY_VERSION } from '../../config/privacy';
 import { markSignupCompleted, markSignupWrongCode, recordSignupAttempt, signupContext } from '../../services/signup-attempts.service';
+import { confirmEmailVerification, correctUnverifiedEmail, requestEmailVerification } from '../../services/email-verification.service';
 
 /** Fire-and-forget: one login in the day's signals (headers set by nginx / the gateway). */
 function recordLogin(userId: string, req: Request): void {
@@ -908,8 +909,17 @@ export class UserController {
             // Temporarily disabled to avoid conflicts with existing recovery mechanism
             // this.processUserRecovery(result.userId, registrationData.email, registrationData.phoneNumber);
 
-            res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
+            const token = (result as any).token as string | undefined;
+            if (token) {
+                // No code at sign-up (email verified after payment): the session opens now.
+                const user = await this.startSession(req, result.userId, token);
+                res.status(200).json({ success: true, data: { message: result.message, userId: result.userId, token, user } });
+                recordLogin(String(result.userId), req);
+            } else {
+                res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
+            }
             recordSignupAttempt(signup, { userId: result.userId });
+            if (token) markSignupCompleted(String(result.userId));
             // Security plan Phases 4 and 8: fraud engine (sign-up bursts) and KYC level 1, in the background.
             // The network (/24 + user agent) and device go along only once the member accepted the
             // policy that announces these signals (as Phase 1); risk-service keeps them as HMACs.
@@ -975,6 +985,14 @@ export class UserController {
             
             // Now returns { message, userId }
             const result = await this.userService.loginUser(email, normalizedPhone || '', password, req.ip);
+            if (result.token) {
+                // Unpaid and unverified account: the password is enough (email verified after payment).
+                const user = await this.startSession(req, result.userId, result.token);
+                res.status(200).json({ success: true, data: { message: result.message, userId: result.userId, otpSent: false, token: result.token, user } });
+                recordPasswordStep(signin, normalizedPhone || email || typed(), 'signed_in', result.userId);
+                recordLogin(String(result.userId), req);
+                return;
+            }
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
             recordPasswordStep(signin, normalizedPhone || email || typed(), 'code_sent', (result as any)?.userId ? String((result as any).userId) : null);
         } catch (error: any) {
@@ -1042,6 +1060,29 @@ export class UserController {
                 res.status(401).json({ success: false, message: error.message });
             }
         }
+    }
+
+    /** What the code step does once a session is granted: device key, sign-in date, profile. */
+    private async startSession(req: Request, userId: string, token: string) {
+        await bindAtSignIn(token, String(userId), req.body?.devicePublicKey, req.header('x-sbc-device'));
+        await noteSignIn(String(userId), { country: req.header('x-sbc-geo'), deviceId: req.header('x-sbc-device') });
+        return this.userService.getUserProfile(String(userId));
+    }
+
+    /** @route POST /users/me/verify-email/request — the code to the account's email (after payment). */
+    async requestEmailVerification(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'Le code n’a pas pu être envoyé. Réessayez.', id => requestEmailVerification(id));
+    }
+
+    /** @route POST /users/me/verify-email/confirm { code } */
+    async confirmEmailVerification(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'La vérification a échoué. Réessayez.', id => confirmEmailVerification(id, req.body?.code));
+    }
+
+    /** @route POST /users/me/verify-email/correct { email, password } — only while never verified. */
+    async correctUnverifiedEmail(req: AuthenticatedRequest, res: Response): Promise<void> {
+        return this.memberAction(req, res, 'L’adresse n’a pas pu être corrigée. Réessayez.',
+            id => correctUnverifiedEmail(id, req.body || {}, (e: string) => this.userService.isValidEmailDomain(e)));
     }
 
     /**

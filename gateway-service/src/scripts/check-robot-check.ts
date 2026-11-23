@@ -130,6 +130,16 @@ const main = async () => {
     const torRow = [...bc._automationBuffer.values()].find(x => x.userId === U2);
     check('Tor on a protected action → feed tor: 1 (unprotected route and a normal country ignored)', torRow?.tor === 1, JSON.stringify(torRow));
 
+    // ---- log + enforce only sign-in / sign-up (ROBOT_CHECK_ENFORCE, 2026-11-23) ----
+    process.env.ROBOT_CHECK = 'log';
+    process.env.ROBOT_CHECK_ENFORCE = 'login, signup';
+    check('per action: missing answer on sign-in → 403', (await post('/api/users/login')).status === 403);
+    check('per action: missing answer on sign-up → 403', (await post('/api/users/register')).status === 403);
+    check('per action: other protected actions stay counted only', (await post('/api/users/request-change-email')).status === 200);
+    const s4 = await solve();
+    check('per action: valid answer on sign-up passes', (await post('/api/users/register', { 'X-SBC-Altcha': s4.header })).status === 200);
+    delete process.env.ROBOT_CHECK_ENFORCE;
+
     // ---- enforce ----
     process.env.ROBOT_CHECK = 'enforce';
     r = await post('/api/users/login');

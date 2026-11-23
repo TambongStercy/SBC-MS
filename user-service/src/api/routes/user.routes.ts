@@ -353,6 +353,10 @@ router.post('/request-change-phone', (req, res, next) => userController.requestC
 // COMPLETE Phone Change (Authenticated, rate limited)
 router.post('/confirm-change-phone', mediumLimiter, (req, res, next) => userController.confirmChangePhone(req as AuthenticatedRequest, res, next));
 // Mobile Money number that receives withdrawals: password + code to the account email (Security plan Phase 0).
+// Email verified after payment (services/email-verification.service.ts): no pack needed.
+router.post('/me/verify-email/request', strictLimiter, (req, res) => userController.requestEmailVerification(req as AuthenticatedRequest, res));
+router.post('/me/verify-email/confirm', strictLimiter, (req, res) => userController.confirmEmailVerification(req as AuthenticatedRequest, res));
+router.post('/me/verify-email/correct', strictLimiter, (req, res) => userController.correctUnverifiedEmail(req as AuthenticatedRequest, res));
 router.post('/me/momo/change', mediumLimiter, (req, res) => userController.changeMomo(req as AuthenticatedRequest, res));
 router.post('/me/momo/request-change', (req, res) => userController.retiredChangeCodeRoute(req as AuthenticatedRequest, res));
 router.post('/me/momo/confirm-change', (req, res) => userController.retiredChangeCodeRoute(req as AuthenticatedRequest, res));
