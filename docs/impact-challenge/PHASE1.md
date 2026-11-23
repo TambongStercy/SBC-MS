@@ -155,20 +155,20 @@ retry), `TOO_MANY_REQUESTS` (429, `details.retryAfterSeconds`). Server messages 
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /admin/editions` | — | `Edition[]` (newest first, 100) |
+| `GET /admin/editions` | — | `(Edition & { seatsTaken: number })[]` (newest first, 100) |
 | `POST /admin/editions` | `{ name, description?, rulesText?, schedule: { qualificationOpensAt, qualificationClosesAt, competitionStartsAt?, finalAt? }, settings? }` | `Edition` (`DRAFT`; missing settings take the defaults) |
 | `GET /admin/editions/:id` | — | `Edition` |
 | `PATCH /admin/editions/:id` | any of `name, description, rulesText, schedule.*, settings.*` (settings are merged, then validated whole) | `Edition`, or 409 `RULES_LOCKED` |
 | `POST /admin/editions/:id/open-qualification` | — | `Edition` (needs `rulesText` ≥ 200 chars; one live edition at a time) |
 | `POST /admin/editions/:id/close-qualification` | `{ reason }` (≥ 5) | `Edition` (the window ends now; the job closes within ~10 s) |
-| `POST /admin/editions/:id/cancel` | `{ reason }` (≥ 10) | `Edition` |
+| `POST /admin/editions/:id/cancel` | `{ reason }` (≥ 10) | `Edition` (candidates still in are notified) |
 | `POST /admin/editions/:id/recount` | — | `{ updated }` |
-| `GET /admin/editions/:id/candidates` | query `status`, `review`, `q`, `page`, `limit` (≤ 100) | `{ items: (Candidate & { belowRequirement: boolean })[], total, page, limit, byStatus: Record<status, n>, seats: { taken, max } }` (seats first, then waiting list, then by progress) |
+| `GET /admin/editions/:id/candidates` | query `status`, `review`, `q`, `below=1` (seat holders below the requirement), `page`, `limit` (≤ 100) | `{ items: (Candidate & { belowRequirement: boolean })[], total, page, limit, byStatus: Record<status, n>, belowRequirementCount, seats: { taken, max } }` (seats first in arrival order, then waiting list, then by progress) |
 | `POST /admin/editions/:id/candidates` | `ProfileInput & { userId, consent: true }` | `Candidate` (qualification only; the member still needs the invitations) |
-| `GET /admin/editions/:id/audit` | query `limit`, `before` | `AuditEntry[]` |
+| `GET /admin/editions/:id/audit` | query `limit`, `before` + `beforeId` (the `at` and `_id` of the last entry shown) | `AuditEntry[]` (newest first; the pair never skips lines written in the same millisecond) |
 | `GET /admin/candidates/:id` | — | `{ candidate, edition: { _id, name, status }, audit: AuditEntry[] }` |
 | `PATCH /admin/candidates/:id` | `{ profile: Partial<ProfileInput>, reason, profileUpdatedAt? }` | `Candidate` |
-| `POST /admin/candidates/:id/review` | `{ decision: 'approve' \| 'changes', reason? (≥ 10 for changes), profileUpdatedAt? }` | `Candidate` (409 `STALE` if the profile changed since `profileUpdatedAt`) |
+| `POST /admin/candidates/:id/review` | `{ decision: 'approve' \| 'changes', reason? (≥ 10 for changes), profileUpdatedAt? }` | `Candidate` (409 `STALE` if the profile changed since `profileUpdatedAt`; 409 `BAD_STATUS` for a disqualified or withdrawn candidate) |
 | `POST /admin/candidates/:id/suspend` | `{ reason }` (≥ 10) | `Candidate` |
 | `POST /admin/candidates/:id/reinstate` | `{ reason }` (≥ 5) | `Candidate` |
 | `POST /admin/candidates/:id/disqualify` | `{ reason }` (≥ 10) | `Candidate` (final; a freed seat goes to the waiting list) |
@@ -176,19 +176,24 @@ retry), `TOO_MANY_REQUESTS` (429, `details.retryAfterSeconds`). Server messages 
 `belowRequirement`: a seat holder whose count fell back below the requirement (a filleul's
 activation was reversed after the seat was given). The seat is kept; the admin decides.
 
-`Edition` (admin) = the stored document: `_id, name, slug, description, rulesText, status,
-statusHistory[], schedule, settings` (full, incl. prize `category`), `registrationClosedAt?,
-registrationClosedReason?, seatSeq, waitlistSeq, cancellation?, createdAt, updatedAt`.
+`Edition` (admin) = the stored document without the job's cursors: `_id, name, slug, description,
+rulesText, status, statusHistory[], schedule, settings` (full, incl. prize `category`),
+`registrationClosedAt?, registrationClosedReason?, seatSeq, waitlistSeq, cancellation?, createdBy,
+createdAt, updatedAt`.
 
-`AuditEntry` = `{ _id, editionId?, candidateId?, actorUserId, actorRole: 'admin'|'member'|'system',
-action, before?, after?, reason?, at }`.
+Admin error fields: `RULES_LOCKED` → `details.fields` (`settings.x`, `schedule.x`, `rulesText`);
+`INVALID_SCHEDULE` → `details.field` = `schedule.<key>`; `INVALID_SETTINGS` → `details.field` = the
+settings key (`weights`, `votePacks`…).
+
+`AuditEntry` = `{ _id, editionId?, candidateId?, actorUserId, actorName: string | null (admins only),
+actorRole: 'admin'|'member'|'system', action, before?, after?, reason?, at }`.
 
 ## Notifications (push + e-mail, opening `/impact-challenge/candidat`)
 
 `impact-unlocked` (spec text « Félicitations ! Tu as atteint les 10 invitations requises… » + seat
 n°), `impact-waitlisted`, `impact-promoted`, `impact-seats-full`, `impact-not-selected`,
 `impact-profile-approved` (« Candidature validée »), `impact-profile-changes`, `impact-suspended`,
-`impact-reinstated`, `impact-disqualified`. Only candidates receive them, so e-mail fits the mail
+`impact-reinstated`, `impact-disqualified`, `impact-edition-cancelled`. Only candidates receive them, so e-mail fits the mail
 server's budget.
 
 ## Scale
@@ -201,6 +206,6 @@ server's budget.
 ## Checks
 
 - user-service `src/scripts/check-impact-invitations.ts` (13 checks, local Mongo).
-- event-service `src/scripts/check-impact.ts` (57 checks, local Mongo, user-service and
+- event-service `src/scripts/check-impact.ts` (67 checks, local Mongo, user-service and
   notifications stubbed).
 - gateway `src/scripts/check-admin-permissions.ts` (impact admin paths → `impactChallenge`).

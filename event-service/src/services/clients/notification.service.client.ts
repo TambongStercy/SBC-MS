@@ -47,6 +47,7 @@ const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money'; c
     'impact-suspended': { url: '/impact-challenge/candidat', category: 'events' },
     'impact-reinstated': { url: '/impact-challenge/candidat', category: 'events' },
     'impact-disqualified': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-edition-cancelled': { url: '/impact-challenge/candidat', category: 'events' },
     'event-cancelled': { url: '/events/mes-billets', category: 'events' },
     'event-reminder': { url: '/events/mes-billets', category: 'events' },
     'refund-processed': { url: '/wallet', category: 'money' },

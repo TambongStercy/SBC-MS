@@ -41,6 +41,7 @@ const invitationCalls: { changedSince?: Date; ids: string[] }[] = [];
 };
 const sent: { kind: string; userId?: string }[] = [];
 (notificationClient as any).notifyUser = async (a: any) => { sent.push({ kind: a.kind, userId: a.userId }); return 1; };
+(userClient as any).getEventUserDetails = async (ids: string[]) => ids.map((id) => ({ _id: id, name: `Admin ${id.slice(-3)}` }));
 
 const ADMIN = { role: 'admin' as const, userId: new Types.ObjectId().toString() };
 const RULES = 'Règlement du SBC Impact Challenge. '.repeat(10);
@@ -144,6 +145,22 @@ const main = async () => {
     check('a newcomer cannot apply any more', (await refusal(() => candidates.apply(newMember(), profile('g'))))?.code === 'REGISTRATION_CLOSED');
     check('seat count is 3/3', (await seatHolders(e._id)) === 3);
 
+    // ---------- Admin list: order, filter, presenter ----------
+    const listed = await candidates.listCandidates(String(e._id), {});
+    const order = listed.items.map((i: any) => i.seatNumber ?? (i.waitlistRank ? `w${i.waitlistRank}` : '-')).join(',');
+    check('admin list: seats first in order, then the waiting list, then the rest', order.startsWith('1,2,3,w1'), order);
+    check('admin list: search with special characters does not break', (await candidates.listCandidates(String(e._id), { q: 'Projet (b' })).total === 0);
+    await ImpactCandidate.updateOne({ _id: cB!._id }, { $set: { 'invitations.valid': 1 } });
+    const below = await candidates.listCandidates(String(e._id), { below: '1' });
+    check('admin list: « below the requirement » filter and count', below.total === 1 && below.items[0].userId === B && below.belowRequirementCount === 1 && below.items[0].belowRequirement === true);
+    await ImpactCandidate.updateOne({ _id: cB!._id }, { $set: { 'invitations.valid': 2 } });
+    const shown = editions.adminEdition(await editions.getEdition(String(e._id)));
+    check('admin edition hides the job cursors', !('pollCursor' in shown) && !('lastFullRecountAt' in shown) && shown.name === e.name);
+    const all = await editions.listEditions();
+    check('editions list carries the seats taken', all.find((x: any) => String(x._id) === String(e._id))?.seatsTaken === 3);
+    const badDate = await refusal(() => editions.updateEdition(ADMIN, String(e._id), { schedule: { finalAt: 'pas une date' } }));
+    check('a bad date names its schedule key', badDate?.details?.field === 'schedule.finalAt', String(badDate?.details?.field));
+
     // ---------- A seat frees up: the waiting list moves up ----------
     check('disqualifying needs a reason', (await refusal(() => candidates.disqualify(ADMIN, String(cA!._id), { reason: 'non' })))?.code === 'REASON_REQUIRED');
     await candidates.disqualify(ADMIN, String(cA!._id), { reason: 'Profil frauduleux constaté' });
@@ -175,6 +192,8 @@ const main = async () => {
     check('the member’s edit sends the profile back to review', edited.review.status === ProfileReview.PENDING && edited.profile.projectName === 'Projet D, nouvelle version');
     check('the edit keeps the other fields', edited.profile.city === 'Douala');
 
+    check('a disqualified candidate’s profile cannot be reviewed', (await refusal(() => candidates.reviewProfile(ADMIN, String(cA!._id), { decision: 'approve' })))?.code === 'BAD_STATUS');
+
     // ---------- Withdrawal ----------
     await candidates.withdrawMine(D);
     check('a candidate can withdraw before the competition', (await cand(D))?.status === CandidateStatus.WITHDRAWN);
@@ -191,8 +210,29 @@ const main = async () => {
     const pub = await editions.currentPublic();
     check('public summary: seats and rules', pub?.seats.taken === 2 && pub?.rulesText === RULES && pub.registrationOpen === false);
 
-    // ---------- Closing by date, and the incremental poll ----------
+    // ---------- Journal: names and a cursor that never skips ----------
+    const firstPage = await candidates.editionAudit(String(e._id), { limit: 5 });
+    check('journal names the admin', firstPage.some((x: any) => x.actorRole === 'admin' && x.actorName === `Admin ${ADMIN.userId.slice(-3)}`));
+    // Five lines in the very same millisecond, as the job writes them.
+    const same = new Date();
+    await ImpactAudit.insertMany(Array.from({ length: 5 }, (_, i) => ({ editionId: e._id, actorRole: 'system', action: 'test.same_ms', reason: String(i), at: same })));
+    const seen = new Set<string>();
+    let cursor: any = {};
+    for (let i = 0; i < 50; i++) {
+        const pageRows = await candidates.editionAudit(String(e._id), { limit: 2, ...cursor });
+        if (!pageRows.length) break;
+        pageRows.forEach((r: any) => seen.add(String(r._id)));
+        const last = pageRows[pageRows.length - 1] as any;
+        cursor = { before: new Date(last.at).toISOString(), beforeId: String(last._id) };
+    }
+    check('paging the journal 2 by 2 returns every line once', seen.size === await ImpactAudit.countDocuments({ editionId: e._id }), `${seen.size}`);
+
+    // ---------- Cancelling tells the candidates still in ----------
+    sent.length = 0;
     await editions.cancelEdition(ADMIN, String(e._id), 'Fin du scénario de test');
+    check('cancelling notifies candidates still in the Challenge', kinds(B).includes('impact-edition-cancelled') && kinds(C).includes('impact-edition-cancelled') && !kinds(A).includes('impact-edition-cancelled'));
+
+    // ---------- Closing by date, and the incremental poll ----------
     const e2 = await editions.createEdition(ADMIN, {
         name: 'Édition test 2', rulesText: RULES,
         schedule: { qualificationOpensAt: hours(-2), qualificationClosesAt: hours(1) },

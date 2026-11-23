@@ -1,34 +1,42 @@
 import { Types } from 'mongoose';
 import { AppError } from '../../../utils/errors';
-import { IImpactEdition, ImpactEdition } from '../models';
+import { IImpactEdition, ImpactCandidate, ImpactEdition } from '../models';
 import {
-    COMPETITION_LOCKED, DEFAULT_SETTINGS, EditionSettings, EditionStatus, editionRank,
-    LIVE_EDITION_STATUSES, QUALIFICATION_LOCKED,
+    CandidateStatus, COMPETITION_LOCKED, DEFAULT_SETTINGS, EditionSettings, EditionStatus, editionRank,
+    LIVE_EDITION_STATUSES, QUALIFICATION_LOCKED, SEAT_LOST_STATUSES,
 } from '../types';
-import { Actor, audit, publicEdition, validateSettings } from '../lib';
+import { Actor, audit, notifyCandidate, publicEdition, validateSettings } from '../lib';
 import { seatHolders } from './qualification.service';
 
-const date = (v: unknown, field: string): Date => {
+type ScheduleKey = 'qualificationOpensAt' | 'qualificationClosesAt' | 'competitionStartsAt' | 'finalAt';
+const SCHEDULE_LABEL: Record<ScheduleKey, string> = {
+    qualificationOpensAt: 'ouverture de la qualification',
+    qualificationClosesAt: 'fin de la qualification',
+    competitionStartsAt: 'début de la compétition',
+    finalAt: 'finale',
+};
+/** A date; the error names the field as `schedule.<key>`, like RULES_LOCKED does. */
+const date = (v: unknown, key: ScheduleKey): Date => {
     const d = new Date(String(v));
     if (v === undefined || v === null || v === '' || Number.isNaN(d.getTime())) {
-        throw new AppError(`Date invalide : ${field}.`, 400, true, 'INVALID_SCHEDULE', { field });
+        throw new AppError(`Date invalide : ${SCHEDULE_LABEL[key]}.`, 400, true, 'INVALID_SCHEDULE', { field: `schedule.${key}` });
     }
     return d;
 };
-const optDate = (v: unknown, field: string) => (v === undefined || v === null || v === '' ? undefined : date(v, field));
+const optDate = (v: unknown, key: ScheduleKey) => (v === undefined || v === null || v === '' ? undefined : date(v, key));
 
 const slugify = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'edition';
 
 const checkSchedule = (s: IImpactEdition['schedule']) => {
     if (s.qualificationOpensAt >= s.qualificationClosesAt) {
-        throw new AppError('La qualification doit se terminer après son ouverture.', 400, true, 'INVALID_SCHEDULE', { field: 'qualificationClosesAt' });
+        throw new AppError('La qualification doit se terminer après son ouverture.', 400, true, 'INVALID_SCHEDULE', { field: 'schedule.qualificationClosesAt' });
     }
     if (s.competitionStartsAt && s.competitionStartsAt < s.qualificationClosesAt) {
-        throw new AppError('La compétition commence après la qualification.', 400, true, 'INVALID_SCHEDULE', { field: 'competitionStartsAt' });
+        throw new AppError('La compétition commence après la qualification.', 400, true, 'INVALID_SCHEDULE', { field: 'schedule.competitionStartsAt' });
     }
     if (s.finalAt && s.competitionStartsAt && s.finalAt < s.competitionStartsAt) {
-        throw new AppError('La finale a lieu après le début de la compétition.', 400, true, 'INVALID_SCHEDULE', { field: 'finalAt' });
+        throw new AppError('La finale a lieu après le début de la compétition.', 400, true, 'INVALID_SCHEDULE', { field: 'schedule.finalAt' });
     }
 };
 
@@ -53,7 +61,26 @@ export const currentPublic = async () => {
     return value;
 };
 
-export const listEditions = () => ImpactEdition.find().sort({ createdAt: -1 }).limit(100).lean();
+/** What the administration sees of an edition: everything but the job's internal cursors. */
+export const adminEdition = (e: IImpactEdition | Record<string, any>, seatsTaken?: number) => {
+    const o: Record<string, any> = typeof (e as any).toObject === 'function' ? (e as any).toObject() : { ...e };
+    delete o.pollCursor;
+    delete o.lastFullRecountAt;
+    delete o.__v;
+    if (seatsTaken !== undefined) o.seatsTaken = seatsTaken;
+    return o;
+};
+
+/** Newest first, with each edition's seats taken. */
+export const listEditions = async () => {
+    const list = await ImpactEdition.find().sort({ createdAt: -1 }).limit(100).lean();
+    const taken = await ImpactCandidate.aggregate([
+        { $match: { editionId: { $in: list.map((e) => e._id) }, seatNumber: { $exists: true }, status: { $nin: SEAT_LOST_STATUSES } } },
+        { $group: { _id: '$editionId', n: { $sum: 1 } } },
+    ]);
+    const byId = new Map(taken.map((t) => [String(t._id), t.n as number]));
+    return list.map((e) => adminEdition(e, byId.get(String(e._id)) ?? 0));
+};
 
 export const getEdition = async (id: string) => {
     if (!Types.ObjectId.isValid(id)) throw new AppError('Édition introuvable.', 404);
@@ -68,10 +95,10 @@ export const createEdition = async (actor: Actor, body: Record<string, any>) => 
     const name = String(body.name ?? '').trim();
     if (name.length < 3 || name.length > 120) throw new AppError('Nom de l’édition : 3 à 120 caractères.', 400, true, 'INVALID_EDITION', { field: 'name' });
     const schedule = {
-        qualificationOpensAt: date(body.schedule?.qualificationOpensAt, 'ouverture de la qualification'),
-        qualificationClosesAt: date(body.schedule?.qualificationClosesAt, 'fin de la qualification'),
-        competitionStartsAt: optDate(body.schedule?.competitionStartsAt, 'début de la compétition'),
-        finalAt: optDate(body.schedule?.finalAt, 'finale'),
+        qualificationOpensAt: date(body.schedule?.qualificationOpensAt, 'qualificationOpensAt'),
+        qualificationClosesAt: date(body.schedule?.qualificationClosesAt, 'qualificationClosesAt'),
+        competitionStartsAt: optDate(body.schedule?.competitionStartsAt, 'competitionStartsAt'),
+        finalAt: optDate(body.schedule?.finalAt, 'finalAt'),
     };
     checkSchedule(schedule);
     const settings = validateSettings({ ...DEFAULT_SETTINGS, ...(body.settings ?? {}) } as EditionSettings);
@@ -115,10 +142,10 @@ export const updateEdition = async (actor: Actor, id: string, body: Record<strin
 
     if (body.schedule) {
         const next = {
-            qualificationOpensAt: body.schedule.qualificationOpensAt !== undefined ? date(body.schedule.qualificationOpensAt, 'ouverture de la qualification') : e.schedule.qualificationOpensAt,
-            qualificationClosesAt: body.schedule.qualificationClosesAt !== undefined ? date(body.schedule.qualificationClosesAt, 'fin de la qualification') : e.schedule.qualificationClosesAt,
-            competitionStartsAt: body.schedule.competitionStartsAt !== undefined ? optDate(body.schedule.competitionStartsAt, 'début de la compétition') : e.schedule.competitionStartsAt,
-            finalAt: body.schedule.finalAt !== undefined ? optDate(body.schedule.finalAt, 'finale') : e.schedule.finalAt,
+            qualificationOpensAt: body.schedule.qualificationOpensAt !== undefined ? date(body.schedule.qualificationOpensAt, 'qualificationOpensAt') : e.schedule.qualificationOpensAt,
+            qualificationClosesAt: body.schedule.qualificationClosesAt !== undefined ? date(body.schedule.qualificationClosesAt, 'qualificationClosesAt') : e.schedule.qualificationClosesAt,
+            competitionStartsAt: body.schedule.competitionStartsAt !== undefined ? optDate(body.schedule.competitionStartsAt, 'competitionStartsAt') : e.schedule.competitionStartsAt,
+            finalAt: body.schedule.finalAt !== undefined ? optDate(body.schedule.finalAt, 'finalAt') : e.schedule.finalAt,
         };
         const changed = (k: keyof typeof next) => (next[k]?.getTime() ?? null) !== (e.schedule[k]?.getTime() ?? null);
         if (rank >= 1 && changed('qualificationOpensAt')) locked.push('schedule.qualificationOpensAt');
@@ -216,5 +243,13 @@ export const cancelEdition = async (actor: Actor, id: string, reason: string) =>
     if (!done) throw new AppError('L’édition a changé entre-temps. Rechargez la page.', 409, true, 'BAD_STATUS');
     invalidateCurrent();
     await audit({ actor, action: 'edition.cancelled', editionId: e._id, reason });
+    const active = await ImpactCandidate.find({
+        editionId: e._id,
+        status: { $in: [CandidateStatus.QUALIFYING, CandidateStatus.WAITLIST, CandidateStatus.OFFICIAL, CandidateStatus.SUSPENDED, CandidateStatus.STAGE_2, CandidateStatus.STAGE_3, CandidateStatus.FINALIST] },
+    }).select('_id userId').lean();
+    for (const c of active) {
+        await notifyCandidate(c as any, 'impact-edition-cancelled', 'SBC Impact Challenge : édition annulée',
+            `L’édition « ${e.name} » du SBC Impact Challenge est annulée : ${reason}. Merci pour ta participation.`);
+    }
     return done;
 };

@@ -1,10 +1,10 @@
 import { Types } from 'mongoose';
 import { AppError } from '../../../utils/errors';
 import logger from '../../../utils/logger';
-import { getImpactMembers, ImpactMember } from '../../../services/clients/user.service.client';
+import { getEventUserDetails, getImpactMembers, ImpactMember } from '../../../services/clients/user.service.client';
 import { IImpactCandidate, IImpactEdition, ImpactAudit, ImpactCandidate, ImpactEdition } from '../models';
 import {
-    CandidateStatus, CONSENT_VERSION, EditionStatus, editionRank, ProfileReview, STATUS_LABEL_FR,
+    CandidateStatus, CONSENT_VERSION, EditionStatus, editionRank, ProfileReview, SEAT_LOST_STATUSES, STATUS_LABEL_FR,
 } from '../types';
 import {
     Actor, audit, isRegistrationOpen, notifyCandidate, parseProfile, publicEdition, transitionCandidate,
@@ -212,40 +212,72 @@ const loadForAdmin = async (id: string) => {
 
 export const listCandidates = async (editionId: string, q: Record<string, any>) => {
     const e = await getEdition(editionId);
+    const required = e.settings.invitationsRequired;
     const filter: Record<string, unknown> = { editionId: e._id };
     if (q.status && Object.values(CandidateStatus).includes(q.status)) filter.status = q.status;
     if (q.review && Object.values(ProfileReview).includes(q.review)) filter['review.status'] = q.review;
+    // Seat holders whose count fell back below the requirement (a reversed activation).
+    const belowFilter = {
+        seatNumber: { $exists: true }, status: { $nin: SEAT_LOST_STATUSES }, 'invitations.valid': { $lt: required },
+    };
+    if (q.below === '1' || q.below === 'true') Object.assign(filter, belowFilter);
     if (q.q) {
         const term = String(q.q).trim().slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         if (term) filter.$or = [{ 'profile.name': new RegExp(term, 'i') }, { 'profile.projectName': new RegExp(term, 'i') }, { sbcId: new RegExp(term, 'i') }];
     }
     const page = Math.max(1, Number(q.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(q.limit) || 50));
-    // Seats first (arrival order), then the waiting list, then everyone else by progress.
-    const [items, total, counts] = await Promise.all([
-        ImpactCandidate.find(filter)
-            .sort({ seatNumber: 1, waitlistRank: 1, 'invitations.valid': -1, createdAt: 1 })
-            .skip((page - 1) * limit).limit(limit),
+    // Seats first (arrival order), then the waiting list, then everyone else by
+    // progress. A plain sort would put the candidates WITHOUT a seat first (a
+    // missing field sorts before any number), hence the computed keys.
+    const [rows, total, counts, below] = await Promise.all([
+        ImpactCandidate.aggregate([
+            { $match: filter },
+            {
+                $addFields: {
+                    _noSeat: { $cond: [{ $gt: ['$seatNumber', null] }, 0, 1] },
+                    _noRank: { $cond: [{ $gt: ['$waitlistRank', null] }, 0, 1] },
+                },
+            },
+            { $sort: { _noSeat: 1, seatNumber: 1, _noRank: 1, waitlistRank: 1, 'invitations.valid': -1, createdAt: 1, _id: 1 } },
+            { $skip: (page - 1) * limit },
+            { $limit: limit },
+            { $project: { _noSeat: 0, _noRank: 0 } },
+        ]),
         ImpactCandidate.countDocuments(filter),
         ImpactCandidate.aggregate([{ $match: { editionId: e._id } }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+        ImpactCandidate.countDocuments({ editionId: e._id, ...belowFilter }),
     ]);
-    const required = e.settings.invitationsRequired;
     return {
-        items: items.map((c) => ({
+        items: rows.map((c: IImpactCandidate) => ({
             ...presentCandidate(c, e),
-            // A seat holder whose count fell back below the requirement (a reversed activation).
-            belowRequirement: Boolean(c.seatNumber) && (c.invitations?.valid ?? 0) < required,
+            belowRequirement: Boolean(c.seatNumber) && !SEAT_LOST_STATUSES.includes(c.status) && (c.invitations?.valid ?? 0) < required,
         })),
         total, page, limit,
         byStatus: Object.fromEntries(counts.map((r) => [r._id, r.n])),
+        belowRequirementCount: below,
         seats: { taken: await seatHolders(e._id), max: e.settings.maxCandidates },
     };
 };
 
+/** Adds `actorName` to admin entries (members' names are their own profile; the system has none). */
+const withActorNames = async <T extends { actorUserId?: unknown; actorRole: string }>(rows: T[]) => {
+    const ids = [...new Set(rows.filter((r) => r.actorRole === 'admin' && r.actorUserId).map((r) => String(r.actorUserId)))];
+    let names = new Map<string, string>();
+    if (ids.length) {
+        try {
+            names = new Map((await getEventUserDetails(ids)).map((u) => [String(u._id), u.name ?? '']));
+        } catch (err) {
+            log.warn(`audit actor names: ${(err as Error).message}`);
+        }
+    }
+    return rows.map((r) => ({ ...r, actorName: r.actorUserId ? names.get(String(r.actorUserId)) || null : null }));
+};
+
 export const getCandidateForAdmin = async (id: string) => {
     const { c, e } = await loadForAdmin(id);
-    const trail = await ImpactAudit.find({ candidateId: c._id }).sort({ at: -1 }).limit(200).lean();
-    return { candidate: presentCandidate(c, e), edition: { _id: String(e._id), name: e.name, status: e.status }, audit: trail };
+    const trail = await ImpactAudit.find({ candidateId: c._id }).sort({ at: -1, _id: -1 }).limit(200).lean();
+    return { candidate: presentCandidate(c, e), edition: { _id: String(e._id), name: e.name, status: e.status }, audit: await withActorNames(trail) };
 };
 
 /**
@@ -264,6 +296,9 @@ export const reviewProfile = async (actor: Actor, id: string, body: Record<strin
     const { c, e } = await loadForAdmin(id);
     const decision = body?.decision;
     if (decision !== 'approve' && decision !== 'changes') throw new AppError('Décision : approve ou changes.', 400, true, 'BAD_DECISION');
+    if (c.status === CandidateStatus.DISQUALIFIED || c.status === CandidateStatus.WITHDRAWN) {
+        throw new AppError('Cette candidature est close : son profil ne se valide plus.', 409, true, 'BAD_STATUS');
+    }
     const reason = decision === 'changes' ? reasonOf(body, 10) : (body?.reason ? String(body.reason).slice(0, 1000) : undefined);
     const status = decision === 'approve' ? ProfileReview.APPROVED : ProfileReview.CHANGES_REQUESTED;
     expectSameProfile(c, body);
@@ -354,11 +389,17 @@ export const editionAudit = async (editionId: string, q: Record<string, any>) =>
     const e = await getEdition(editionId);
     const limit = Math.min(200, Math.max(1, Number(q.limit) || 100));
     const filter: Record<string, unknown> = { editionId: e._id };
+    // Cursor = the last entry shown (`before` = its `at`, `beforeId` = its `_id`). The
+    // job writes many lines in the same millisecond, so time alone would skip some.
     if (q.before) {
         const b = new Date(String(q.before));
-        if (!Number.isNaN(b.getTime())) filter.at = { $lt: b };
+        if (!Number.isNaN(b.getTime())) {
+            filter.$or = q.beforeId && Types.ObjectId.isValid(String(q.beforeId))
+                ? [{ at: { $lt: b } }, { at: b, _id: { $lt: new Types.ObjectId(String(q.beforeId)) } }]
+                : [{ at: { $lt: b } }];
+        }
     }
-    return ImpactAudit.find(filter).sort({ at: -1 }).limit(limit).lean();
+    return withActorNames(await ImpactAudit.find(filter).sort({ at: -1, _id: -1 }).limit(limit).lean());
 };
 
 /** Recount everyone now (administration button; the job does it every 30 min). */

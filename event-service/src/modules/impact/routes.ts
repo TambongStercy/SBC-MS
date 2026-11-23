@@ -63,12 +63,12 @@ memberRouter.post('/me/candidacy/withdraw', throttle('withdraw', 3, 60), h(async
 
 export const adminRouter = Router();
 adminRouter.get('/editions', h(async () => editions.listEditions()));
-adminRouter.post('/editions', h(async (req) => editions.createEdition(admin(req), req.body ?? {})));
-adminRouter.get('/editions/:id', h(async (req) => editions.getEdition(req.params.id)));
-adminRouter.patch('/editions/:id', h(async (req) => editions.updateEdition(admin(req), req.params.id, req.body ?? {})));
-adminRouter.post('/editions/:id/open-qualification', h(async (req) => editions.openQualification(admin(req), req.params.id)));
-adminRouter.post('/editions/:id/close-qualification', h(async (req) => editions.requestCloseQualification(admin(req), req.params.id, reasonOf(req))));
-adminRouter.post('/editions/:id/cancel', h(async (req) => editions.cancelEdition(admin(req), req.params.id, reasonOf(req))));
+adminRouter.post('/editions', h(async (req) => editions.adminEdition(await editions.createEdition(admin(req), req.body ?? {}))));
+adminRouter.get('/editions/:id', h(async (req) => editions.adminEdition(await editions.getEdition(req.params.id))));
+adminRouter.patch('/editions/:id', h(async (req) => editions.adminEdition(await editions.updateEdition(admin(req), req.params.id, req.body ?? {}))));
+adminRouter.post('/editions/:id/open-qualification', h(async (req) => editions.adminEdition(await editions.openQualification(admin(req), req.params.id))));
+adminRouter.post('/editions/:id/close-qualification', h(async (req) => editions.adminEdition(await editions.requestCloseQualification(admin(req), req.params.id, reasonOf(req)))));
+adminRouter.post('/editions/:id/cancel', h(async (req) => editions.adminEdition(await editions.cancelEdition(admin(req), req.params.id, reasonOf(req)))));
 adminRouter.post('/editions/:id/recount', h(async (req) => candidates.recountEdition(admin(req), req.params.id)));
 adminRouter.get('/editions/:id/candidates', h(async (req) => candidates.listCandidates(req.params.id, req.query)));
 adminRouter.post('/editions/:id/candidates', h(async (req) => candidates.adminAdd(admin(req), req.params.id, req.body ?? {})));
