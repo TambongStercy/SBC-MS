@@ -28,7 +28,7 @@ beforeEach(async () => {
             ] : [] } },
         }),
         [`${DASH}/api/2/assist/sessions`]: (c) => ({
-            json: { data: { total: 1, sessions: c.url.includes(`userId=${MEMBER}`) ? [{ sessionId: '7700000000000009', timestamp: 1795410000000 }] : [] } },
+            json: { data: { total: 1, sessions: c.url.includes(`userID=${MEMBER}`) ? [{ sessionID: '7700000000000009', userID: MEMBER, timestamp: 1795410000000 }] : [] } },
         }),
         '127.0.0.1:9/api/users/internal/support/related': () => ({ json: { success: true, data: { related: false } } }),
         '127.0.0.1:9/api/users': () => ({ json: { success: true, data: { country: 'CM' } } }),
