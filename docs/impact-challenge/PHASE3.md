@@ -66,6 +66,7 @@ After the result, the finished edition stays the « current » one for 60 days (
   onStageCandidateId: string | null, phase: 'PRESENTATION' | 'QUESTIONS' | 'SCORING' | null,
   finalVote: { status, opensAt, closesAt } | null,
   weights: { paidVotes, publicVote, jury }, juryCriteria: [{ key, label, max }], formula: string,
+  freeVote: { membersOnly, accountsOlderThanRound, selfVote },   // the final vote follows these rules
   finalists: [{ _id, top3Rank, status, profile: { name, photoFileId, city, country, activity, projectName, projectDescription }, video: Submission | null, project: Submission | null }],
   result: null | {
     publishedAt, winnerCandidateId, weights,
@@ -113,6 +114,17 @@ After the result, the finished edition stays the « current » one for 60 days (
 
 The admin `Edition` now carries `jury { lockedAt, lockedBy }`, `live { onStageCandidateId, phase,
 startedAt, updatedAt }` and `result { publishedAt, by, weights, rows, winnerCandidateId }`.
+
+## Notes for the apps
+
+- `/public/current` `rounds` now also has `FINAL`.
+- **`rank` on a candidate:** before the result it is the TOP 3 rank (`JuryEdition.finalists[].rank` is
+  that one too); after the result the finalists carry their final rank. The frozen TOP 3 order stays in
+  `edition.top3`.
+- **Jury figures:** `juryAverage` is out of `juryMax` (the sum of the criteria maxima);
+  `components.jury` is out of 100.
+- **Too many wrong codes:** a juror gets the authenticator lock as a plain 429 with user-service's
+  message (no `code`, no wait time).
 
 ## Notifications
 

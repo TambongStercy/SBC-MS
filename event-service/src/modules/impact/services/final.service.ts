@@ -480,6 +480,7 @@ export const liveScreen = async () => {
             finalVote: e.rounds?.FINAL ? { status: e.rounds.FINAL.status, opensAt: e.rounds.FINAL.opensAt ?? null, closesAt: e.rounds.FINAL.closesAt ?? null } : null,
             weights: settingsOf(e.settings).weights,
             juryCriteria: settingsOf(e.settings).juryCriteria,
+            freeVote: settingsOf(e.settings).freeVote,
             formula: FORMULA,
             finalists: fins.map((f) => ({
                 _id: String(f._id), top3Rank: f.rank ?? null, status: f.status,
