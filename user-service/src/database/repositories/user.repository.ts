@@ -256,18 +256,40 @@ export class UserRepository {
      * zero (the guard is in the same update, so two debits at once cannot both pass).
      * null = member not found or not enough on the activation balance.
      */
-    async adjustActivationBalanceGuarded(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
-        const filter: Record<string, unknown> = { _id: userId };
-        if (amountChange < 0) filter.activationBalance = { $gte: -amountChange };
-        return UserModel.findOneAndUpdate(filter, { $inc: { activationBalance: amountChange } }, { new: true }).exec();
+    async adjustActivationBalanceGuarded(
+        userId: string | Types.ObjectId,
+        amountChange: number,
+        movement: { reference?: string; description?: string } = {},
+    ): Promise<IUser | null> {
+        const out = await walletLedger.applyInc({
+            userId, currency: 'ACTIVATION', delta: amountChange,
+            guard: amountChange < 0 ? { activationBalance: { $gte: -amountChange } } : undefined,
+            reference: movement.reference, source: 'admin-adjust-activation', description: movement.description,
+        });
+        if (out.pendingConflict || out.reversed) throwIfRefused(out);
+        if (out.alreadyApplied) return out.user;
+        return out.applied ? out.user : null;
     }
 
-    async updateActivationBalance(userId: string | Types.ObjectId, amountChange: number): Promise<IUser | null> {
-        return UserModel.findByIdAndUpdate(
-            userId,
-            { $inc: { activationBalance: amountChange } }, // Use $inc for atomic update
-            { new: true } // Return the updated document
-        ).exec();
+    /**
+     * Credit (positive) or debit (negative) of the activation balance, journalled.
+     * A debit never takes it below zero (one guarded write): null = not enough, or
+     * no such member. The same reference with the opposite sign undoes a debit
+     * (sponsor activation that failed afterwards).
+     */
+    async updateActivationBalance(
+        userId: string | Types.ObjectId,
+        amountChange: number,
+        movement: { reference?: string; source?: string; description?: string } = {},
+    ): Promise<IUser | null> {
+        const out = await walletLedger.applyInc({
+            userId, currency: 'ACTIVATION', delta: amountChange,
+            guard: amountChange < 0 ? { activationBalance: { $gte: -amountChange } } : undefined,
+            reference: movement.reference, source: movement.source || 'activation-balance', description: movement.description,
+        });
+        if (out.pendingConflict || out.reversed) throwIfRefused(out);
+        if (out.alreadyApplied) return out.user;
+        return out.applied ? out.user : null;
     }
 
     /**
@@ -290,7 +312,7 @@ export class UserRepository {
                 balance: { $gte: amount }, // Ensure sufficient balance
                 $expr: { $gte: [{ $subtract: [{ $ifNull: ['$balance', 0] }, { $ifNull: ['$reservedBalance', 0] }] }, amount] },
             },
-            extraInc: { activationBalance: amount },
+            legs: [{ currency: 'ACTIVATION', delta: amount }],
             source: 'activation-transfer-in', description: 'Transfert vers le solde d\'activation',
         });
         return out.applied ? out.user : null;
@@ -310,7 +332,7 @@ export class UserRepository {
         const out = await walletLedger.applyInc({
             userId, currency: 'XAF', delta: amount,
             guard: { activationBalance: { $gte: amount } },
-            extraInc: { activationBalance: -amount },
+            legs: [{ currency: 'ACTIVATION', delta: -amount }],
             source: 'activation-transfer-reversal', description: 'Annulation de transfert vers le solde d\'activation',
             // `activation-reversal:<original transaction>`: the same transfer is reversed once at most
             ...(reference ? { reference } : {}),
@@ -325,16 +347,22 @@ export class UserRepository {
      * Credit-only by design: nothing debits advertisingBalance except the transfer
      * to main, so there is exactly one way money leaves it.
      */
-    async creditAdvertisingBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+    async creditAdvertisingBalance(userId: string | Types.ObjectId, amount: number, reference?: string): Promise<IUser | null> {
         if (amount <= 0) {
             throw new Error('Credit amount must be positive');
         }
-
-        return UserModel.findOneAndUpdate(
-            { _id: userId },
-            { $inc: { advertisingBalance: amount } },
-            { new: true }
-        ).exec();
+        // `adv:advertising-credit:<caller's reference>`: the same campaign credit lands once.
+        const out = await walletLedger.applyInc({
+            userId, currency: 'ADVERTISING', delta: amount,
+            reference: reference ? `advertising-credit:${reference}` : undefined,
+            source: 'advertising-earnings', description: 'Gains publicitaires',
+        });
+        if (out.pendingConflict || out.reversed) throwIfRefused(out);
+        if (out.alreadyApplied) {
+            log.warn(`Advertising credit ${reference} replayed: already credited, nothing moved`);
+            return out.user;
+        }
+        return out.applied ? out.user : null;
     }
 
     /**
@@ -357,7 +385,7 @@ export class UserRepository {
         const out = await walletLedger.applyInc({
             userId, currency: 'XAF', delta: amount,
             guard: { advertisingBalance: { $gte: amount } },
-            extraInc: { advertisingBalance: -amount },
+            legs: [{ currency: 'ADVERTISING', delta: -amount }],
             source: 'advertising-transfer', description: 'Transfert des gains publicitaires',
         });
         return out.applied ? out.user : null;
@@ -375,7 +403,7 @@ export class UserRepository {
         const out = await walletLedger.applyInc({
             userId, currency: 'XAF', delta: amount,
             guard: { eventOrganizerBalance: { $gte: amount } },
-            extraInc: { eventOrganizerBalance: -amount },
+            legs: [{ currency: 'EVENT_ORGANIZER', delta: -amount }],
             source: 'event-organizer-transfer', description: 'Transfert des gains organisateur',
         });
         return out.applied ? out.user : null;
@@ -386,10 +414,12 @@ export class UserRepository {
      * webhook, reconciler or sweeper retry — returns `applied: false` with the
      * current user and moves nothing.
      *
-     * On a replica set the ledger insert and the $inc commit together. Without
-     * one (local dev) it inserts PENDING, moves the balance, then marks APPLIED;
-     * a replay that finds a PENDING row refuses with `pendingConflict` instead
-     * of guessing whether the balance already moved.
+     * It inserts the event ledger row PENDING (the claim), moves the balance through
+     * the wallet journal (walletmovements `evt:<reference>`, posted to Blnk like the
+     * other balances; 2026-11-23), then marks the row APPLIED. A replay that finds a
+     * PENDING row refuses with `pendingConflict` instead of guessing whether the
+     * balance already moved. (The transactional path is gone: prod Mongo is
+     * standalone, so it always fell back to this one.)
      *
      * A DEBIT may take the balance below zero: the seller may already have
      * moved the money to their main balance before a refund lands. A negative
@@ -424,49 +454,35 @@ export class UserRepository {
             return { applied: false, user };
         };
 
-        // Transactional path.
-        let session: mongoose.ClientSession | null = null;
-        try {
-            const txSession = await UserModel.startSession();
-            session = txSession;
-            let user: IUser | null = null;
-            await txSession.withTransaction(async () => {
-                await EventOrganizerLedgerModel.create([{ ...row, status: EventOrganizerLedgerStatus.APPLIED }], { session: txSession });
-                // updateOne, not findOneAndUpdate: a debit may go below the min: 0
-                // validator on purpose (a resale refund can take the balance negative).
-                const res = await UserModel.updateOne({ _id: userId }, { $inc: { eventOrganizerBalance: delta } }, { session: txSession }).exec();
-                if (res.matchedCount === 0) throw Object.assign(new Error('User not found'), { notFound: true });
-                user = await UserModel.findById(userId).session(txSession).exec();
-            });
-            return { applied: true, user };
-        } catch (error: any) {
-            if (isDuplicate(error)) return existingOutcome();
-            if (error?.notFound) return { applied: false, user: null };
-            const noReplicaSet = /replica set|Transaction numbers|transactions are not supported/i.test(error?.message || '')
-                || error?.code === 20;
-            if (!noReplicaSet) throw error;
-            log.warn(`Event-organizer ledger: no transactions available, using the sequential path (${error.message})`);
-        } finally {
-            await session?.endSession();
-        }
-
-        // Sequential fallback.
+        // The event ledger row is the claim (unique {reference, direction}), as before;
+        // the balance then moves through the wallet journal (one walletmovements row,
+        // `evt:<reference>`), then the claim is marked APPLIED. A crash in between
+        // leaves the claim PENDING: a replay refuses (pendingConflict), never guesses.
         try {
             await EventOrganizerLedgerModel.create({ ...row, status: EventOrganizerLedgerStatus.PENDING });
         } catch (error: any) {
             if (isDuplicate(error)) return existingOutcome();
             throw error;
         }
-        const res = await UserModel.updateOne({ _id: userId }, { $inc: { eventOrganizerBalance: delta } }).exec();
-        if (res.matchedCount === 0) {
-            await EventOrganizerLedgerModel.deleteOne({ reference: entry.reference, direction: entry.direction });
+        // No guard: a debit may take the balance below zero on purpose (see above).
+        const out = await walletLedger.applyInc({
+            userId, currency: 'EVENT_ORGANIZER', delta, reference: entry.reference,
+            source: 'event-organizer', description: entry.description,
+        });
+        if (out.userNotFound) {
+            await EventOrganizerLedgerModel.deleteOne({ reference: entry.reference, direction: entry.direction, status: EventOrganizerLedgerStatus.PENDING });
             return { applied: false, user: null };
         }
+        if (out.pendingConflict) {
+            return { applied: false, user: out.user, pendingConflict: true, pendingSince: new Date() };
+        }
+        // Applied now, or already journalled by an earlier attempt that crashed before
+        // marking the claim: either way the balance moved exactly once.
         await EventOrganizerLedgerModel.updateOne(
             { reference: entry.reference, direction: entry.direction },
             { $set: { status: EventOrganizerLedgerStatus.APPLIED } },
         );
-        return { applied: true, user: await UserModel.findById(userId).exec() };
+        return { applied: out.applied, user: out.user ?? await UserModel.findById(userId).exec() };
     }
 
 
@@ -481,20 +497,20 @@ export class UserRepository {
      * For debits, fails (returns null) if the post-update balance would be
      * negative — caller should treat null as "insufficient funds" and not retry.
      */
-    async updateSbcLiveBalance(userId: string | Types.ObjectId, amount: number): Promise<IUser | null> {
+    async updateSbcLiveBalance(userId: string | Types.ObjectId, amount: number, reference?: string): Promise<IUser | null> {
         if (amount === 0) {
             return UserModel.findById(userId).exec();
         }
-        const filter: Record<string, any> = { _id: userId };
-        if (amount < 0) {
-            // Guard against going negative.
-            filter.sbcLiveBalance = { $gte: Math.abs(amount) };
-        }
-        return UserModel.findOneAndUpdate(
-            filter,
-            { $inc: { sbcLiveBalance: amount } },
-            { new: true },
-        ).exec();
+        // Journalled (`live:<reference>`): with a reference from payment-service a
+        // replayed split or clawback moves nothing.
+        const out = await walletLedger.applyInc({
+            userId, currency: 'SBC_LIVE', delta: amount,
+            guard: amount < 0 ? { sbcLiveBalance: { $gte: Math.abs(amount) } } : undefined,
+            reference, source: amount > 0 ? 'sbc-live-earnings' : 'sbc-live-clawback',
+        });
+        if (out.pendingConflict || out.reversed) throwIfRefused(out);
+        if (out.alreadyApplied) return out.user;
+        return out.applied ? out.user : null;
     }
 
     /**
@@ -507,95 +523,38 @@ export class UserRepository {
     async transferActivationBetweenUsers(
         fromUserId: string | Types.ObjectId,
         toUserId: string | Types.ObjectId,
-        amount: number
+        amount: number,
+        reference: string = `activation-p2p:${new Types.ObjectId().toHexString()}`,
     ): Promise<{ success: boolean; fromUser?: IUser; toUser?: IUser }> {
         if (amount <= 0) {
             throw new Error('Transfer amount must be positive');
         }
-
-        // Try transaction-based approach first, fall back to sequential updates
-        // Transactions require MongoDB replica set which may not be available in dev
-        try {
-            const session = await UserModel.startSession();
-            try {
-                let fromUser: IUser | null = null;
-                let toUser: IUser | null = null;
-
-                await session.withTransaction(async () => {
-                    // Decrement sender's activation balance
-                    fromUser = await UserModel.findOneAndUpdate(
-                        {
-                            _id: fromUserId,
-                            activationBalance: { $gte: amount }
-                        },
-                        { $inc: { activationBalance: -amount } },
-                        { new: true, session }
-                    ).exec();
-
-                    if (!fromUser) {
-                        throw new Error('Insufficient activation balance or user not found');
-                    }
-
-                    // Increment recipient's activation balance
-                    toUser = await UserModel.findByIdAndUpdate(
-                        toUserId,
-                        { $inc: { activationBalance: amount } },
-                        { new: true, session }
-                    ).exec();
-
-                    if (!toUser) {
-                        throw new Error('Recipient user not found');
-                    }
-                });
-
-                return { success: true, fromUser: fromUser!, toUser: toUser! };
-            } catch (txError: any) {
-                log.error(`Transaction failed for activation transfer: ${txError.message}`);
-                throw txError; // Re-throw to try fallback
-            } finally {
-                session.endSession();
-            }
-        } catch (error: any) {
-            // Fallback: Sequential atomic updates (less safe but works without replica set)
-            log.warn(`Falling back to non-transactional activation transfer: ${error.message}`);
-
-            try {
-                // Step 1: Atomically decrement sender's balance (with balance check)
-                const fromUser = await UserModel.findOneAndUpdate(
-                    {
-                        _id: fromUserId,
-                        activationBalance: { $gte: amount }
-                    },
-                    { $inc: { activationBalance: -amount } },
-                    { new: true }
-                ).exec();
-
-                if (!fromUser) {
-                    log.error('Fallback transfer failed: Insufficient activation balance or sender not found');
-                    return { success: false };
-                }
-
-                // Step 2: Increment recipient's balance
-                const toUser = await UserModel.findByIdAndUpdate(
-                    toUserId,
-                    { $inc: { activationBalance: amount } },
-                    { new: true }
-                ).exec();
-
-                if (!toUser) {
-                    // Rollback: Restore sender's balance
-                    log.error('Fallback transfer failed: Recipient not found, rolling back sender balance');
-                    await UserModel.findByIdAndUpdate(fromUserId, { $inc: { activationBalance: amount } });
-                    return { success: false };
-                }
-
-                log.info(`Fallback activation transfer succeeded: ${amount} XAF from ${fromUserId} to ${toUserId}`);
-                return { success: true, fromUser, toUser };
-            } catch (fallbackError: any) {
-                log.error(`Fallback activation transfer failed: ${fallbackError.message}`);
-                return { success: false };
-            }
+        // Journalled (2026-11-23): the sender's debit `act:<ref>:out`, the recipient's
+        // credit `act:<ref>:in`. Prod Mongo has no transactions, so if the credit cannot
+        // land the debit is undone under its own reference (CREDIT of `<ref>:out`).
+        if (String(fromUserId) === String(toUserId)) return { success: false };
+        const fromUser = await this.updateActivationBalance(fromUserId, -amount, {
+            reference: `${reference}:out`, source: 'activation-p2p-out', description: 'Transfert de solde d\'activation (envoyé)',
+        });
+        if (!fromUser) {
+            log.warn(`Activation transfer ${reference}: insufficient activation balance or sender not found`);
+            return { success: false };
         }
+        let toUser: IUser | null = null;
+        try {
+            toUser = await this.updateActivationBalance(toUserId, amount, {
+                reference: `${reference}:in`, source: 'activation-p2p-in', description: 'Transfert de solde d\'activation (reçu)',
+            });
+        } catch (err: any) {
+            log.error(`Activation transfer ${reference}: credit failed (${err?.message}); giving the sender's money back`);
+        }
+        if (!toUser) {
+            await this.updateActivationBalance(fromUserId, amount, {
+                reference: `${reference}:out`, source: 'activation-p2p-undo', description: 'Transfert de solde d\'activation annulé',
+            });
+            return { success: false };
+        }
+        return { success: true, fromUser, toUser };
     }
 
     /**

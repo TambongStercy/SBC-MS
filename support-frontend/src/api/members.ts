@@ -1,6 +1,11 @@
 import { api } from './http';
 import type { MemberHit, MemberWithdrawal, Payin, RiskCard, SupportMember, Ticket } from './types';
 
+export interface CommissionInfo {
+  transactionId: string; amount: number; currency: string; status: string; createdAt: string; description?: string;
+  isCommission: boolean; level: number | null; sourceUserId: string | null; reversible: boolean; reversed: boolean;
+}
+
 export const membersApi = {
   search: (q: string) => api.post<MemberHit[]>('/members/search', { q }), // POST: an email or phone never goes in a URL
   get: (id: string) => api.get<{ member: SupportMember }>(`/members/${encodeURIComponent(id)}`),
@@ -26,4 +31,10 @@ export const membersApi = {
   /** Security plan Phase 5: freeze or unfreeze the member's money; another finance manager approves. */
   requestFreeze: (id: string, action: 'freeze' | 'unfreeze', reason: string, reauthToken: string) =>
     api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/freeze`, { action, reason }, { reauthToken }),
+  /** A commission of this member (to check it before asking to take it back). */
+  commission: (id: string, transactionId: string) =>
+    api.get<CommissionInfo>(`/members/${encodeURIComponent(id)}/commissions/${encodeURIComponent(transactionId)}`),
+  /** Take back a commission paid by mistake; another finance manager approves. */
+  requestCommissionReversal: (id: string, transactionId: string, reason: string, reauthToken: string) =>
+    api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/commission-reversal`, { transactionId, reason }, { reauthToken }),
 };

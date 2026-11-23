@@ -508,8 +508,12 @@ export class ActivationBalanceService {
             }
         }
 
-        // 6. Deduct from sponsor's activation balance
-        const updatedSponsor = await this.userRepository.updateActivationBalance(sponsorId, -price);
+        // 6. Deduct from sponsor's activation balance (journalled; a failure below gives it
+        //    back under the same reference, which the ledger records as the undo).
+        const debitRef = `sponsor-activation:${new Types.ObjectId().toHexString()}`;
+        const debitMove = { reference: debitRef, source: 'sponsor-activation', description: `Activation ${subscriptionType} sponsorisée` };
+        const undoMove = { reference: debitRef, source: 'sponsor-activation-undo', description: 'Activation sponsorisée annulée' };
+        const updatedSponsor = await this.userRepository.updateActivationBalance(sponsorId, -price, debitMove);
         if (!updatedSponsor) {
             throw new AppError('Failed to deduct activation balance. Please try again.', 500);
         }
@@ -527,14 +531,14 @@ export class ActivationBalanceService {
             );
         } catch (error: any) {
             // Rollback: restore sponsor's activation balance
-            await this.userRepository.updateActivationBalance(sponsorId, price);
+            await this.userRepository.updateActivationBalance(sponsorId, price, undoMove);
             log.error(`Failed to activate subscription, rolled back sponsor's balance: ${error.message}`);
             throw new AppError(`Failed to activate subscription: ${error.message}`, 500);
         }
 
         if (!subscription) {
             // Rollback: restore sponsor's activation balance
-            await this.userRepository.updateActivationBalance(sponsorId, price);
+            await this.userRepository.updateActivationBalance(sponsorId, price, undoMove);
             throw new AppError('Failed to create subscription', 500);
         }
 
@@ -839,11 +843,13 @@ export class ActivationBalanceService {
             throw new AppError(`Insufficient activation balance. Required: ${price} XAF, Available: ${sponsor.activationBalance || 0} XAF`, 400);
         }
 
-        const updatedSponsor = await this.userRepository.updateActivationBalance(sponsorId, -price);
-        if (!updatedSponsor) throw new AppError('Failed to deduct activation balance. Please try again.', 500);
-
-        // The reference makes the activation (and its commissions) happen once.
+        // The reference makes the activation (and its commissions) happen once; the
+        // activation balance moves under it too (journalled, undone under it on failure).
         const reference = `sponsored_winner_${new Types.ObjectId().toHexString()}`;
+        const updatedSponsor = await this.userRepository.updateActivationBalance(sponsorId, -price, {
+            reference, source: 'sponsor-activation', description: 'Activation WINNER sponsorisée',
+        });
+        if (!updatedSponsor) throw new AppError('Failed to deduct activation balance. Please try again.', 500);
         try {
             const { handleProductPayment } = await import('./products.service');
             await handleProductPayment(reference, {
@@ -851,7 +857,9 @@ export class ActivationBalanceService {
                 paymentMethod: 'activation_balance', sponsoredBy: sponsorId,
             });
         } catch (error: any) {
-            await this.userRepository.updateActivationBalance(sponsorId, price);
+            await this.userRepository.updateActivationBalance(sponsorId, price, {
+                reference, source: 'sponsor-activation-undo', description: 'Activation WINNER sponsorisée annulée',
+            });
             log.error(`Sponsored Winner for ${beneficiaryId} failed, sponsor ${sponsorId} refunded ${price}: ${error.message}`);
             throw new AppError(`Failed to activate subscription: ${error.message}`, 500);
         }

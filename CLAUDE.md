@@ -841,8 +841,28 @@ Preprod worker: pm2 `blnk-sync-preprod`.
   B and the source posted to Blnk (`mv:<reference>:<direction>`, replay-proof).
 - payment-service `assertLedgerAgrees` inside `assertWithdrawalsNotLocked`:
   `LEDGER_TRIPLE_CHECK=off|log|enforce` (default off).
+- **All six balances (2026-11-23):** `walletmovements.currency` names the balance: `XAF`, `USD`,
+  `ACTIVATION`, `ADVERTISING`, `EVENT_ORGANIZER`, `SBC_LIVE` (`WALLET_FIELDS`). Every write of the
+  four extra balances goes through `walletLedger.applyInc` (user.repository): sponsor activations
+  and their undo, P2P activation transfers (`act:<ref>:out` / `:in`), admin adjust, leaderboard
+  bonus, advertising credits (`adv:advertising-credit:<ref>`, now replay-proof), event-organiser
+  movements (`evt:<ref>`; the `eventorganizerledgers` row stays the claim), SBC Live
+  (`live:<ref>`, payment-service sends `sbc-live-split:<session>` / `sbc-live-refund:<id>`).
+  A write moving two balances (main ↔ activation/advertising/event) passes the second as a `leg`:
+  one atomic update, one row each; the extra balances' references carry a prefix (`act:`, `adv:`,
+  `evt:`, `live:`) so the two rows never look like a movement and its undo. A journalled balance
+  passed as `extraInc` throws. Activation debits are now guarded (never below zero).
+  - Each is its own Blnk balance (Blnk currency XAF; the event-organiser one may go below zero
+    there too). `GET /users/internal/:id/ledger-check?currency=ACTIVATION|ADVERTISING|EVENT_ORGANIZER|SBC_LIVE`;
+    the nightly check, the shadow comparison and the support card cover all six.
+  - **Rollout:** deploy, then `snapshot-opening-balances.js --balances=ACTIVATION,ADVERTISING,EVENT_ORGANIZER,SBC_LIVE`
+    (dry run, then `--apply`), then `blnk-post-openings.js --balances=…` (dry run, `--apply`).
+    Until a balance's snapshot starts, the sync records its movements `skipped_in_opening`
+    (they will be inside the opening); while it runs, the sync waits (`opening_snapshot_running`,
+    `blnk_state.openingSnapshot:<balance>`).
+  - payment-service's withdrawal pre-check still asks XAF and USD only (the withdrawable money).
 - Checks: `user-service/src/scripts/check-blnk-ledger.ts` (needs local Blnk),
-  `payment-service/src/scripts/check-ledger-triple-check.ts`.
+  `check-ledger-other-balances.ts` (Blnk optional), `payment-service/src/scripts/check-ledger-triple-check.ts`.
 
 ### Dormant accounts (Security plan Phase 7, part 1, 2026-11-21)
 
@@ -881,7 +901,8 @@ Design, limits, deploy: `docs/security-plan/phase7-dormant-accounts.md`. Admin �
   is required to send to everyone; otherwise only `REACTIVATION_TEST_RECIPIENTS`** (preprod stays so: it holds
   real members' addresses). A return within 30 days is counted; the return hold still applies.
   Check: `src/scripts/check-dormancy-campaign.ts`; notification `src/tests/reactivation.test.ts`.
-- **Not done:** the four other balances in Blnk; Rufus's approval of the réactivation wording.
+- **Not done:** Rufus's approval of the réactivation wording. The four other balances are in the ledger and Blnk
+  since 2026-11-23 (see "Second ledger").
 - Checks: `user-service/src/scripts/check-dormancy.ts`, `check-dormancy-scale.ts`, admin `DormantAccountsPage.test.tsx`.
 
 ### Fraud engine: risk-service (Security plan Phase 4, part 1, 2026-11-21)
@@ -1038,7 +1059,18 @@ Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, p
   (1–30 min backoff) until support answers; delivered rows expire after 30 days.
 - **Member card:** declared / usual / last country, frozen, balance A vs B (ledger); C waits
   for Phase 2. Linked accounts and the risk score: « Risque » panel (Phase 4 part 2, `risk.read`).
-- Not done (need Phase 4 / 2): release of a held withdrawal, commission reversal approvals.
+- **Release of a held withdrawal:** the Phase 4 risk release (below) covers it. A withdrawal refused
+  at approval stays `pending_admin_approval` and is approved once the member is released.
+- **Commission reversal (2026-11-23):** a finance agent or manager cites the commission deposit
+  (desk member page « Reprendre une commission », `finance.regularize.request` + reauth), another
+  finance manager approves (approval `commission_reversal`). payment-service
+  `services/commission-reversal.service.ts`: claims the deposit once (COMPLETED → RECONCILED),
+  debits the same amount from the AVAILABLE balance (balance − debt − reserved, XAF or USD) under
+  `commission-reversal:<txId>`, records a `commission_reversal` transaction. Not enough money →
+  refused, nothing debited, claim released, **no debt created** (debt is invisible to members and
+  is Rufus's call); freeze instead. Unknown outcome (user-service down) keeps the claim: « Exécuter
+  à nouveau » resumes with the same approval. The member is not notified automatically.
+  Checks: payment-service `check-commission-reversal.ts`, support `commission-reversal.test.ts`.
 - Checks: `user-service/src/scripts/check-support-phase5.ts`, support `src/tests/phase5.test.ts`,
   support-frontend `MemberSecurityPanel.test.tsx`.
 

@@ -1,4 +1,5 @@
 import { Schema, Document, Types, model } from 'mongoose';
+import { WALLET_CURRENCIES, WalletCurrency } from './wallet-movement.model';
 
 /**
  * Opening balances for the wallet ledger, one per {user, currency}, written
@@ -7,7 +8,7 @@ import { Schema, Document, Types, model } from 'mongoose';
  */
 export interface IWalletOpeningBalance extends Document {
     userId: Types.ObjectId;
-    currency: 'XAF' | 'USD';
+    currency: WalletCurrency;
     amount: number;
     debt?: number;
     snapshotAt: Date;
@@ -17,7 +18,7 @@ export interface IWalletOpeningBalance extends Document {
 const WalletOpeningBalanceSchema = new Schema<IWalletOpeningBalance>(
     {
         userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-        currency: { type: String, enum: ['XAF', 'USD'], required: true },
+        currency: { type: String, enum: WALLET_CURRENCIES, required: true },
         amount: { type: Number, required: true },
         debt: { type: Number },
         snapshotAt: { type: Date, required: true },

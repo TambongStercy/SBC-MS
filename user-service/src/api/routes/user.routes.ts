@@ -22,6 +22,7 @@ import { strictLimiter, mediumLimiter, generalLimiter, uploadLimiter } from '../
 import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
 import { blnkEnabled } from '../../services/blnk/blnk.client';
 import { tripleCheck } from '../../services/blnk/blnk-sync.service';
+import { isWalletCurrency } from '../../database/models/wallet-movement.model';
 
 const router = Router();
 const log = logger.getLogger('UserRoutes'); // Create logger instance
@@ -67,7 +68,10 @@ serviceRouter.get('/:userId/withdrawal-lock', (req, res) => userController.getWi
 // Security plan Phase 2: A (users.balance), B (opening + movements), C (Blnk) for the withdrawal pre-check.
 serviceRouter.get('/:userId/ledger-check', async (req, res) => {
     if (!/^[a-f0-9]{24}$/i.test(req.params.userId)) { res.status(400).json({ success: false, message: 'userId is invalid.' }); return; }
-    const currency = req.query.currency === 'USD' ? 'USD' : 'XAF';
+    // XAF (default), USD, or one of the extra balances: ACTIVATION, ADVERTISING, EVENT_ORGANIZER, SBC_LIVE.
+    const q = String(req.query.currency || 'XAF').toUpperCase();
+    if (!isWalletCurrency(q)) { res.status(400).json({ success: false, message: 'currency is invalid.' }); return; }
+    const currency = q;
     if (!blnkEnabled()) { res.status(200).json({ success: true, data: { enabled: false } }); return; }
     try {
         res.status(200).json({ success: true, data: { enabled: true, ...(await tripleCheck(req.params.userId, currency)) } });

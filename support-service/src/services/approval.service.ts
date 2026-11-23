@@ -23,6 +23,9 @@ export const APPROVAL_PERMISSIONS: Record<ApprovalType, { request: Permission; a
     account_freeze: { request: 'risk.decide', approve: 'risk.decide', approverRoles: ['finance_manager'], label: 'Gel ou dégel de l’argent d’un compte' },
     // Security plan Phase 4, blocking mode (2026-11-22): a member held by the fraud engine.
     risk_release: { request: 'risk.decide', approve: 'risk.decide', approverRoles: ['finance_manager'], label: 'Libérer un compte retenu par le moteur de fraude' },
+    // Phase 5 leftover (2026-11-23): take back a commission paid by mistake. Same rights as a
+    // withdrawal regularisation: a finance agent or manager asks, another finance manager approves.
+    commission_reversal: { request: 'finance.regularize.request', approve: 'finance.regularize.approve', approverRoles: ['finance_manager'], label: 'Reprise d’une commission' },
 };
 
 export interface ExecutionOutcome { ok: boolean; code?: string; message?: string; result?: unknown }

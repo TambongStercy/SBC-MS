@@ -102,7 +102,8 @@ export interface SupportMember {
   /** Money frozen by support (withdrawals and transfers suspended). */
   frozen?: { at: string; reason: string | null } | null;
   /** Balance A (account) against B (opening + movements), per currency; finance readers only. */
-  ledger?: { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[] | null;
+  /** XAF, USD and (2026-11-23) ACTIVATION, ADVERTISING, EVENT_ORGANIZER, SBC_LIVE. */
+  ledger?: { currency: string; actual: number; expected: number; matches: boolean }[] | null;
   momoNumber?: string | null;
   momoOperator?: string | null;
 }
@@ -319,7 +320,7 @@ export interface FinanceWithdrawal {
 
 // ── Approvals (assumed) ─────────────────────────────────────────────────
 
-export type ApprovalType = 'regularization' | 'manual_activation' | 'contact_change' | 'authenticator_reset' | 'account_freeze' | 'risk_release';
+export type ApprovalType = 'regularization' | 'manual_activation' | 'contact_change' | 'authenticator_reset' | 'account_freeze' | 'risk_release' | 'commission_reversal';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed' | 'expired' | 'cancelled';
 
 export interface Approval {

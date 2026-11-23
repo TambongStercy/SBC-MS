@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
 import { requireServiceCaller } from '../middleware/auth.middleware';
 import { supportFinanceService } from '../../services/support-finance.service';
+import { describeCommission, reverseCommission } from '../../services/commission-reversal.service';
 import logger from '../../utils/logger';
 
 /**
@@ -18,6 +19,8 @@ import logger from '../../utils/logger';
  *   POST /activation/manual                       { userId, gateway, externalRef, plan, approvalId, countryCode? }
  *   GET  /finance/summary?from&to&country&gateway
  *   GET  /finance/withdrawals?status&ageBucket&gateway&country&from&to&page&limit
+ *   GET  /commissions/:transactionId?userId=        a commission, and whether it can be taken back
+ *   POST /commissions/:transactionId/reverse         { userId, reason, approvalId }  (services/commission-reversal.service.ts)
  */
 const router = Router();
 const log = logger.getLogger('SupportRoutes');
@@ -134,6 +137,29 @@ router.get('/finance/withdrawals', handle(async (req, res) => {
             page: Number(req.query.page) || 1, limit: Number(req.query.limit) || 50,
         }),
     });
+}));
+
+// Commission reversal (support approval `commission_reversal`, 2026-11-23).
+router.get('/commissions/:transactionId', handle(async (req, res) => {
+    const userId = String(req.query.userId || '');
+    if (!/^[a-f0-9]{24}$/i.test(userId)) return bad(res, 'userId is required');
+    const c = await describeCommission(req.params.transactionId, userId);
+    if (!c) return res.status(404).json({ success: false, code: 'COMMISSION_NOT_FOUND', message: 'Transaction introuvable pour ce membre.' });
+    res.status(200).json({ success: true, data: c });
+}));
+
+router.post('/commissions/:transactionId/reverse', handle(async (req, res) => {
+    const { userId, reason, approvalId } = req.body || {};
+    if (typeof userId !== 'string' || !/^[a-f0-9]{24}$/i.test(userId)) return bad(res, 'userId is required');
+    if (typeof reason !== 'string' || reason.trim().length < 5) return bad(res, 'reason is required (5 characters or more)');
+    if (typeof approvalId !== 'string' || !approvalId.trim()) return bad(res, 'approvalId is required', 'APPROVAL_REQUIRED');
+    if (!actor(req)) return bad(res, 'x-support-actor header is required', 'ACTOR_REQUIRED');
+    const data = await reverseCommission({
+        transactionId: req.params.transactionId, userId, reason: reason.trim().slice(0, 1000),
+        by: actor(req)!, approvalId: approvalId.trim().slice(0, 200),
+    });
+    log.info(`[${rid(req)}] commission ${req.params.transactionId} ${data.status} by ${actor(req)}`);
+    res.status(200).json({ success: true, data });
 }));
 
 export default router;

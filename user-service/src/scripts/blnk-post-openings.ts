@@ -12,6 +12,7 @@
  *   node dist/scripts/blnk-post-openings.js                 dry run: counts
  *   node dist/scripts/blnk-post-openings.js --apply         posts (5 at a time)
  *   … --apply --limit=1000 --concurrency=10
+ *   … --balances=ACTIVATION,ADVERTISING,EVENT_ORGANIZER,SBC_LIVE   (only these; 2026-11-23)
  *
  * The plan asks for the CORRECTED opening balance (after the historical
  * reconciliation). This posts the snapshot; members whose history does not
@@ -20,6 +21,7 @@
 import mongoose from 'mongoose';
 import connectDB from '../database/connection';
 import WalletOpeningBalanceModel from '../database/models/wallet-opening-balance.model';
+import { WalletCurrency, isWalletCurrency } from '../database/models/wallet-movement.model';
 import { BlnkBalanceModel } from '../database/models/blnk.model';
 import { blnkEnabled } from '../services/blnk/blnk.client';
 import { ensureMemberBalance } from '../services/blnk/blnk-sync.service';
@@ -34,19 +36,23 @@ async function main() {
     const limit = arg('limit', Number.MAX_SAFE_INTEGER);
     const concurrency = Math.min(arg('concurrency', 5), 20);
     const includeZero = process.argv.includes('--include-zero');
+    const only = process.argv.find(x => x.startsWith('--balances='))?.split('=')[1]?.split(',').map(b => b.trim().toUpperCase());
+    if (only && !only.every(isWalletCurrency)) throw new Error('--balances: XAF, USD, ACTIVATION, ADVERTISING, EVENT_ORGANIZER, SBC_LIVE');
     await connectDB();
     if (apply && !blnkEnabled()) throw new Error('BLNK_URL / BLNK_API_KEY are not set');
     const done = new Set((await BlnkBalanceModel.find({ openingPosted: true }, { userId: 1, currency: 1 }).lean()).map((r: any) => `${r.userId}:${r.currency}`));
-    let todo = 0, posted = 0, failed = 0, zero = 0, totalXAF = 0, totalUSD = 0;
-    const queue: { userId: any; currency: 'XAF' | 'USD'; amount: number }[] = [];
-    for await (const o of WalletOpeningBalanceModel.find({}, { userId: 1, currency: 1, amount: 1 }).sort({ _id: 1 }).lean().cursor()) {
+    let todo = 0, posted = 0, failed = 0, zero = 0;
+    const totals: Record<string, number> = {};
+    const queue: { userId: any; currency: WalletCurrency; amount: number }[] = [];
+    for await (const o of WalletOpeningBalanceModel.find(only ? { currency: { $in: only } } : {}, { userId: 1, currency: 1, amount: 1 }).sort({ _id: 1 }).lean().cursor()) {
         if (done.has(`${o.userId}:${o.currency}`)) continue;
         if (!includeZero && !o.amount) { zero++; continue; }
         todo++;
-        if (o.currency === 'USD') totalUSD += o.amount; else totalXAF += o.amount;
+        totals[o.currency] = (totals[o.currency] ?? 0) + o.amount;
         if (apply && queue.length < limit) queue.push(o as any);
     }
-    process.stdout.write(`${todo} opening balance(s) not yet in Blnk (${Math.round(totalXAF * 100) / 100} XAF, ${Math.round(totalUSD * 100) / 100} USD)${zero ? `; ${zero} zero opening(s) skipped` : ''}\n`);
+    const byBalance = Object.entries(totals).map(([c, t]) => `${c} ${Math.round(t * 100) / 100}`).join(', ');
+    process.stdout.write(`${todo} opening balance(s) not yet in Blnk (${byBalance || 'none'})${zero ? `; ${zero} zero opening(s) skipped` : ''}\n`);
     if (!apply) {
         process.stdout.write('Dry run: nothing posted. Add --apply.\n');
     } else {

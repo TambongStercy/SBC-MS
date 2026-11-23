@@ -1,6 +1,6 @@
 import { Schema, model, Types } from 'mongoose';
 
-export const APPROVAL_TYPES = ['contact_change', 'manual_activation', 'regularization', 'authenticator_reset', 'account_freeze', 'risk_release'] as const;
+export const APPROVAL_TYPES = ['contact_change', 'manual_activation', 'regularization', 'authenticator_reset', 'account_freeze', 'risk_release', 'commission_reversal'] as const;
 export type ApprovalType = typeof APPROVAL_TYPES[number];
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'executed', 'failed', 'cancelled', 'expired'] as const;
 export type ApprovalStatus = typeof APPROVAL_STATUSES[number];

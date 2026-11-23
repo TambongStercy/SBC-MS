@@ -97,6 +97,7 @@ export const APPROVAL_TYPE: Record<ApprovalType, string> = {
   authenticator_reset: 'Réinitialisation de l’authentificateur',
   account_freeze: 'Gel ou dégel de l’argent',
   risk_release: 'Libération (moteur de fraude)',
+  commission_reversal: 'Reprise de commission',
 };
 
 export const APPROVAL_STATUS: Record<ApprovalStatus, { label: string; tone: Tone }> = {

@@ -34,9 +34,9 @@ export class AdvertisingBalanceService {
     /**
      * Credits verified campaign earnings. Service-to-service only.
      *
-     * Idempotency is the caller's job: advertising-service stamps creditedAt on the
-     * participation and refuses to credit twice. Enforcing it here would need a
-     * ledger this service has no reason to own.
+     * advertising-service stamps creditedAt on the participation and refuses to
+     * credit twice; since 2026-11-23 the wallet journal also moves the balance once
+     * per reference (`adv:advertising-credit:<reference>`).
      */
     async credit(
         userId: string,
@@ -48,7 +48,7 @@ export class AdvertisingBalanceService {
             throw new AppError('Credit amount must be a positive number', 400);
         }
 
-        const updated = await this.userRepository.creditAdvertisingBalance(userId, amount);
+        const updated = await this.userRepository.creditAdvertisingBalance(userId, amount, reference);
         if (!updated) throw new AppError('User not found', 404);
 
         let transactionId = '';

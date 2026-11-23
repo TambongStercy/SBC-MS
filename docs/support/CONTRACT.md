@@ -105,6 +105,8 @@ and does nothing; a reservation stuck `applying` for 15 min (crash) is taken ove
 | `POST /withdrawals/:transactionId/regularize` | `{ action: 'complete'\|'fail', reason, evidence: string[], approvalId }` | conditional transition; `409 code=STATE_CHANGED` if not in an allowed state |
 | `POST /activation/manual` | `{ userId, gateway, externalRef, plan, approvalId }` | verifies `externalRef` at the provider; unique `{gateway, gatewayPaymentId}`; `409 code=REF_ALREADY_USED`, `422 code=PROVIDER_NOT_CONFIRMED` |
 | `GET /finance/summary` | `?from&to&country` | counts and sums per business status, ages bucketed `<24h`, `24-48h`, `48-72h`, `>72h` |
+| `GET /commissions/:transactionId` | `?userId=` | the deposit if it belongs to `userId`: `{ transactionId, amount, currency, status, createdAt, isCommission, level, sourceUserId, reversible, reversed }`, else `404 COMMISSION_NOT_FOUND` |
+| `POST /commissions/:transactionId/reverse` | `{ userId, reason, approvalId }` (+ `x-support-actor`) | commission reversal (2026-11-23): claims the commission deposit (COMPLETED → RECONCILED, once), debits the same amount from the member's AVAILABLE balance under the ledger reference `commission-reversal:<txId>`, records a `commission_reversal` transaction. `200 { status: 'reversed'\|'already_reversed', amount, currency, reversalTransactionId }`; `409 NOT_REVERSIBLE` (not a commission, another member's, not completed, already taken back); `409 INSUFFICIENT_AVAILABLE_BALANCE` (nothing debited, the commission back to COMPLETED; no debt is ever created); `503` = outcome unknown, claim kept: the same `approvalId` resumes it, another one is refused |
 | `GET /finance/withdrawals` | `?status&ageBucket&gateway&country&from&to&page&limit` | `{ items, total, page, limit }`; items `{ transactionId, userId, amount, currency, status, businessStatus, method, gateway, country, createdAt, updatedAt, ageBucket }`. `status=non_final` = every withdrawal without a final provider answer (used by support's 24/48/72 h job) |
 
 ```
@@ -232,7 +234,17 @@ countries; asking for another country returns `board: null`.
   `POST /members/:userId/freeze { action, reason (≥ 20) }` (`risk.decide`, approved by another
   `risk.decide`); `POST /members/:userId/contact-change { field: 'momo', momoNumber,
   momoOperator, reason }` (same permissions as contact changes, applied at approval, no code).
-  Release of a held withdrawal and commission reversal wait for Phase 4 (holds, reversal API).
+  `POST /members/:userId/risk/release` (Phase 4): releases a member the fraud engine holds; a
+  withdrawal it refused at approval stays `pending_admin_approval` and is approved normally
+  once released (a member-side request is simply made again).
+  **Commission reversal (2026-11-23):** `GET /members/:userId/commissions/:transactionId`
+  (preview) and `POST /members/:userId/commission-reversal { transactionId, reason (≥ 20),
+  ticketId?, caseId? }` (`finance.regularize.request` + reauth; approval type
+  `commission_reversal`, approved by another `finance.regularize.approve`; one open request per
+  commission, `409 ALREADY_PENDING`). Executed by payment-service `POST
+  /api/internal/support/commissions/:txId/reverse`. If the member no longer has the money the
+  approval ends `failed` (`INSUFFICIENT_AVAILABLE_BALANCE`): nothing is debited and no debt is
+  created; the freeze is the other answer. The member is not notified automatically.
 - **super_manager** (at most 2 accounts, `409 SUPER_MANAGER_LIMIT`): every finance manager
   permission plus `approvals.override`: approves alone, own requests included, with the
   reauth code, a note of 20 characters at least (`400 REASON_REQUIRED`), and an instant alert

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { membersApi } from '../../api/members';
+import { membersApi, type CommissionInfo } from '../../api/members';
+import { errorMessage } from '../../api/http';
 import type { SupportMember } from '../../api/types';
 import { usePermissions } from '../../auth/context';
 import { useReauth } from '../../auth/reauth';
 import { ReasonDialog } from '../../components/ReasonDialog';
 import { toast } from '../../components/toast';
-import { Badge, Button, Panel, PanelBody, PanelHeader } from '../../components/ui';
+import { Badge, Button, Field, Input, Panel, PanelBody, PanelHeader } from '../../components/ui';
 import { formatDateTime, formatMoney } from '../../lib/format';
 
 /**
@@ -14,7 +15,8 @@ import { formatDateTime, formatMoney } from '../../lib/format';
  * usual and last country), whether their money is frozen, balance A (account)
  * against B (opening + recorded movements), and the two requests support can
  * make about the account: remove a lost authenticator, freeze or unfreeze the
- * money. Each request is approved by another agent before anything happens.
+ * money, take back a commission paid by mistake (2026-11-23). Each request is
+ * approved by another agent before anything happens.
  * Linked accounts and the risk score are in MemberRiskPanel (Phase 4);
  * balance C arrives with the second ledger (Phase 2).
  */
@@ -22,13 +24,38 @@ const regionNames = (() => { try { return new Intl.DisplayNames(['fr'], { type: 
 const country = (c: string | null | undefined) => (c ? `${regionNames?.of(c) ?? c} (${c})` : '—');
 const REASON_MIN = 20;
 
+/** The six journalled balances (A vs B per balance since 2026-11-23). */
+const BALANCE_LABEL: Record<string, string> = {
+  XAF: 'Principal', USD: 'USD', ACTIVATION: 'Activation', ADVERTISING: 'Publicité', EVENT_ORGANIZER: 'Événements', SBC_LIVE: 'SBC Live',
+};
+const moneyOf = (c: string) => (c === 'USD' ? 'USD' : 'XAF');
+
 export function MemberSecurityPanel({ member: m }: { member: SupportMember }) {
   const perms = usePermissions();
   const reauth = useReauth();
   const qc = useQueryClient();
-  const [dialog, setDialog] = useState<'reset' | 'freeze' | null>(null);
+  const [dialog, setDialog] = useState<'reset' | 'freeze' | 'commission' | null>(null);
+  const [txId, setTxId] = useState('');
+  const [commission, setCommission] = useState<CommissionInfo | null>(null);
+  const [lookupError, setLookupError] = useState('');
   const canReset = perms.has('authenticator.reset.request');
   const canFreeze = perms.has('risk.decide');
+  const canReverse = perms.has('finance.regularize.request');
+
+  const lookUp = async () => {
+    setCommission(null); setLookupError('');
+    const id = txId.trim();
+    if (!id) return;
+    try {
+      const c = await membersApi.commission(m._id, id);
+      setCommission(c);
+      if (!c.isCommission) setLookupError('Cette transaction n’est pas une commission.');
+      else if (c.reversed) setLookupError('Cette commission a déjà été reprise.');
+      else if (!c.reversible) setLookupError(`Cette commission ne peut pas être reprise (statut « ${c.status} »).`);
+    } catch (e) {
+      setLookupError(errorMessage(e));
+    }
+  };
   const geo = m.geo;
   const usualDiffers = geo?.usual && geo.declared && geo.usual !== geo.declared;
   const lastDiffers = geo?.last && geo.declared && geo.last !== geo.declared;
@@ -43,12 +70,17 @@ export function MemberSecurityPanel({ member: m }: { member: SupportMember }) {
     <Panel>
       <PanelHeader
         title="Sécurité"
-        actions={(canReset || canFreeze) ? (
+        actions={(canReset || canFreeze || canReverse) ? (
           <div className="flex flex-wrap gap-2">
             {canReset && <Button size="sm" variant="outline" onClick={() => setDialog('reset')}>Réinitialiser l’authentificateur</Button>}
             {canFreeze && (
               <Button size="sm" variant={m.frozen ? 'outline' : 'danger-ghost'} onClick={() => setDialog('freeze')}>
                 {m.frozen ? 'Dégeler l’argent' : 'Geler l’argent'}
+              </Button>
+            )}
+            {canReverse && (
+              <Button size="sm" variant="outline" onClick={() => { setTxId(''); setCommission(null); setLookupError(''); setDialog('commission'); }}>
+                Reprendre une commission
               </Button>
             )}
           </div>
@@ -82,18 +114,17 @@ export function MemberSecurityPanel({ member: m }: { member: SupportMember }) {
         )}
         {m.ledger !== undefined && (
           <div>
-            <p className="mb-1 text-xs text-fg-muted">Soldes : A (compte), B (ouverture + mouvements enregistrés), C (second registre, phase 2)</p>
+            <p className="mb-1 text-xs text-fg-muted">Soldes : A (compte), B (ouverture + mouvements enregistrés)</p>
             {m.ledger === null ? (
               <p className="text-fg-muted">Pas encore de solde d’ouverture pour ce membre.</p>
             ) : (
               <ul className="space-y-1">
                 {m.ledger.map(l => (
                   <li key={l.currency} className="flex flex-wrap items-center gap-2">
-                    <span className="w-10 text-xs text-fg-muted">{l.currency}</span>
-                    <span>A {formatMoney(l.actual, l.currency)}</span>
-                    <span>B {formatMoney(l.expected, l.currency)}</span>
-                    <span className="text-fg-muted">C —</span>
-                    {l.matches ? <Badge tone="success">A = B</Badge> : <Badge tone="danger">Écart {formatMoney(Math.round((l.actual - l.expected) * 100) / 100, l.currency)}</Badge>}
+                    <span className="w-20 text-xs text-fg-muted">{BALANCE_LABEL[l.currency] ?? l.currency}</span>
+                    <span>A {formatMoney(l.actual, moneyOf(l.currency))}</span>
+                    <span>B {formatMoney(l.expected, moneyOf(l.currency))}</span>
+                    {l.matches ? <Badge tone="success">A = B</Badge> : <Badge tone="danger">Écart {formatMoney(Math.round((l.actual - l.expected) * 100) / 100, moneyOf(l.currency))}</Badge>}
                   </li>
                 ))}
               </ul>
@@ -133,6 +164,36 @@ export function MemberSecurityPanel({ member: m }: { member: SupportMember }) {
           done('Demande envoyée pour validation.');
         }}
       />
+      <ReasonDialog
+        open={dialog === 'commission'}
+        onOpenChange={o => { if (!o) setDialog(null); }}
+        title="Reprendre une commission"
+        description={`Pour ${m.name}. La commission est reprise sur l’argent disponible du membre, après la validation d’un autre responsable financier. S’il ne l’a plus, rien n’est débité et la demande échoue : gelez alors le compte si nécessaire. Le membre n’est pas prévenu automatiquement.`}
+        label="Pourquoi reprendre cette commission"
+        minLength={REASON_MIN}
+        tone="danger"
+        confirmLabel="Envoyer pour validation"
+        onConfirm={async reason => {
+          if (!commission || commission.transactionId !== txId.trim() || lookupError) {
+            throw new Error('Vérifiez d’abord la commission (bouton « Vérifier »).');
+          }
+          const token = await reauth({ title: 'Confirmer la demande', description: 'Entrez le code de votre application d’authentification.' });
+          await membersApi.requestCommissionReversal(m._id, commission.transactionId, reason, token);
+          done('Demande envoyée pour validation.');
+        }}
+      >
+        <Field label="Référence de la commission (transaction)" error={lookupError || undefined}>
+          <Input value={txId} onChange={e => { setTxId(e.target.value); setCommission(null); setLookupError(''); }} onBlur={() => void lookUp()} placeholder="ex. AbC123xyz" />
+        </Field>
+        <div className="flex items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => void lookUp()}>Vérifier</Button>
+          {commission && commission.isCommission && !lookupError && (
+            <span className="text-xs text-fg">
+              {formatMoney(commission.amount, commission.currency)} · niveau {commission.level ?? '—'} · versée le {formatDateTime(commission.createdAt)}
+            </span>
+          )}
+        </div>
+      </ReasonDialog>
     </Panel>
   );
 }

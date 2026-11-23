@@ -36,6 +36,10 @@ export enum TransactionType {
 
     // Admin balance adjustment (record only: user-service moves the balance under the same reference)
     ADMIN_ADJUSTMENT = 'admin_adjustment',
+
+    // A commission taken back by support after a second agent's approval (2026-11-23):
+    // the original deposit becomes RECONCILED, this row records the debit.
+    COMMISSION_REVERSAL = 'commission_reversal',
 }
 
 // Define Currency

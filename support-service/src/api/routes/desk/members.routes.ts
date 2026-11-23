@@ -6,6 +6,7 @@ import { audit } from '../../../services/audit.service';
 import { hasPermission } from '../../../config/permissions';
 import { presentTickets } from '../../presenters';
 import { requestAuthenticatorReset, requestFreeze, requestRiskRelease } from '../../../services/risk.service';
+import { previewCommission, requestCommissionReversal } from '../../../services/commission.service';
 
 const router = Router();
 const ref = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.name, roles: a.roles }; };
@@ -67,6 +68,16 @@ router.post('/:userId/authenticator-reset', requirePermission('authenticator.res
 // Security plan Phase 5: freeze or unfreeze the member's money (finance managers; another one approves).
 router.post('/:userId/freeze', requirePermission('risk.decide'), requireReauth, ah(async (req, res) => {
     const a = await requestFreeze(req.params.userId, req.body ?? {}, ref(req), reqCtx(req));
+    res.status(201).json({ success: true, data: { approvalId: String(a._id), status: a.status } });
+}));
+
+// Commission reversal (2026-11-23): see the commission, then ask; another finance manager approves.
+router.get('/:userId/commissions/:transactionId', requirePermission('finance.regularize.request'), ah(async (req, res) => {
+    res.json({ success: true, data: await previewCommission(req.params.userId, req.params.transactionId) });
+}));
+
+router.post('/:userId/commission-reversal', requirePermission('finance.regularize.request'), requireReauth, ah(async (req, res) => {
+    const a = await requestCommissionReversal(req.params.userId, req.body ?? {}, ref(req), reqCtx(req));
     res.status(201).json({ success: true, data: { approvalId: String(a._id), status: a.status } });
 }));
 

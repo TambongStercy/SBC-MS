@@ -297,13 +297,15 @@ export class UserController {
     async updateSbcLiveBalance(req: Request, res: Response): Promise<void> {
         try {
             const userId = req.params.userId;
-            const { amount } = req.body;
+            const { amount, reference } = req.body;
             if (amount === undefined || isNaN(Number(amount))) {
                 res.status(400).json({ success: false, message: 'Valid amount is required' });
                 return;
             }
             const numericAmount = Number(amount);
-            const updated = await userRepository.updateSbcLiveBalance(userId, numericAmount);
+            // Optional (payment-service since 2026-11-23): makes a replay move nothing.
+            const ref = typeof reference === 'string' && /^[\w:.\-]{3,150}$/.test(reference) ? reference : undefined;
+            const updated = await userRepository.updateSbcLiveBalance(userId, numericAmount, ref);
             if (updated === null) {
                 if (numericAmount < 0) {
                     res.status(409).json({ success: false, message: 'Insufficient SBC Live balance' });

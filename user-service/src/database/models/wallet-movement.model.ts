@@ -1,8 +1,15 @@
 import { Schema, Document, Types, model } from 'mongoose';
 
 /**
- * Append-only journal of every change of `users.balance` (XAF) and
- * `users.usdBalance` (USD). Written by services/wallet-ledger.service.ts only.
+ * Append-only journal of every change of the six member balances (see
+ * WALLET_FIELDS): `users.balance` (XAF), `usdBalance` (USD), and since
+ * 2026-11-23 `activationBalance`, `advertisingBalance`, `eventOrganizerBalance`
+ * and `sbcLiveBalance`. Written by services/wallet-ledger.service.ts only.
+ *
+ * `currency` names the balance (the four extra ones are XAF money). Their
+ * references carry a prefix (`act:`, `adv:`, `evt:`, `live:`), so one business
+ * event that moves two balances (main → activation) leaves two rows that can
+ * never be mistaken for a movement and its undo.
  *
  * - The unique {reference, direction} makes a replayed credit or debit a no-op:
  *   `withdrawal:<txId>` can be debited once, whoever retries.
@@ -28,7 +35,27 @@ export enum WalletMovementStatus {
     APPLIED = 'APPLIED',
 }
 
-export type WalletCurrency = 'XAF' | 'USD';
+export type WalletCurrency = 'XAF' | 'USD' | 'ACTIVATION' | 'ADVERTISING' | 'EVENT_ORGANIZER' | 'SBC_LIVE';
+export const WALLET_CURRENCIES: WalletCurrency[] = ['XAF', 'USD', 'ACTIVATION', 'ADVERTISING', 'EVENT_ORGANIZER', 'SBC_LIVE'];
+export const isWalletCurrency = (v: unknown): v is WalletCurrency => WALLET_CURRENCIES.includes(v as WalletCurrency);
+
+/** The users field each journalled balance lives in. */
+export const WALLET_FIELDS: Record<WalletCurrency, string> = {
+    XAF: 'balance',
+    USD: 'usdBalance',
+    ACTIVATION: 'activationBalance',
+    ADVERTISING: 'advertisingBalance',
+    EVENT_ORGANIZER: 'eventOrganizerBalance',
+    SBC_LIVE: 'sbcLiveBalance',
+};
+
+/** Reference namespace of each balance (the main XAF/USD ones keep the bare reference). */
+export const WALLET_REF_PREFIX: Record<WalletCurrency, string> = {
+    XAF: '', USD: '', ACTIVATION: 'act:', ADVERTISING: 'adv:', EVENT_ORGANIZER: 'evt:', SBC_LIVE: 'live:',
+};
+
+/** The money's real currency (Blnk balances are opened in it). */
+export const moneyCurrencyOf = (c: WalletCurrency): 'XAF' | 'USD' => (c === 'USD' ? 'USD' : 'XAF');
 
 export interface IWalletMovement extends Document {
     reference: string;
@@ -57,7 +84,7 @@ const WalletMovementSchema = new Schema<IWalletMovement>(
         reference: { type: String, required: true, maxlength: 200 },
         direction: { type: String, enum: Object.values(WalletMovementDirection), required: true },
         userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-        currency: { type: String, enum: ['XAF', 'USD'], required: true },
+        currency: { type: String, enum: WALLET_CURRENCIES, required: true },
         amount: { type: Number, required: true, min: 0 },
         requestedAmount: { type: Number, required: true },
         debtDelta: { type: Number },

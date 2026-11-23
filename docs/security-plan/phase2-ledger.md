@@ -48,9 +48,13 @@ A withdrawal is paid only when three balances agree:
   Mongo journal that feeds Blnk. Plan step 9 (retire it) is dropped.
 - **Every call is immediate (`skip_queue`).** With Blnk's queue, a credit still waiting
   there could make a later debit fail for "insufficient funds".
-- **Two balances, not six.** XAF and USD now; they are the withdrawable money. Still to add:
-  the activation balance, advertising, SBC Live, and the event organiser (event-service's
-  own ledger).
+- **Six balances since 2026-11-23** (were two). XAF and USD first (the withdrawable money), then
+  activation, advertising, event organiser and SBC Live: `walletmovements.currency` names the
+  balance, each has its own Blnk balance (Blnk currency XAF), and the triple check takes
+  `?currency=ACTIVATION|ADVERTISING|EVENT_ORGANIZER|SBC_LIVE`. The event organiser keeps
+  `eventorganizerledgers` as its claim; its balance may go below zero (resale refunds), so its
+  Blnk balance allows it. The withdrawal pre-check still asks XAF and USD only. See « Extra
+  balances » below.
 - **The opening posted is the 2026-11-21 snapshot, not a corrected value.** The historical
   reconciliation (step 5) is still to do. It is a read-only recomputation from the
   transaction history, and on prod data it needs your approval. Corrections will then go
@@ -106,6 +110,29 @@ It does not run on the main server.
 6. `LEDGER_TRIPLE_CHECK=enforce`.
 7. Backups of `blnk_preprod` (nightly `pg_dump` from the secondary server).
 8. Holds in Blnk (inflight at reservation) with enforcement.
+
+## Extra balances (2026-11-23)
+
+What writes them, now journalled (`walletLedger.applyInc`, reference prefix in brackets):
+
+| Balance | Writes |
+|---|---|
+| ACTIVATION (`act:`) | main → activation (leg of the XAF debit), admin reversal back to main (leg), P2P transfer (`<ref>:out` / `:in`, undo on a missing recipient), sponsor activation (CLASSIQUE/CIBLE/UPGRADE `sponsor-activation:<id>`, WINNER `sponsored_winner_<id>`; undo under the same reference), admin adjust (`admin-adjust-activation:<id>`), leaderboard bonus (`leaderboard-bonus:<user>:<month>`) |
+| ADVERTISING (`adv:`) | campaign credits (`advertising-credit:<advertising-service reference>`), transfer to main (leg) |
+| EVENT_ORGANIZER (`evt:`) | event-service movements (`<reference>`, claim in `eventorganizerledgers`), transfer to main (leg) |
+| SBC_LIVE (`live:`) | paid-live split (`sbc-live-split:<session>`), refund clawback (`sbc-live-refund:<refund>`); without a reference (older payment-service) a generated one |
+
+Counterparts: `@Activation`, `@Advertising`, `@EventOrganizer`, `@SbcLive` (leaderboard → `@LeaderboardBonus`,
+admin → `@Adjustments`).
+
+Rollout on an environment whose sync worker already runs:
+1. Deploy (user-service, then payment-service).
+2. `node dist/scripts/snapshot-opening-balances.js --balances=ACTIVATION,ADVERTISING,EVENT_ORGANIZER,SBC_LIVE`
+   (dry run), then `--apply`. Before it starts the sync records these balances' movements
+   `skipped_in_opening`; while it runs the sync waits (`opening_snapshot_running`).
+3. `node dist/scripts/blnk-post-openings.js --balances=ACTIVATION,ADVERTISING,EVENT_ORGANIZER,SBC_LIVE`
+   (dry run), then `--apply`.
+4. The nightly shadow comparison then covers them.
 
 ## Local
 
