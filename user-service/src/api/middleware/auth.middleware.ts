@@ -5,6 +5,7 @@ import config from '../../config';
 import { UserRole } from '../../database/models/user.model'; // Import UserRole enum
 import { userRepository } from '../../database/repositories/user.repository'; // Import repository
 import logger from '../../utils/logger';
+import { bannedBody, hasBanFlag } from '../../services/account-ban.service';
 
 const log = logger.getLogger('Auth');
 
@@ -60,6 +61,12 @@ export const authenticate = async (req: AuthenticatedRequest, res: Response, nex
         //     return res.status(401).json({ message: 'Authentication failed: Invalid or revoked token' });
         // }
         // // --- End DB Validation --- 
+
+        // A suspended member (services/account-ban.service.ts) is refused at once, whatever token
+        // they still hold. Redis flag only (fails open); /me, refresh and sign-in also read the database.
+        if (decodedPayload.role === UserRole.USER && await hasBanFlag(decodedPayload.userId)) {
+            return res.status(403).json(bannedBody());
+        }
 
         // Attach user payload to the request object
         req.user = decodedPayload;

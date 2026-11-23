@@ -18,6 +18,7 @@ import {
 } from '../../components/ui';
 import { formatDate, formatDateTime, formatMoney, formatRelative } from '../../lib/format';
 import { MemberSecurityPanel } from './MemberSecurityPanel';
+import { MemberBanBanner } from './MemberBanBanner';
 import { MemberSessionsPanel } from './MemberSessionsPanel';
 import { MemberRiskPanel } from './MemberRiskPanel';
 
@@ -53,7 +54,7 @@ export default function MemberDetailPage() {
           <h1 className="break-words text-2xl font-semibold tracking-tight text-fg">{m.name}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {m.isVerified ? <Badge tone="success">Compte vérifié</Badge> : <Badge tone="neutral">Non vérifié</Badge>}
-            {m.blocked && <Badge tone="danger">Bloqué</Badge>}
+            {m.ban ? <Badge tone="danger">Compte suspendu</Badge> : m.blocked && <Badge tone="danger">Bloqué</Badge>}
             {m.deleted && <Badge tone="danger">Supprimé</Badge>}
             {m.frozen && <Badge tone="danger"><HugeiconsIcon icon={LockIcon} size={12} aria-hidden="true" /> Argent gelé</Badge>}
             {lockedUntil && <Badge tone="warning"><HugeiconsIcon icon={LockIcon} size={12} aria-hidden="true" /> Retraits bloqués jusqu’au {formatDateTime(lockedUntil)}</Badge>}
@@ -66,6 +67,8 @@ export default function MemberDetailPage() {
           </Button>
         )}
       </header>
+
+      <MemberBanBanner member={m} />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Panel>

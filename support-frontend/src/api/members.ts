@@ -39,6 +39,9 @@ export const membersApi = {
   requestRiskRelease: (id: string, reason: string, reauthToken: string) =>
     api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/risk/release`, { reason }, { reauthToken }),
   /** Security plan Phase 5: freeze or unfreeze the member's money; another finance manager approves. */
+  /** Lifts an account suspension (members.unban): done at once, audited. */
+  unban: (id: string, reason: string, reauthToken: string) =>
+    api.post<{ unbanned: boolean; stillBlocked: boolean }>(`/members/${encodeURIComponent(id)}/unban`, { reason }, { reauthToken }),
   requestFreeze: (id: string, action: 'freeze' | 'unfreeze', reason: string, reauthToken: string) =>
     api.post<{ approvalId: string }>(`/members/${encodeURIComponent(id)}/freeze`, { action, reason }, { reauthToken }),
   /** A commission of this member (to check it before asking to take it back). */

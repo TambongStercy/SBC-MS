@@ -35,6 +35,8 @@ export const PERMISSIONS = [
     // KYC level 3 (2026-11-22).
     'identity.review',
     'replay.read', 'assist.control',
+    // Account suspension (2026-11-23).
+    'members.unban',
 ] as const;
 export type Permission = typeof PERMISSIONS[number];
 
@@ -91,6 +93,9 @@ const MATRIX: Record<Permission, Role[]> = {
     // (agents added the same day, user's call). The member still has to accept every control
     // request, and sensitive screens refuse it.
     'assist.control': [A, SA],
+    // Lift an account suspension (no-referral withdrawal rule, 2026-11-23): finance managers and support
+    // administrators (super managers through FM), with their authenticator code and a reason; audited.
+    'members.unban': [FM, SA],
 };
 
 // The super manager can do everything a finance manager can (plus approvals.override).

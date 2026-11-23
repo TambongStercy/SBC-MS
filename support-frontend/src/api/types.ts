@@ -106,6 +106,22 @@ export interface SupportMember {
   ledger?: { currency: string; actual: number; expected: number; matches: boolean }[] | null;
   momoNumber?: string | null;
   momoOperator?: string | null;
+  /** Account suspended (no-referral withdrawal rule, 2026-11-23); `details` for money readers only. */
+  ban?: MemberBan | null;
+  banHistory?: { at: string | null; reason: string | null; liftedAt: string | null; liftedBy: string | null; liftReason: string | null }[];
+}
+
+export interface MemberBan {
+  at: string;
+  reason: 'no_referral_withdrawal' | 'manual' | string;
+  details?: {
+    reasons?: string[];
+    evaluation?: {
+      currency?: string; a?: number; b?: number | null; commissionCredits?: number; commissionReversed?: number; commissionCreditsUsd?: number;
+      balances?: { currency: string; a: number; b: number | null; diff: number | null; decidable: boolean; unexplained: boolean }[];
+    } | null;
+    attempt?: { amount?: number | null; currency?: string | null; transactionId?: string | null } | null;
+  } | null;
 }
 
 export interface Payin {
@@ -261,7 +277,9 @@ export type CaseType =
   | 'activation' | 'withdrawal_divergence' | 'debit_missing' | 'paid_not_debited'
   | 'duplicate_callback' | 'unknown_status' | 'amount_mismatch' | 'ledger_mismatch'
   // Security plan Phase 5: fraud cases (opened by the fraud engine).
-  | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation' | 'dormant_review';
+  | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation' | 'dormant_review'
+  // 2026-11-23: account suspended on a withdrawal without filleuls.
+  | 'no_referral_withdrawal_ban';
 
 export type CaseStatus = 'open' | 'in_progress' | 'waiting_provider' | 'resolved' | 'closed';
 export type Severity = 'info' | 'warning' | 'critical';

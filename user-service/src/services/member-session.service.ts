@@ -135,7 +135,7 @@ export async function openCookieSession(
     return access;
 }
 
-export type RefreshOutcome = 'refreshed' | 'grace' | 'missing' | 'unknown' | 'reused' | 'expired' | 'inactive';
+export type RefreshOutcome = 'refreshed' | 'grace' | 'missing' | 'unknown' | 'reused' | 'expired' | 'inactive' | 'banned';
 
 /**
  * POST /users/session/refresh. A new access token and a new refresh token; the old
@@ -174,11 +174,13 @@ export async function refreshCookieSession(req: Request, res: Response): Promise
         }
     }
 
-    const user = await UserModel.findById(session.userId).select('email role blocked deleted').lean();
+    const user = await UserModel.findById(session.userId).select('email role blocked deleted ban').lean();
     if (!user || (user as any).blocked || (user as any).deleted) {
-        await MemberSessionModel.updateOne({ _id: session._id }, { $set: { revokedAt: now, revokedReason: 'inactive' } });
+        // A suspended account (services/account-ban.service.ts) says so: the app shows why (403 ACCOUNT_BANNED).
+        const banned = !!(user as any)?.ban?.at;
+        await MemberSessionModel.updateOne({ _id: session._id }, { $set: { revokedAt: now, revokedReason: banned ? 'banned' : 'inactive' } });
         clearSessionCookies(res);
-        return 'inactive';
+        return banned ? 'banned' : 'inactive';
     }
     const access = signAccess(user as SessionUser, String(session._id));
     await bindKey(access, String(session.userId), session.publicKey, session.deviceId);

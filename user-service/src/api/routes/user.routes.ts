@@ -23,6 +23,7 @@ import { getActivityBoard, getActivityList } from '../controllers/activity.contr
 import { blnkEnabled } from '../../services/blnk/blnk.client';
 import { tripleCheck } from '../../services/blnk/blnk-sync.service';
 import { isWalletCurrency } from '../../database/models/wallet-movement.model';
+import { BanError, bannedBody, isBanned, unbanAccount, withdrawalBanCheck } from '../../services/account-ban.service';
 
 const router = Router();
 const log = logger.getLogger('UserRoutes'); // Create logger instance
@@ -78,6 +79,31 @@ serviceRouter.get('/:userId/ledger-check', async (req, res) => {
     } catch (err: any) {
         // Blnk unreachable: the caller decides (enforce mode refuses the payout).
         res.status(503).json({ success: false, code: 'LEDGER_UNAVAILABLE', message: err?.message ?? 'Blnk unavailable' });
+    }
+});
+// Account suspension (2026-11-23, services/account-ban.service.ts). payment-service asks before every
+// member withdrawal: a member without filleuls holding unexplained money is banned (NO_REFERRAL_BAN).
+serviceRouter.post('/:userId/withdrawal-ban-check', async (req: Request, res: Response) => {
+    if (!/^[a-f0-9]{24}$/i.test(req.params.userId)) { res.status(400).json({ success: false, message: 'userId is invalid.' }); return; }
+    try {
+        const b = req.body ?? {};
+        const data = await withdrawalBanCheck(req.params.userId, { amount: b.amount, currency: b.currency, transactionId: b.transactionId, dryRun: b.dryRun === true });
+        if (!data) { res.status(404).json({ success: false, code: 'USER_NOT_FOUND', message: 'User not found' }); return; }
+        res.status(200).json({ success: true, data });
+    } catch (err: any) {
+        log.error(`Withdrawal ban check failed for ${req.params.userId}: ${err?.message ?? err}`);
+        res.status(500).json({ success: false, message: 'Ban check failed' });
+    }
+});
+// Support « Lever la suspension » (members.unban + reauth in the desk): { by, reason }.
+serviceRouter.post('/:userId/unban', async (req: Request, res: Response) => {
+    if (!/^[a-f0-9]{24}$/i.test(req.params.userId)) { res.status(400).json({ success: false, code: 'INVALID_INPUT', message: 'userId is invalid.' }); return; }
+    try {
+        res.status(200).json({ success: true, data: await unbanAccount(req.params.userId, { by: req.body?.by, reason: req.body?.reason }) });
+    } catch (err: any) {
+        if (err instanceof BanError) { res.status(err.statusCode).json({ success: false, code: err.code, message: err.message }); return; }
+        log.error(`Unban failed for ${req.params.userId}: ${err?.message ?? err}`);
+        res.status(500).json({ success: false, code: 'INTERNAL_ERROR', message: 'Unban failed' });
     }
 });
 // Security plan Phase 1: aggregated request signals from the gateway.
@@ -226,6 +252,7 @@ router.post('/session/refresh', generalLimiter, async (req: Request, res: Respon
     try {
         const outcome = await refreshCookieSession(req, res);
         if (outcome === 'refreshed' || outcome === 'grace') { res.status(200).json({ success: true, data: { session: 'cookie' } }); return; }
+        if (outcome === 'banned') { res.status(403).json(bannedBody()); return; }
         res.status(401).json({ success: false, code: 'SESSION_ENDED', message: 'Session expirée. Reconnectez-vous.' });
     } catch (err: any) {
         log.error(`Session refresh failed: ${err?.message ?? err}`);
@@ -318,7 +345,8 @@ router.post('/session/adopt', async (req: Request, res: Response) => {
     if (!u?.userId || !auth.startsWith('Bearer ')) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
     if (!wantsCookieSession(req) || u.sid || u.asid) { res.status(200).json({ success: true, data: { session: 'bearer' } }); return; }
     try {
-        const user = await UserModel.findById(u.userId).select('email role blocked deleted').lean();
+        const user = await UserModel.findById(u.userId).select('email role blocked deleted ban').lean();
+        if (isBanned(user as any)) { res.status(403).json(bannedBody()); return; }
         if (!user || (user as any).blocked || (user as any).deleted) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
         const publicKey = await publicKeyOfToken(auth.slice(7));
         await openCookieSession(req, res, user as any, { publicKey, origin: 'adopted' });

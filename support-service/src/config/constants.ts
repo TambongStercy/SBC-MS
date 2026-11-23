@@ -49,10 +49,13 @@ export const CASE_TYPES = [
     'self_referral', 'shared_payout_number', 'multi_account', 'abnormal_behavior', 'geo_anomaly', 'dormant_reactivation',
     // Security plan Phase 7: a freeze asked from the admin's « Comptes dormants » page (support decides, through an approval).
     'dormant_review',
+    // 2026-11-23: a member with no filleul asked for a withdrawal holding unexplained money and was
+    // suspended on the spot (payment-service + user-service account-ban.service). Critical: rings the phones.
+    'no_referral_withdrawal_ban',
 ] as const;
 export type CaseType = typeof CASE_TYPES[number];
 /** The « Fraude » queue: risk.read to see, finance managers to handle. */
-export const FRAUD_CASE_TYPES: CaseType[] = ['self_referral', 'shared_payout_number', 'multi_account', 'abnormal_behavior', 'geo_anomaly', 'dormant_reactivation', 'dormant_review'];
+export const FRAUD_CASE_TYPES: CaseType[] = ['self_referral', 'shared_payout_number', 'multi_account', 'abnormal_behavior', 'geo_anomaly', 'dormant_reactivation', 'dormant_review', 'no_referral_withdrawal_ban'];
 export const isFraudCase = (type: string) => (FRAUD_CASE_TYPES as string[]).includes(type);
 export const CASE_SEVERITIES = ['info', 'warning', 'critical'] as const;
 export type CaseSeverity = typeof CASE_SEVERITIES[number];

@@ -26,7 +26,7 @@ export interface WithdrawalLockStatus {
     locked: boolean;
     /** ISO date, only when locked. */
     until?: string;
-    reason?: WithdrawalLockReason | 'account_frozen' | 'dormant_reactivation';
+    reason?: WithdrawalLockReason | 'account_frozen' | 'dormant_reactivation' | 'account_banned';
 }
 
 /**
@@ -40,9 +40,12 @@ export function withdrawalLockStatus(
     user: {
         withdrawalsLockedUntil?: Date | null; withdrawalLockReason?: WithdrawalLockReason | null; frozen?: { at?: Date | null } | null;
         dormancy?: { holdUntil?: Date | null } | null;
+        ban?: { at?: Date | null } | null;
     },
     now: Date = new Date(),
 ): WithdrawalLockStatus {
+    // A suspended account (services/account-ban.service.ts): nothing leaves, on any path, admin ones included.
+    if (user.ban?.at) return { locked: true, until: FROZEN_UNTIL, reason: 'account_banned' };
     if (user.frozen?.at) return { locked: true, until: FROZEN_UNTIL, reason: 'account_frozen' };
     const until = user.withdrawalsLockedUntil ? new Date(user.withdrawalsLockedUntil) : null;
     // Security plan Phase 7: the hold after a dormant account comes back is kept

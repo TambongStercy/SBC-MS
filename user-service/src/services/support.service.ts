@@ -65,6 +65,8 @@ const SUPPORT_MEMBER_FIELDS = [
     'balance', 'usdBalance', 'reservedBalance', 'debt', 'withdrawalsLockedUntil',
     // Security plan Phase 5: countries (Phase 1 signals), money frozen, Mobile Money details.
     'geo', 'frozen', 'momoNumber', 'momoOperator',
+    // Account suspension (2026-11-23, services/account-ban.service.ts).
+    'ban', 'banHistory',
 ].join(' ');
 
 export interface SupportMember {
@@ -98,6 +100,10 @@ export interface SupportMember {
     frozen: { at: Date; reason: string | null } | null;
     momoNumber: string | null;
     momoOperator: string | null;
+    /** Account suspended (services/account-ban.service.ts): why, when, with the figures behind it. */
+    ban: { at: Date; reason: string; by: string; details: Record<string, unknown> | null } | null;
+    /** Lifted suspensions, newest first (5 at most). */
+    banHistory: { at: Date | null; reason: string | null; liftedAt: Date | null; liftedBy: string | null; liftReason: string | null }[];
 }
 
 export async function getSupportDetails(userIds: string[]): Promise<SupportMember[]> {
@@ -174,6 +180,10 @@ export async function getSupportDetails(userIds: string[]): Promise<SupportMembe
             frozen: u.frozen?.at ? { at: u.frozen.at, reason: u.frozen.reason ?? null } : null,
             momoNumber: u.momoNumber ?? null,
             momoOperator: u.momoOperator ?? null,
+            ban: u.ban?.at ? { at: u.ban.at, reason: u.ban.reason, by: u.ban.by ?? null, details: u.ban.details ?? null } : null,
+            banHistory: (Array.isArray(u.banHistory) ? u.banHistory : []).slice(-5).reverse().map((h: any) => ({
+                at: h.at ?? null, reason: h.reason ?? null, liftedAt: h.liftedAt ?? null, liftedBy: h.liftedBy ?? null, liftReason: h.liftReason ?? null,
+            })),
         });
     }
     return out;

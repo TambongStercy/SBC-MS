@@ -1076,6 +1076,41 @@ Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, p
 - Checks: `user-service/src/scripts/check-support-phase5.ts`, support `src/tests/phase5.test.ts`,
   support-frontend `MemberSecurityPanel.test.tsx`.
 
+### No-referral withdrawal ban (Sterling / Rufus, 2026-11-23)
+
+A member (role `user`) with **no filleul at all** (no `referrals` row with `referrer` = them, archived
+rows included) who asks for a withdrawal while holding "unexplained money" is suspended on the spot.
+Unexplained = (a) balance A above B (opening + `walletmovements`) by more than 1 XAF / 0.01 USD, XAF or
+USD, or (b) unreversed referral-commission credits (journal source `commission`, minus
+`commission-reversal` debits). Money from views, transfers, events, bonuses, refunds, admin adjustments
+and deposits is fine while the balance is explained. Not judged (never banned): a movement still
+PENDING, or a member older than the first opening snapshot without an opening row.
+- **Switch:** `NO_REFERRAL_BAN=off|log|enforce` (default off) in **both** user-service and payment-service
+  `.env`. off = not asked; log = evaluated, a `warning` case per member per day, nothing refused;
+  enforce = banned. payment-service fails closed (503) in enforce when user-service cannot answer.
+- **user-service** `services/account-ban.service.ts`: `users.ban { at, reason: 'no_referral_withdrawal'|'manual',
+  by, details, blockedBefore }` + `blocked: true` in one conditional write (`ban.at` absent), then every
+  member session, browser key and stored token ended, Redis flag `ban:<id>` (30 days, fails open).
+  Internal `POST /users/internal/:id/withdrawal-ban-check` and `POST /users/internal/:id/unban {by, reason}`
+  (ban moved to `banHistory`; an admin block set before the ban stays). The lock check answers
+  `account_banned` (so admin approval/withdrawal paths refuse too).
+- **Member contract (the app relies on it):** 403 `{ success:false, code:'ACCOUNT_BANNED', message }` on the
+  withdrawal (initiate MoMo/crypto, verify, member transfer), sign-in with the right password (a wrong one
+  stays `WRONG_PASSWORD`), verify-otp, session refresh/adopt, `GET /users/me` (database) and every
+  authenticated user-service member route (auth middleware, Redis flag).
+- **payment-service** `assertWithdrawalsNotLocked`: `account_banned` → 403 ACCOUNT_BANNED (member and admin);
+  member paths ask the rule before the ledger and fraud checks; a ban files a critical
+  `no_referral_withdrawal_ban` case (`noref-ban:<user>:<banAt>`, French summary with reasons, A/B,
+  commissions, the withdrawal) and a `balance_mismatch` risk event. Drills pass `dryRun`.
+- **Support:** the case is in « Fraude »; bell + e-mail to finance managers, support admins and super managers,
+  ntfy priority 5. Member page « Compte suspendu » banner; « Lever la suspension » = `members.unban`
+  (FM, SA, SM) + reauth + reason (≥ 20), conflict rule, audited `member.unban`, no second approver.
+  The public « Signaler un problème » form never looks the sender up: a banned member can always write.
+- Checks: user-service `src/scripts/check-account-ban.ts`, payment-service `src/scripts/check-no-referral-ban.ts`,
+  support `src/tests/no-referral-ban.test.ts`, desk `MemberBanBanner.test.tsx`.
+- **Before enforce:** run `log` and review the warning cases (members without filleuls whose A ≠ B because
+  of old untracked writes would be banned).
+
 ### Email verified after payment, not at sign-up (Sterling, 2026-11-23)
 The code at sign-up lost people before they paid. `services/email-verification.service.ts`:
 - **Sign-up:** a member sign-up gets its token at once (no code; `register` answers `token` +

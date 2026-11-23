@@ -259,7 +259,7 @@ router.post('/drills/withdrawal-check', async (req, res) => {
     const { default: paymentService } = await import('../../services/payment.service');
     const t0 = Date.now();
     try {
-        await paymentService.assertWithdrawalsNotLocked(userId, 'member');
+        await paymentService.assertWithdrawalsNotLocked(userId, 'member', { dryRun: true }); // dryRun: the no-referral rule never bans from a drill
         return res.json({ success: true, data: { allowed: true, ms: Date.now() - t0 } });
     } catch (e: any) {
         return res.json({ success: true, data: { allowed: false, status: e?.statusCode ?? 500, code: e?.code ?? null, message: String(e?.message ?? e).slice(0, 200), ms: Date.now() - t0 } });

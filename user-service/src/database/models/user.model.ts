@@ -96,6 +96,17 @@ export interface IDormancy {
     holdUntil?: Date;
 }
 
+/** An account suspension (services/account-ban.service.ts). */
+export interface IAccountBan {
+    at: Date;
+    reason: 'no_referral_withdrawal' | 'manual';
+    /** 'system:no-referral-rule' or the actor who set it. */
+    by: string;
+    details?: Record<string, unknown> | null;
+    /** The account was already blocked (admin) when the ban was set: lifting the ban keeps it blocked. */
+    blockedBefore?: boolean;
+}
+
 export interface IUser extends Document {
     _id: Types.ObjectId;
     name: string;
@@ -162,6 +173,14 @@ export interface IUser extends Document {
     withdrawalLockReason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset' | 'authenticator_setup';
     /** Security plan Phase 5: money frozen by support (withdrawals and transfers), until an approved unfreeze. */
     frozen?: { at: Date; reason?: string | null; approvalId?: string | null } | null;
+    /**
+     * Account suspended (2026-11-23, services/account-ban.service.ts): set with `blocked: true`.
+     * `no_referral_withdrawal`: a member without any filleul asked for a withdrawal while holding
+     * money the ledger cannot explain. Lifted only by support (« Lever la suspension »), which
+     * moves it into `banHistory`.
+     */
+    ban?: IAccountBan | null;
+    banHistory?: (IAccountBan & { liftedAt: Date; liftedBy: string; liftReason: string })[];
     /** Security plan Phase 1 (signals), only for members who accepted the policy announcing it. */
     geo?: {
         lastCountry?: string;
@@ -303,6 +322,23 @@ const UserSchema = new Schema<IUser>(
         frozen: {
             // `by: 'payout_seal'` when frozen automatically by a broken payout seal (services/payout-seal.service.ts).
             type: new Schema({ at: { type: Date, required: true }, reason: { type: String }, approvalId: { type: String }, by: { type: String } }, { _id: false }),
+            default: undefined,
+        },
+        ban: {
+            type: new Schema({
+                at: { type: Date, required: true },
+                reason: { type: String, enum: ['no_referral_withdrawal', 'manual'], required: true },
+                by: { type: String, required: true },
+                details: { type: Schema.Types.Mixed },
+                blockedBefore: { type: Boolean },
+            }, { _id: false }),
+            default: undefined,
+        },
+        banHistory: {
+            type: [new Schema({
+                at: { type: Date }, reason: { type: String }, by: { type: String }, details: { type: Schema.Types.Mixed },
+                blockedBefore: { type: Boolean }, liftedAt: { type: Date }, liftedBy: { type: String }, liftReason: { type: String },
+            }, { _id: false })],
             default: undefined,
         },
         geo: {

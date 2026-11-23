@@ -51,7 +51,22 @@ export interface WithdrawalLock {
     locked: boolean;
     /** ISO date, only when locked. */
     until?: string;
-    reason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset' | 'authenticator_setup' | 'account_frozen' | 'dormant_reactivation';
+    reason?: 'email_change' | 'phone_change' | 'momo_change' | 'crypto_change' | 'authenticator_reset' | 'authenticator_setup' | 'account_frozen' | 'dormant_reactivation' | 'account_banned';
+}
+
+/** user-service account-ban.service withdrawalBanCheck (no-referral rule, 2026-11-23). */
+export interface WithdrawalBanCheck {
+    mode: 'off' | 'log' | 'enforce';
+    suspicious: boolean;
+    banned: boolean;
+    alreadyBanned: boolean;
+    reasons: ('unexplained_balance' | 'commission_without_referrals')[];
+    details: {
+        currency: 'XAF' | 'USD'; a: number; b: number | null;
+        commissionCredits: number; commissionReversed?: number; commissionCreditsUsd?: number;
+        balances?: { currency: string; a: number; b: number | null; diff: number | null; decidable: boolean; unexplained: boolean }[];
+    } | null;
+    ban: { at: string; reason: string } | null;
 }
 
 interface WithdrawalLimitCheckResponse {
@@ -418,6 +433,16 @@ class UserServiceClient {
         if (typeof response?.data?.locked !== 'boolean') {
             throw new AppError('Unexpected withdrawal-lock response from user service.', 502);
         }
+        return response.data;
+    }
+
+    /**
+     * No-referral withdrawal rule (2026-11-23): user-service evaluates it and, in its enforce
+     * mode, bans the member. Throws when user-service cannot answer (the caller decides).
+     */
+    async withdrawalBanCheck(userId: string, ctx: { amount?: number; currency?: string; transactionId?: string; dryRun?: boolean } = {}): Promise<WithdrawalBanCheck> {
+        const response = await this.request<{ success: boolean; data: WithdrawalBanCheck }>('post', `/users/internal/${userId}/withdrawal-ban-check`, ctx);
+        if (typeof response?.data?.banned !== 'boolean') throw new AppError('Unexpected withdrawal-ban-check response from user service.', 502);
         return response.data;
     }
 
