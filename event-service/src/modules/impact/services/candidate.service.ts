@@ -74,20 +74,27 @@ const applyBlocker = (e: IImpactEdition | null, now = new Date()): { code: strin
 
 // ---------- Member ----------
 
+/** A profile can be edited, or the candidacy withdrawn, only in these statuses (and before the competition). */
+const EDITABLE_STATUSES = [CandidateStatus.QUALIFYING, CandidateStatus.WAITLIST, CandidateStatus.OFFICIAL];
+
 /** The member's space: the current edition, their candidacy, and whether they can apply. */
 export const mySpace = async (userId: string) => {
     const e = await currentEdition();
-    if (!e) return { edition: null, candidacy: null, canApply: false, blocker: applyBlocker(null) };
+    if (!e) return { edition: null, candidacy: null, canApply: false, blocker: applyBlocker(null), canEdit: false, canWithdraw: false };
     const [c, taken] = await Promise.all([
         ImpactCandidate.findOne({ editionId: e._id, userId: oid(userId, 'Membre') }),
         seatHolders(e._id),
     ]);
     const blocker = c ? null : applyBlocker(e);
+    const beforeCompetition = editionRank(e.status) < editionRank(EditionStatus.COMPETITION);
     return {
         edition: publicEdition(e, taken),
         candidacy: c ? presentCandidate(c, e) : null,
         canApply: !c && !blocker,
         blocker,
+        // The same rules updateMine / withdrawMine apply, so the app never guesses them.
+        canEdit: Boolean(c) && beforeCompetition && EDITABLE_STATUSES.includes(c!.status),
+        canWithdraw: Boolean(c) && beforeCompetition && EDITABLE_STATUSES.includes(c!.status),
     };
 };
 
@@ -142,7 +149,6 @@ const myCandidacy = async (userId: string) => {
     return { e, c };
 };
 
-const EDITABLE_STATUSES = [CandidateStatus.QUALIFYING, CandidateStatus.WAITLIST, CandidateStatus.OFFICIAL];
 
 /**
  * The member edits their profile until the competition starts. A profile the

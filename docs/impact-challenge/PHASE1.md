@@ -110,7 +110,7 @@ interface PublicEdition {
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /me` | — | `{ edition: PublicEdition \| null, candidacy: Candidate \| null, canApply: boolean, blocker: { code, message } \| null }` |
+| `GET /me` | — | `{ edition: PublicEdition \| null, candidacy: Candidate \| null, canApply: boolean, blocker: { code, message } \| null, canEdit: boolean, canWithdraw: boolean }` (`canEdit`/`canWithdraw` = the server's own rule: status QUALIFYING, WAITLIST or OFFICIAL and the edition not yet in competition) |
 | `POST /me/candidacy` | `ProfileInput & { consent: true }` | `Candidate` (5/min) |
 | `PATCH /me/candidacy` | any `ProfileInput` fields | `Candidate` (20/min) |
 | `POST /me/candidacy/refresh` | — | `Candidate` (1 per 20 s, else 429) |
@@ -147,8 +147,9 @@ interface Candidate {
 
 Member error codes: `NO_EDITION`, `NOT_OPEN_YET`, `REGISTRATION_CLOSED`, `CONSENT_REQUIRED`,
 `NOT_A_MEMBER` (no active pack), `ACCOUNT_UNAVAILABLE`, `ALREADY_CANDIDATE`, `INVALID_PROFILE`
-(`details.field`), `PROFILE_LOCKED`, `NO_CANDIDACY`, `TOO_LATE`, `BAD_STATUS`,
-`MEMBER_CHECK_UNAVAILABLE`/`COUNTER_UNAVAILABLE` (503, retry), `TOO_MANY_REQUESTS` (429).
+(`details.field` = the `ProfileInput` key, `extra.<key>` for an extra question), `PROFILE_LOCKED`,
+`NO_CANDIDACY`, `TOO_LATE`, `BAD_STATUS`, `MEMBER_CHECK_UNAVAILABLE`/`COUNTER_UNAVAILABLE` (503,
+retry), `TOO_MANY_REQUESTS` (429, `details.retryAfterSeconds`). Server messages say « vous ».
 
 ### Administration (gateway module `impactChallenge`; GET = read, the rest = write)
 
@@ -200,6 +201,6 @@ server's budget.
 ## Checks
 
 - user-service `src/scripts/check-impact-invitations.ts` (13 checks, local Mongo).
-- event-service `src/scripts/check-impact.ts` (54 checks, local Mongo, user-service and
+- event-service `src/scripts/check-impact.ts` (57 checks, local Mongo, user-service and
   notifications stubbed).
 - gateway `src/scripts/check-admin-permissions.ts` (impact admin paths → `impactChallenge`).

@@ -95,10 +95,16 @@ export const notifyCandidate = async (c: Pick<IImpactCandidate, 'userId' | '_id'
 
 // ---------- Validation ----------
 
-const text = (v: unknown, field: string, min: number, max: number): string => {
+/**
+ * A trimmed text between min and max characters. `label` is the French name in
+ * the message; `details.field` is the API key (`key`, defaulting to the label for
+ * settings), so a form can always place the error on the right field.
+ */
+const text = (v: unknown, label: string, min: number, max: number, key?: string, code = 'INVALID_PROFILE'): string => {
     const s = typeof v === 'string' ? v.trim().replace(/\s+\n/g, '\n') : '';
-    if (s.length < min) throw new AppError(min <= 1 ? `« ${field} » est obligatoire.` : `« ${field} » : au moins ${min} caractères.`, 400, true, 'INVALID_PROFILE', { field });
-    if (s.length > max) throw new AppError(`« ${field} » : ${max} caractères au maximum.`, 400, true, 'INVALID_PROFILE', { field });
+    const field = key ?? label;
+    if (s.length < min) throw new AppError(min <= 1 ? `« ${label} » est obligatoire.` : `« ${label} » : au moins ${min} caractères.`, 400, true, code, { field });
+    if (s.length > max) throw new AppError(`« ${label} » : ${max} caractères au maximum.`, 400, true, code, { field });
     return s;
 };
 
@@ -129,7 +135,7 @@ export const parseProfile = (
     if (!FILE_ID.test(photoFileId) || photoFileId.includes('..')) {
         throw new AppError('Ajoutez une photo.', 400, true, 'INVALID_PROFILE', { field: 'photoFileId' });
     }
-    const category = text(pick('category'), 'Catégorie', 1, 60);
+    const category = text(pick('category'), 'Catégorie', 1, 60, 'category');
     if (settings.categories.length && !settings.categories.includes(category)) {
         throw new AppError('Choisissez une catégorie de la liste.', 400, true, 'INVALID_PROFILE', { field: 'category' });
     }
@@ -141,18 +147,18 @@ export const parseProfile = (
             if (f.required) throw new AppError(`« ${f.label} » est obligatoire.`, 400, true, 'INVALID_PROFILE', { field: `extra.${f.key}` });
             continue;
         }
-        extra[f.key] = text(raw, f.label, 1, f.maxLength);
+        extra[f.key] = text(raw, f.label, 1, f.maxLength, `extra.${f.key}`);
     }
     return {
-        name: text(pick('name'), 'Nom et prénom', 2, 80),
+        name: text(pick('name'), 'Nom et prénom', 2, 80, 'name'),
         photoFileId,
-        country: text(pick('country'), 'Pays', 2, 60),
-        city: text(pick('city'), 'Ville', 2, 80),
-        activity: text(pick('activity'), 'Activité professionnelle', 2, 120),
+        country: text(pick('country'), 'Pays', 2, 60, 'country'),
+        city: text(pick('city'), 'Ville', 2, 80, 'city'),
+        activity: text(pick('activity'), 'Activité professionnelle', 2, 120, 'activity'),
         category,
-        projectName: text(pick('projectName'), 'Nom du projet', 2, 120),
-        projectDescription: text(pick('projectDescription'), 'Description du projet', 20, 1500),
-        presentation: text(pick('presentation'), 'Présentation du projet', 50, 4000),
+        projectName: text(pick('projectName'), 'Nom du projet', 2, 120, 'projectName'),
+        projectDescription: text(pick('projectDescription'), 'Description du projet', 20, 1500, 'projectDescription'),
+        presentation: text(pick('presentation'), 'Présentation du projet', 50, 4000, 'presentation'),
         link: link(pick('link')),
         extra,
     };
@@ -214,7 +220,7 @@ export const validateSettings = (s: EditionSettings): EditionSettings => {
     const criteria = Array.isArray(s.juryCriteria) ? s.juryCriteria : [];
     if (criteria.length < 1 || criteria.length > 10) throw new AppError('Entre 1 et 10 critères du jury.', 400, true, 'INVALID_SETTINGS', { field: 'juryCriteria' });
     for (const c of criteria) {
-        out.juryCriteria.push({ key: slugKey(c.key, 'Clé du critère'), label: text(c.label, 'Critère', 2, 60), max: int(c.max, 'Note maximale', 1, 100) });
+        out.juryCriteria.push({ key: slugKey(c.key, 'Clé du critère'), label: text(c.label, 'Critère', 2, 60, 'juryCriteria', 'INVALID_SETTINGS'), max: int(c.max, 'Note maximale', 1, 100) });
     }
 
     const tiers = Array.isArray(s.ticketTiers) ? s.ticketTiers : [];
@@ -233,7 +239,7 @@ export const validateSettings = (s: EditionSettings): EditionSettings => {
     const prizes = Array.isArray(s.prizes) ? s.prizes : [];
     if (prizes.length < 1 || prizes.length > 10) throw new AppError('Entre 1 et 10 lots.', 400, true, 'INVALID_SETTINGS', { field: 'prizes' });
     for (const p of prizes) {
-        out.prizes.push({ key: slugKey(p.key, 'Clé du lot'), label: text(p.label, 'Lot', 2, 80), category: slugKey(p.category, 'Catégorie du lot') });
+        out.prizes.push({ key: slugKey(p.key, 'Clé du lot'), label: text(p.label, 'Lot', 2, 80, 'prizes', 'INVALID_SETTINGS'), category: slugKey(p.category, 'Catégorie du lot') });
     }
     if (new Set(out.prizes.map((p) => p.key)).size !== out.prizes.length) {
         throw new AppError('Deux lots ont la même clé.', 400, true, 'INVALID_SETTINGS', { field: 'prizes' });
@@ -241,14 +247,14 @@ export const validateSettings = (s: EditionSettings): EditionSettings => {
 
     const cats = Array.isArray(s.categories) ? s.categories : [];
     if (cats.length > 40) throw new AppError('40 catégories au plus.', 400, true, 'INVALID_SETTINGS', { field: 'categories' });
-    out.categories = [...new Set(cats.map((c) => text(c, 'Catégorie', 2, 60)))];
+    out.categories = [...new Set(cats.map((c) => text(c, 'Catégorie', 2, 60, 'categories', 'INVALID_SETTINGS')))];
 
     const fields = Array.isArray(s.profileFields) ? s.profileFields : [];
     if (fields.length > 10) throw new AppError('10 questions supplémentaires au plus.', 400, true, 'INVALID_SETTINGS', { field: 'profileFields' });
     for (const f of fields) {
         out.profileFields.push({
             key: slugKey(f.key, 'Clé de la question'),
-            label: text(f.label, 'Question', 2, 120),
+            label: text(f.label, 'Question', 2, 120, 'profileFields', 'INVALID_SETTINGS'),
             required: Boolean(f.required),
             maxLength: int(f.maxLength ?? 500, 'Longueur maximale', 10, 4000),
         });

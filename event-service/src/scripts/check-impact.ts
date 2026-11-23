@@ -115,6 +115,8 @@ const main = async () => {
     check('photo is required', (await refusal(() => candidates.apply(A, { ...profile('a'), photoFileId: 'https://evil.example/x.jpg' })))?.code === 'INVALID_PROFILE');
     check('category must be one of the list', (await refusal(() => candidates.apply(A, { ...profile('a'), category: 'Inventée' })))?.code === 'INVALID_PROFILE');
     check('link must be a web address', (await refusal(() => candidates.apply(A, { ...profile('a'), link: 'javascript:alert(1)' })))?.code === 'INVALID_PROFILE');
+    const short = await refusal(() => candidates.apply(A, { ...profile('a'), presentation: 'trop court' }));
+    check('a field error names the API key, not the label', short?.details?.field === 'presentation', String(short?.details?.field));
 
     reach(A, 1, null); // already one invitation before applying
     const ca = await candidates.apply(A, profile('a'));
@@ -181,6 +183,8 @@ const main = async () => {
     // ---------- Member space ----------
     const space = await candidates.mySpace(B);
     check('member space shows the edition and the candidacy', space.edition?.seats.max === 3 && space.candidacy?.seatNumber === 1);
+    check('member space says what the member may do', space.canEdit === true && space.canWithdraw === true);
+    check('a withdrawn candidate may no longer edit', (await candidates.mySpace(D)).canEdit === false);
     const outsiderSpace = await candidates.mySpace(new Types.ObjectId().toString());
     check('a non-candidate sees why they cannot apply', outsiderSpace.canApply === false && outsiderSpace.blocker?.code === 'REGISTRATION_CLOSED');
     editions.invalidateCurrent();

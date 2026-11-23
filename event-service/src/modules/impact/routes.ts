@@ -31,7 +31,10 @@ const reasonOf = (req: Request) => String(req.body?.reason ?? '');
 const throttle = (action: string, n: number, windowSec: number) => async (req: Request, _res: Response, next: NextFunction) => {
     try {
         const hits = await kv().hit(`impact:${action}:${uid(req)}`, windowSec);
-        if (hits > n) return next(new AppError('Trop de demandes. Réessayez dans un instant.', 429, true, 'TOO_MANY_REQUESTS'));
+        if (hits > n) {
+            // The window is fixed from its first hit, so this is the longest possible wait.
+            return next(new AppError(`Trop de demandes. Réessayez dans ${windowSec} secondes.`, 429, true, 'TOO_MANY_REQUESTS', { retryAfterSeconds: windowSec }));
+        }
         next();
     } catch {
         next(); // a KV hiccup must not lock members out
