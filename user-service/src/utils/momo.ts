@@ -47,3 +47,18 @@ export function isSameMomo(current: MomoDetails, sent: MomoDetails, countryIso?:
 export function momoChangeTarget(number: string, operator: string): string {
     return `${number.replace(/\D/g, '')}|${operator}`;
 }
+
+/**
+ * Whether saving these MoMo details must lock withdrawals (momo_change, 48 h).
+ * A first number locks nothing. Neither does completing a number saved without
+ * its operator (1,128 members on prod, 2026-11-23): the digits stay the same, so
+ * the money still goes to the same line. Any other change (a new number, or a
+ * different operator replacing a known one) locks.
+ */
+export function momoChangeLocks(current: MomoDetails, nextNumber: string, countryIso?: string | null): boolean {
+    const currentNumber = String(current.momoNumber ?? '').trim();
+    if (!currentNumber) return false;
+    const sameNumber = isSamePhoneNumber(currentNumber, nextNumber)
+        || isSamePhoneNumber(currentNumber, normalizeMomoNumber(nextNumber, countryIso) ?? nextNumber);
+    return !(sameNumber && !normalizeMomoOperator(current.momoOperator));
+}

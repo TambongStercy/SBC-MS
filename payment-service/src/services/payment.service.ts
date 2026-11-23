@@ -606,7 +606,7 @@ class PaymentService {
         }
         if (!enabled) {
             log.warn(`Withdrawal refused for user ${userId}: no authenticator app set up.`);
-            const refusal = new AppError('Pour retirer, configurez d’abord l’application d’authentification (Google Authenticator, Microsoft Authenticator ou 2FAS) depuis votre profil.', 403);
+            const refusal = new AppError('Pour retirer, configurez d’abord l’application d’authentification (Google Authenticator, Microsoft Authenticator ou 2FAS) depuis votre profil (si vous ne voyez pas cette option, rechargez la page).', 403);
             (refusal as any).code = 'AUTHENTICATOR_REQUIRED';
             throw refusal;
         }

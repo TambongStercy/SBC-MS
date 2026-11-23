@@ -484,7 +484,9 @@ push), so a hijacker cannot silence it.
   a backup code), see "Member authenticator" below. The old e-mailed-code
   routes (`request-change`/`confirm-change`) answer 410. Replacing a number locks withdrawals
   (reason `momo_change`) and alerts the account email; a first number needs
-  the code but no lock. An admin replacing a member's number locks too.
+  the code but no lock, and so does adding the operator to a number saved
+  without one (same digits; 1,128 such members on prod 2026-11-23,
+  `momoChangeLocks`, also for support's change). An admin replacing a member's number locks too.
   `utils/momo.ts`, `src/scripts/check-momo-and-country-lock.ts`. The member
   app's `MomoChangeSheet` (SBC-WEB-UI) drives it.
 - **The country is not the member's to change** (same plan item): `PUT

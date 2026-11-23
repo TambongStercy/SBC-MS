@@ -77,7 +77,9 @@ const post = (path: string, body: any, headers: Record<string, string> = {}) =>
 const FORBIDDEN_KEYS = ['password', 'otps', 'contactsOtps', 'otpSendLog', 'token', 'passwordResetToken', 'passwordResetTokenExpiration', 'ipAddress', 'adminPermissions'];
 const CONTRACT_KEYS = ['_id', 'name', 'email', 'phoneNumber', 'country', 'city', 'sex', 'language', 'role', 'createdAt', 'lastLogin',
     'isVerified', 'blocked', 'deleted', 'referrerId', 'referrerName', 'balance', 'usdBalance', 'reservedBalance', 'debt',
-    'withdrawalLockedUntil', 'subscriptions'].sort();
+    'withdrawalLockedUntil', 'subscriptions',
+    // Security plan Phase 2 (ledger) and Phase 5 (geo, frozen, Mobile Money; masked by support-service per agent permission).
+    'ledger', 'geo', 'frozen', 'momoNumber', 'momoOperator'].sort();
 
 async function main() {
     await mongoose.connect(DB);
