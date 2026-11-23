@@ -20,8 +20,12 @@ After the result, the finished edition stays the « current » one for 60 days (
 
 ## Rules
 
-- **Jurors:** SBC accounts added by the admin (`GET /admin/members/lookup?contact=` finds one by e-mail
-  or phone, masked).
+- **Jurors:** SBC accounts added by the admin. `GET /admin/members/lookup?contact=` finds one by e-mail
+  or phone; it returns the name and a masked contact hint.
+  - A juror who is removed then added again gets their row back, and their earlier marks count again.
+  - The lock needs at least one mark per finalist, not a mark from every juror: a finalist marked by
+    fewer jurors is judged on the average of the marks they got. The admin page warns about missing
+    marks before the lock.
   - A removed juror keeps their row, but their marks no longer count.
   - Every juror is told by push and e-mail; the notice opens `/impact-challenge/jury`.
 - **Scoring:**
@@ -95,7 +99,7 @@ After the result, the finished edition stays the « current » one for 60 days (
 
 | Route | Body | Answer |
 |---|---|---|
-| `GET /admin/members/lookup?contact=` | — | `{ found, ambiguous?, userId?, name?, avatar?, contactHint? }` |
+| `GET /admin/members/lookup?contact=` | — | `{ found, ambiguous?, userId?, name?, avatar?, contactHint? }` (the contact hint is masked, the name is not) |
 | `GET /admin/editions/:id/jury` | — | `{ lockedAt, criteria, maxTotal, finalists: [{ _id, name }], jurors: [{ _id, userId, name, addedAt, removedAt, scored, scores: [{ candidateId, total, updatedAt, edits }] }] }` |
 | `GET /admin/editions/:id/jury/scores` | — | `[{ candidateId, jurorUserId, jurorName, jurorRemoved, scores, total, comment, updatedAt, history }]` (every mark and its history) |
 | `POST /admin/editions/:id/jury` | `{ userId }` | the juror. 409 `CONFLICT_OF_INTEREST`, `ALREADY_JUROR`, `TOO_MANY_JURORS`, `JURY_LOCKED`, `WRONG_STAGE` |
@@ -104,7 +108,7 @@ After the result, the finished edition stays the « current » one for 60 days (
 | `POST /admin/editions/:id/final/on-stage` | `{ candidateId \| null, phase? }` | `Edition`. 409 `NOT_A_FINALIST` |
 | `POST /admin/editions/:id/jury/lock` | — | `Edition`. 409 `MISSING_SCORES` (`details.missing: [{ candidateId, name, scoredBy, notScoredBy: [names] }]`), `JURY_LOCKED` |
 | `PUT/POST /admin/editions/:id/rounds/FINAL[/open\|/close]` | as Phase 2 | the final public vote round; it opens only in stage LIVE |
-| `GET /admin/editions/:id/result` | — | before publication: `{ published: false, weights, rows, missing, blockers, warnings, formula }`. After: `{ published: true, result, formula }` |
+| `GET /admin/editions/:id/result` | — | before publication: `{ published: false, weights, rows, missing, blockers, warnings, formula }` (a `MISSING_SCORES` blocker carries `details: { missing }`, the same shape as the lock's refusal). After: `{ published: true, result, formula }` |
 | `POST /admin/editions/:id/result` **(admin code)** | `{ expectedOrder: candidateId[] }` | `Edition`. 409 `STALE`, `ALREADY_PUBLISHED`, or a blocker code (`JURY_NOT_LOCKED`, `ROUND_OPEN`, `MISSING_SCORES`, `WRONG_STAGE`) |
 
 The admin `Edition` now carries `jury { lockedAt, lockedBy }`, `live { onStageCandidateId, phase,

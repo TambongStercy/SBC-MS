@@ -385,7 +385,7 @@ export const resultPreview = async (editionId: string) => {
     if (!e.jury?.lockedAt) blockers.push({ code: 'JURY_NOT_LOCKED', message: 'Verrouillez d’abord les notes du jury.' });
     if (e.rounds?.FINAL?.status === RoundStatus.OPEN) blockers.push({ code: 'ROUND_OPEN', message: 'Clôturez d’abord le vote public de la finale.' });
     const missing = await missingScores(e);
-    if (missing.some((m) => m.scoredBy === 0)) blockers.push({ code: 'MISSING_SCORES', message: 'Un finaliste n’a aucune note du jury.', details: missing });
+    if (missing.some((m) => m.scoredBy === 0)) blockers.push({ code: 'MISSING_SCORES', message: 'Un finaliste n’a aucune note du jury.', details: { missing } });
     if (rows.length < 1) blockers.push({ code: 'NO_FINALISTS', message: 'Aucun finaliste.' });
     const warnings: string[] = [];
     if (e.rounds?.FINAL?.status !== RoundStatus.CLOSED) warnings.push('Le vote public de la finale n’a pas eu lieu : sa part vaut 0 pour tous.');
