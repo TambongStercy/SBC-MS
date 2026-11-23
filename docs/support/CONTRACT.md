@@ -62,6 +62,8 @@ All responses: `{ success: boolean, data?: …, message?: string, code?: string 
 | `POST /support/related` | `{ userId, otherUserId }` | Phase 5 conflict rule: `{ related }` = same account, or one in the other's referral tree (levels 1–3, up or down). |
 | `POST /support/authenticator-reset` | `{ userId, reason, approvalId }` | Phase 5: removes the member's authenticator (lost phone), locks withdrawals 72 h, e-mails the member. `409 NO_AUTHENTICATOR` when they have none. |
 | `POST /support/freeze` | `{ userId, action: 'freeze'\|'unfreeze', reason, approvalId }` | Phase 5: `users.frozen` set / removed in one conditional write (`409 ALREADY_FROZEN` / `NOT_FROZEN`). The lock check reads it first (`reason: account_frozen`), so no later contact change can lift it. Withdrawals and transfers are refused until the unfreeze. |
+| `POST /:userId/unban` | `{ by, reason }` | Account suspension (2026-11-23): lifts `users.ban` (moved to `banHistory`), `blocked` back to what it was before the ban, Redis flag cleared. `409 NOT_BANNED` / `STATE_CHANGED`, `400 REASON_REQUIRED`. |
+| `POST /:userId/withdrawal-ban-check` | `{ amount?, currency?, transactionId?, dryRun? }` | payment-service only (no-referral withdrawal rule, `NO_REFERRAL_BAN`): `{ mode, suspicious, banned, alreadyBanned, reasons, details: { currency, a, b, commissionCredits, … }, ban }`. |
 | `POST /support/momo-change` | `{ userId, momoNumber, momoOperator, approvalId }` | Phase 5: new Mobile Money details (normalised for the member's country), withdrawals locked (`momo_change`) and the account e-mail alerted when a number is replaced. `400 SAME_VALUE` / `INVALID_VALUE`, `409 STATE_CHANGED`. |
 | `POST /support/contact-change` | `{ userId, field: 'email'\|'phoneNumber', newValue, step: 'send-code'\|'apply', code?, approvalId }` | `send-code`: OTP to the **new** contact; `apply`: verifies code, applies `withdrawalLockFields()` and `contact-change-alert` to the old contact. Value used by another account → `400 code=CONTACT_UNAVAILABLE` (neutral message). |
 
@@ -251,11 +253,20 @@ countries; asking for another country returns `board: null`.
   (desk + e-mail to finance managers, support admins, super managers; ntfy). Audited
   `approval.super_override`.
 - **Fraud cases:** types `self_referral`, `shared_payout_number`, `multi_account`,
-  `abnormal_behavior`, `geo_anomaly`, `dormant_reactivation`, `dormant_review` (Phase 7: freeze asked from the admin's « Comptes dormants »); `GET /cases?type=fraud`
+  `abnormal_behavior`, `geo_anomaly`, `dormant_reactivation`, `dormant_review` (Phase 7: freeze asked from the admin's « Comptes dormants »), `no_referral_withdrawal_ban` (2026-11-23); `GET /cases?type=fraud`
   (`risk.read`) sorted severity then `amount`; acting on one needs `risk.decide`;
   `type=finance` leaves them out. Intake accepts `country` and `amount`.
 - **Member card:** `geo` (declared / usual / last country), `frozen`, `momoNumber`/`momoOperator`
   (masked like the phone), and for money readers `ledger` (balance A against B per currency).
+- **Account suspension (2026-11-23):** a member with no filleul who asks for a withdrawal holding
+  unexplained money (A > B, or referral commissions) is suspended by user-service
+  (`NO_REFERRAL_BAN=enforce`). payment-service files a critical `no_referral_withdrawal_ban` case (Fraude
+  queue; desk bell + e-mail to finance managers, support admins and super managers; ntfy priority 5;
+  log mode files `warning` cases, no ring). The member card carries `ban { at, reason, details }`
+  (`details` for money readers only) and `banHistory`. `POST /members/:userId/unban { reason (≥ 20),
+  caseId? }` (`members.unban` + reauth, conflict rule, audited `member.unban`, done at once, no
+  second approver) → user-service `POST /:userId/unban`. The public « Signaler un problème » form
+  does not look the sender up, so a suspended member can always write to support from it.
 - **Risk card (Phase 4 part 2):** `GET /members/:userId/risk` (`risk.read`, audited
   `member.risk.viewed`) reads risk-service's member view (`RISK_SERVICE_URL`; empty →
   `{ available: false }`, down → 503): `{ available: true, score, decision, scoredAt, groupSize,
@@ -392,6 +403,7 @@ a reliable data message on topic `support` after every ticket change
 | `identity.review` (KYC level 3, « Identités ») | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | `replay.read` (member « Sessions »: recordings, live view) | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | `assist.control` (« Assistance en direct »: remote control with the member's consent) | ✓ | | | | | ✓ |
+| `members.unban` (« Lever la suspension » of a suspended account) | | | ✓ | | | ✓ |
 | `agents.manage`, `settings.manage`, `audit.read` | | | | | | ✓ |
 
 An approver must differ from the requester (except a super_manager, see above). Masking: `+237 6•• •• 34`, `j•••@gmail.com`.
