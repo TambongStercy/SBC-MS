@@ -1,9 +1,10 @@
-# Brouillon pour la politique de confidentialité — signaux d'utilisation (Phase 1)
+# Politique de confidentialité, version 2026-12 — signaux, sessions, vérifications e-mail
 
-À valider par Rufus (et le juriste) avant publication. Une fois publié, monter
-`PRIVACY_POLICY_VERSION` à `2026-12` dans user-service (`config/privacy.ts`) et
-dans l'app (`POLICY_VERSION`) : chaque membre devra accepter à nouveau, et la
-collecte ne démarre pour lui qu'après son accord.
+**Publié le 2026-11-23** (texte accepté par Rufus) sur `/confidentialite`, sections 12 à 14 ;
+`PRIVACY_POLICY_VERSION` = `2026-12` dans user-service (`config/privacy.ts`) et dans l'app
+(`utils/privacy.ts`). Chaque membre (tous pays) accepte à nouveau dans la fenêtre d'accord ; la
+case « hors du Bénin » reste demandée aux membres du Bénin seulement. La collecte ne démarre pour
+un membre qu'après son accord.
 
 ---
 
@@ -32,3 +33,28 @@ gardés sur votre compte tant qu'il existe.
 
 **Vos droits :** elles figurent dans le fichier « Télécharger mes données »
 (page Mes données) et sont effacées si vous supprimez votre compte.
+
+## Enregistrement de vos sessions
+
+Pour aider le support à comprendre et régler vos problèmes, et pour repérer la fraude, nous
+enregistrons la façon dont vous utilisez l'application : les pages ouvertes, vos clics, ce qui
+s'affiche à l'écran et ce que vous tapez dans les champs. **Vos mots de passe et vos codes
+(connexion, retrait, application d'authentification) ne sont jamais enregistrés.**
+
+Ces enregistrements sont gardés sur notre propre serveur en Allemagne (Contabo), ne sont visibles
+que par les agents du support SBC, et sont **effacés après 30 jours**.
+
+**Aide à distance :** avec votre accord, donné à chaque fois, un agent du support SBC peut voir
+votre écran en direct et agir dans l'application pour vous aider. Vous pouvez arrêter à tout
+moment. Ce n'est jamais possible sur les écrans de retrait, de coordonnées de paiement, de mot de
+passe ou de code.
+
+## Vérifications de votre adresse email
+
+Quand nos contrôles de sécurité signalent un compte, nous pouvons vérifier si son adresse email est
+utilisée sur d'autres services publics (sites et applications, au moyen de leurs pages publiques
+d'inscription ou de mot de passe oublié, **sans qu'aucun message vous soit envoyé**) et si elle a un
+profil Gravatar public. Nous gardons seulement le résultat (par exemple « adresse utilisée sur 6
+services »), jamais les données de ces services, pendant **12 mois**.
+
+(Gravatar, Automattic Inc., États-Unis, est aussi ajouté à la liste des destinataires, section 6.)

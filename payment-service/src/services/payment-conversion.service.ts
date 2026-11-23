@@ -90,7 +90,7 @@ export async function conversionSummary(f: ConversionFilter) {
             { $match: match(f) },
             // Abandoned payments moved out after 7 days (jobs/payin-archive.job) still count.
             { $unionWith: { coll: ARCHIVE_COLLECTION, pipeline: [{ $match: match(f) }] } },
-            { $addFields: { _product: productExpr, _country: { $ifNull: [{ $cond: [{ $eq: ['$countryCode', ''] }, null, '$countryCode'] }, 'none'] }, _day: { $dateToString: { date: '$createdAt', format: '%Y-%m-%d', timezone: '+01:00' } } } },
+            { $addFields: { _product: productExpr, _country: { $ifNull: [{ $cond: [{ $eq: ['$countryCode', ''] }, null, '$countryCode'] }, 'none'] }, _source: { $ifNull: ['$metadata.clientSource', 'unknown'] }, _day: { $dateToString: { date: '$createdAt', format: '%Y-%m-%d', timezone: '+01:00' } } } },
             {
                 $facet: {
                     totals: [{ $group: { _id: null, ...counters, members: { $addToSet: '$userId' }, payers: { $addToSet: { $cond: [{ $in: ['$status', SUCCESS] }, '$userId', '$$REMOVE'] } } } },
@@ -98,6 +98,8 @@ export async function conversionSummary(f: ConversionFilter) {
                     byGateway: [{ $group: { _id: '$gateway', ...counters } }, { $sort: { attempts: -1 } }],
                     byCountry: [{ $group: { _id: '$_country', ...counters } }, { $sort: { attempts: -1 } }, { $limit: 40 }],
                     byProduct: [{ $group: { _id: '$_product', ...counters } }, { $sort: { attempts: -1 } }, { $limit: 20 }],
+                    // Web / installed app / other (X-SBC-Client of the member's request; 'unknown' before 2026-11-23).
+                    bySource: [{ $group: { _id: '$_source', ...counters } }, { $sort: { attempts: -1 } }],
                     byCountryGateway: [{ $match: { gateway: { $ne: 'none' } } }, { $group: { _id: { country: '$_country', gateway: '$gateway' }, ...counters } }, { $sort: { attempts: -1 } }, { $limit: 60 }],
                     daily: [{ $group: { _id: '$_day', attempts: { $sum: 1 }, succeeded: counters.succeeded, failed: counters.failed } }, { $sort: { _id: 1 } }],
                     failureGroups: [{ $match: { status: { $in: FAILED } } }, { $group: { _id: { $ifNull: ['$failure.group', 'unknown'] }, count: { $sum: 1 } } }],
@@ -122,6 +124,7 @@ export async function conversionSummary(f: ConversionFilter) {
             byGateway: withRates(out.byGateway, 'gateway'),
             byCountry: withRates(out.byCountry, 'country'),
             byProduct: withRates(out.byProduct, 'product'),
+            bySource: withRates(out.bySource, 'source'),
             byCountryGateway: out.byCountryGateway.map((x: any) => ({ country: x._id.country, gateway: x._id.gateway, ...x, _id: undefined, successRate: rate(x.succeeded, x.attempts) })),
             daily: out.daily.map((x: any) => ({ day: x._id, attempts: x.attempts, succeeded: x.succeeded, failed: x.failed })),
             failureGroups: Object.fromEntries(out.failureGroups.map((x: any) => [x._id, x.count])),

@@ -59,6 +59,10 @@ const main = async () => {
     await PI.updateOne({ sessionId: a.sessionId }, { $set: { gateway: 'moneyfusion', status: PaymentStatus.PENDING_PROVIDER } });
     const d = await paymentService.createPaymentIntent(base as any);
     check('once a method was chosen, a new tap creates a new payment', d.sessionId !== a.sessionId);
+    const e = await paymentService.createPaymentIntent({ ...base, amount: 4100, metadata: { ...base.metadata, clientSource: 'app' } } as any);
+    const f = await paymentService.createPaymentIntent({ ...base, amount: 4100, metadata: { ...base.metadata, clientSource: 'web' } } as any);
+    check('web/app split: source stored, not part of "the same payment"', e.sessionId === f.sessionId && (e as any).metadata?.clientSource === 'app' && (d as any).metadata?.clientSource === 'unknown');
+    await PI.deleteOne({ sessionId: e.sessionId });
 
     // --- limit ---
     for (let i = 0; i < 2; i++) await paymentService.createPaymentIntent({ ...base, amount: 100 + i } as any);
@@ -113,6 +117,7 @@ const main = async () => {
     check('what was being paid', sum.byProduct.find((x: any) => x.product === 'relance')?.attempts === 1 && sum.byProduct.find((x: any) => x.product === 'abonnement-classique')?.attempts === 6);
     check('failure groups, unrecorded ones as unknown', sum.failureGroups.member === 1 && sum.failureGroups.sbc_code === 1 && sum.failureGroups.unknown === 1, JSON.stringify(sum.failureGroups));
     check('time to success', sum.medianSecondsToSuccess === 120);
+    check('web/app split: payments without a source counted as unknown', sum.bySource.length === 1 && sum.bySource[0].source === 'unknown' && sum.bySource[0].attempts === 7, JSON.stringify(sum.bySource));
 
     const p1: any = await failureList({ limit: 2 });
     const p2: any = await failureList({ limit: 2, cursor: p1.nextCursor });

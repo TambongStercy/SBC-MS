@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import { requestClientContext } from './utils/request-client';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -39,6 +40,7 @@ const log = logger.getLogger('UserService'); // Create logger instance
 app.use(helmet()); // Security headers
 app.use(cors()); // Cross-origin resource sharing
 app.use(express.json()); // Parse JSON request body
+app.use(requestClientContext); // X-SBC-Client for the payment intents created by this request (Phase 10)
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request body
 
 

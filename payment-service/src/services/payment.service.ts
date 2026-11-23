@@ -192,10 +192,14 @@ const SUBMIT_CLOSED_STATUSES: string[] = [PaymentStatus.SUCCEEDED, PaymentStatus
  */
 function intentFunnelKey(data: { userId: string; amount: number; currency: string; paymentType: string; metadata?: Record<string, any> }): string {
     const canonical = (v: any): any => Array.isArray(v) ? v.map(canonical)
-        : v && typeof v === 'object' && !(v instanceof Date) ? Object.keys(v).sort().filter(k => k !== 'funnelKey' && k !== 'reuseCount').reduce((o: any, k) => { o[k] = canonical(v[k]); return o; }, {})
+        : v && typeof v === 'object' && !(v instanceof Date) ? Object.keys(v).sort().filter(k => k !== 'funnelKey' && k !== 'reuseCount' && k !== 'clientSource').reduce((o: any, k) => { o[k] = canonical(v[k]); return o; }, {})
         : v;
     return crypto.createHash('sha256').update(JSON.stringify([data.userId, data.amount, data.currency, data.paymentType, canonical(data.metadata || {})])).digest('hex').slice(0, 32);
 }
+
+/** web / app from the member's X-SBC-Client; anything else (an older service, a script) is unknown. */
+export const clientSourceOf = (v: unknown): 'web' | 'app' | 'api' | 'unknown' =>
+    v === 'web' || v === 'app' || v === 'api' ? v : 'unknown';
 
 class PaymentService {
     constructor() {
@@ -2122,7 +2126,9 @@ class PaymentService {
             amount: data.amount,
             currency: data.currency,
             paymentType: data.paymentType,
-            metadata: { ...(data.metadata || {}), funnelKey }, // Store provided metadata (+ the key used to reuse it)
+            // Store provided metadata (+ the key used to reuse it). `clientSource` (web/app/api) is where the
+            // member asked from (X-SBC-Client, passed by the creating service): reporting only, never a key.
+            metadata: { ...(data.metadata || {}), funnelKey, clientSource: clientSourceOf(data.metadata?.clientSource) },
             status: PaymentStatus.PENDING_USER_INPUT, // Start as pending
             gateway: PaymentGateway.NONE // Initially no gateway
         });

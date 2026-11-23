@@ -22,7 +22,11 @@ const refusal = async (fn: () => Promise<unknown>) => { try { await fn(); return
     } as any);
     const id = u._id.toString();
 
-    check('consent refused unless both accords are given', (await refusal(() => recordConsents(id, { privacy: true })))?.status === 400);
+    check('consent refused without the policy', (await refusal(() => recordConsents(id, { dataTransfer: true })))?.status === 400);
+    const cm = await recordConsents(id, { privacy: true });
+    check('non-Benin member: the policy alone is enough (version 2026-12)', cm.consents?.privacy?.version === '2026-12' && !cm.consents?.dataTransfer);
+    const bj = await UserModel.create({ name: 'Bj', email: 'bj@x.test', phoneNumber: '22901000099', region: 'Littoral', country: 'BJ', password: 'Secret-123' } as any);
+    check('Benin member: refused unless both accords are given', (await refusal(() => recordConsents(bj._id.toString(), { privacy: true })))?.status === 400);
     const c = await recordConsents(id, { privacy: true, dataTransfer: true }, '1.2.3.4');
     check('both consents recorded with date, version and IP',
         c.consents?.privacy?.version === PRIVACY_POLICY_VERSION && !!c.consents?.dataTransfer?.acceptedAt && c.consents?.privacy?.ip === '1.2.3.4');
