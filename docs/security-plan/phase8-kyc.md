@@ -255,11 +255,15 @@ services found, answers out of asked, Gravatar, why it was looked up.
 list: when set, every other address is refused without being stored); `KYC_L2_MODULES`,
 `KYC_L2_PER_DAY`, `KYC_L2_MIN_GAP_S`, `KYC_L2_MODULE_PER_HOUR`, `KYC_L2_MODULE_TIMEOUT_S`,
 `KYC_L2_RECHECK_DAYS`, `KYC_L2_RETENTION_DAYS`, the two point values. risk-service:
-`KYC_L2_DISABLED=true` stops the feeder; `KYC_L2_RECHECK_DAYS`.
+`KYC_L2_DISABLED=true` stops the feeder; `KYC_L2_RECHECK_DAYS`; `KYC_L2_ONLY_EMAILS` (same list as
+the secondary's; empty both together when lifting it).
 
-**Preprod (2026-11-23):** `KYC_L2_MODE=log` with `KYC_L2_ONLY_EMAILS` set to test addresses only:
-preprod holds copies of real members, so their addresses are refused (`not_allowlisted`, asked
-again the next day) and never sent to any site.
+**Preprod (2026-11-23):** `KYC_L2_MODE=log` with `KYC_L2_ONLY_EMAILS` set to test addresses only,
+on BOTH sides: preprod holds copies of real members. risk-service applies the same list before
+sending (data minimisation): any other flagged member is recorded `skipped_allowlist` on the main
+server, without the address, and its address never leaves the main server; it is not retried
+while the list is set and is queued again as soon as the list is emptied. The secondary's own
+copy refuses anything else (`not_allowlisted`) as a second guard.
 
 **Before lifting the allowlist (the plan's safety gate):** "no e-mail or SMS reaches a test
 member". Create 20 accounts you control on the default services (real mailboxes you can read,

@@ -76,6 +76,11 @@ export const config = {
         disabled: String(process.env.KYC_L2_DISABLED || '').toLowerCase() === 'true',
         /** A member is looked up at most once in this many days. */
         recheckDays: Math.max(1, num('KYC_L2_RECHECK_DAYS', 90)),
+        /**
+         * Same list as the secondary's KYC_L2_ONLY_EMAILS. While set, a flagged member whose address
+         * is not in it is skipped HERE: the address never leaves the main server (data minimisation).
+         */
+        onlyEmails: new Set((process.env.KYC_L2_ONLY_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)),
     },
 };
 export type Config = typeof config;

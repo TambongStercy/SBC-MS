@@ -993,7 +993,8 @@ Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
   `l2_queue` (address deleted once looked up), `l2_results` (service names, counts, Gravatar,
   12 months), container **kyc-l2** (`python -m app.l2_runner`; ≤ 500/day, 60 s apart, 30/h per
   site). Only Holehe `register` modules run, never porn/medical/osint. `KYC_L2_MODE=off|log`;
-  preprod runs `log` with `KYC_L2_ONLY_EMAILS` (test addresses only) until the 20-controlled-account
+  preprod runs `log` with `KYC_L2_ONLY_EMAILS` (test addresses only, set in risk-service too: other
+  addresses never leave the main server, `skipped_allowlist`) until the 20-controlled-account
   check (`docs/security-plan/phase8-kyc.md` « Level 2 »). Support « Risque » shows it.
   `python -m app.l2_runner --selftest` lists which sites still answer.
 - **Level 3: ID document + selfie (2026-11-22, open source, not Smile ID).**
