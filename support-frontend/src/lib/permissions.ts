@@ -42,6 +42,8 @@ export const PERMISSIONS = [
   // Session replay and live assistance (2026-11-23).
   'replay.read',
   'assist.control',
+  // Account suspension (2026-11-23).
+  'members.unban',
   'agents.manage',
   'settings.manage',
   'audit.read',
@@ -81,7 +83,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'finance.regularize.approve',
     'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read',
-    'risk.read', 'risk.decide', 'authenticator.reset.approve', 'identity.review', 'replay.read',
+    'risk.read', 'risk.decide', 'authenticator.reset.approve', 'identity.review', 'replay.read', 'members.unban',
   ],
   verifier: ['views.verify'],
   views_supervisor: [
@@ -94,7 +96,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'tickets.read', 'tickets.reply', 'tickets.assign', 'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'views.supervise', 'kb.edit', 'kb.publish', 'templates.manage',
     'reports.read', 'export', 'analytics.read', 'errors.manage', 'activity.read', 'agents.manage', 'settings.manage', 'audit.read',
-    'risk.read', 'authenticator.reset.request', 'identity.review', 'replay.read', 'assist.control',
+    'risk.read', 'authenticator.reset.request', 'identity.review', 'replay.read', 'assist.control', 'members.unban',
   ],
   super_manager: [], // filled just below
 };

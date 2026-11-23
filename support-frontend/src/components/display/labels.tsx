@@ -49,6 +49,7 @@ export const CASE_TYPE: Record<CaseType, string> = {
   geo_anomaly: 'Anomalie de pays',
   dormant_reactivation: 'Compte dormant réactivé',
   dormant_review: 'Compte dormant : gel demandé',
+  no_referral_withdrawal_ban: 'Compte suspendu : retrait sans filleul',
 };
 
 export const CASE_STATUS: Record<CaseStatus, { label: string; tone: Tone }> = {
