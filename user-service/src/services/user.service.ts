@@ -3139,7 +3139,7 @@ export class UserService {
                 const reference = `admin-adjust-activation:${new Types.ObjectId().toHexString()}`;
                 const base = { userId: userId.toString(), amount, reason: reason.trim(), adminId: adminUserId.toString(), reference, balance: 'activation' as const };
                 await paymentService.recordAdjustmentTransaction({ ...base, status: 'pending' });
-                updatedUser = await userRepository.adjustActivationBalanceGuarded(userId, amount);
+                updatedUser = await userRepository.adjustActivationBalanceGuarded(userId, amount, { reference, description: `Ajustement admin: ${reason.trim()}`.slice(0, 500) });
                 await paymentService.recordAdjustmentTransaction({ ...base, status: updatedUser ? 'completed' : 'failed' })
                     .catch((e: any) => log.error(`Activation adjustment ${reference} ${updatedUser ? 'applied' : 'refused'} but its transaction could not be closed: ${e.message}`));
                 if (!updatedUser) throw new Error('Insufficient activation balance for this adjustment.');

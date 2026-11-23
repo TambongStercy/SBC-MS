@@ -54,6 +54,37 @@ describe('member security panel', () => {
   });
 });
 
+describe('commission reversal', () => {
+  it('a finance agent checks the commission, then asks (reason, then code); labels show the six balances', async () => {
+    const ledger = [
+      { currency: 'XAF', actual: 1500, expected: 1500, matches: true },
+      { currency: 'ACTIVATION', actual: 900, expected: 900, matches: true },
+    ];
+    const m = setup(['finance_agent'], {
+      'GET /members/m1': { data: { member: { ...member, ledger } } },
+      'GET /members/m1/commissions/CTX1': { data: { transactionId: 'CTX1', amount: 2500, currency: 'XAF', status: 'completed', createdAt: '2026-11-20T10:00:00Z', isCommission: true, level: 1, sourceUserId: 'm9', reversible: true, reversed: false } },
+      'POST /auth/reauth': { data: { reauthToken: 'rt-2' } },
+      'POST /members/m1/commission-reversal': { data: { approvalId: 'a2' } },
+    });
+    renderWithProviders(<App />, { path: '/membres/m1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Reprendre une commission' }));
+    expect(screen.getAllByText('Principal').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Activation').length).toBeGreaterThan(0);
+    const dialog = await screen.findByRole('dialog', { name: /Reprendre une commission/ });
+    fireEvent.change(within(dialog).getByLabelText(/Référence de la commission/), { target: { value: 'CTX1' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Vérifier' }));
+    expect(await within(dialog).findByText(/niveau 1/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/Pourquoi reprendre/), { target: { value: 'Commission versée deux fois pour le même filleul.' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Envoyer pour validation' }));
+    fireEvent.change(await screen.findByLabelText('Code de l’application'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
+    await screen.findByText('Demande envoyée pour validation.');
+    const call = m.find('POST', '/members/m1/commission-reversal')[0];
+    expect(call.headers.get('x-reauth-token')).toBe('rt-2');
+    expect(call.body).toMatchObject({ transactionId: 'CTX1' });
+  });
+});
+
 describe('super manager approval', () => {
   const own: Approval = {
     id: 'ap1', type: 'account_freeze', status: 'pending', summary: 'Geler l’argent du membre m1', reason: 'Rafale de retraits vers un numéro partagé.',

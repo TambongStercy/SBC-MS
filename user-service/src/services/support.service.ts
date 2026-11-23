@@ -94,7 +94,7 @@ export interface SupportMember {
     /** Phase 5: declared / usual / last country. */
     geo: { declared: string | null; usual: string | null; usualShare: number | null; last: string | null; lastAt: Date | null };
     /** Phase 5: balance A against B (opening + movements); null before the opening snapshot. */
-    ledger: { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[] | null;
+    ledger: { currency: string; actual: number; expected: number; matches: boolean }[] | null;
     frozen: { at: Date; reason: string | null } | null;
     momoNumber: string | null;
     momoOperator: string | null;

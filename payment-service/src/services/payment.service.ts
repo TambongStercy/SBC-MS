@@ -3207,7 +3207,7 @@ class PaymentService {
             beneficiaryCredit = Math.round(grossAmount * 0.75);
             sbcCommission = grossAmount - beneficiaryCredit; // exact remainder, avoids 0.5-cent drift
 
-            const credited = await userServiceClient.updateSbcLiveBalance(beneficiaryUserId, beneficiaryCredit);
+            const credited = await userServiceClient.updateSbcLiveBalance(beneficiaryUserId, beneficiaryCredit, `sbc-live-split:${paymentIntent.sessionId}`);
             if (!credited) {
                 // user-service rejected — most likely the beneficiary userId doesn't exist.
                 // Log loud and stamp metadata so an admin can investigate; do NOT throw,

@@ -1,6 +1,8 @@
 import { FilterQuery, Types, UpdateQuery } from 'mongoose';
 import UserModel, { IUser } from '../database/models/user.model';
 import WalletMovementModel, {
+    WALLET_FIELDS,
+    WALLET_REF_PREFIX,
     WalletCurrency,
     WalletMovementDirection,
     WalletMovementStatus,
@@ -10,8 +12,11 @@ import logger from '../utils/logger';
 const log = logger.getLogger('WalletLedger');
 
 /**
- * Every change of users.balance / users.usdBalance goes through here, so that
- * each one leaves exactly one walletmovements row.
+ * Every change of a journalled balance (users.balance, usdBalance, and since
+ * 2026-11-23 activation, advertising, event organiser and SBC Live) goes through
+ * here, so that each one leaves exactly one walletmovements row per balance.
+ * A write that moves two balances at once (main → activation) passes the second
+ * one as a `leg`: same atomic update, one row each.
  *
  * Order (prod Mongo is standalone, no multi-document transactions):
  *   1. insert the movement PENDING — the unique {reference, direction} is the
@@ -51,8 +56,14 @@ export interface IncRequest extends BaseRequest {
     /** Signed change of the balance field. */
     delta: number;
     guard?: FilterQuery<IUser>;
-    /** Extra $inc fields applied in the same write (reservedBalance, activationBalance...). */
+    /** Extra $inc fields applied in the same write (reservedBalance...). Never a journalled balance: use `legs`. */
     extraInc?: Record<string, number>;
+    /**
+     * Other journalled balances moved by the same write (transfer main ↔ activation /
+     * advertising / event organiser). Each leg gets its own movement row under
+     * `<its prefix><base reference>`.
+     */
+    legs?: Array<{ currency: WalletCurrency; delta: number; source?: string; description?: string }>;
 }
 
 /**
@@ -64,7 +75,17 @@ export interface ComputedRequest extends BaseRequest {
     compute: (user: IUser) => { set: Record<string, number>; balanceDelta: number; debtDelta: number } | null;
 }
 
-const balanceField = (currency: WalletCurrency) => (currency === 'USD' ? 'usdBalance' : 'balance');
+const balanceField = (currency: WalletCurrency) => {
+    const f = WALLET_FIELDS[currency];
+    if (!f) throw new Error(`Unknown wallet balance ${currency}`);
+    return f;
+};
+/** The stored reference: the balance's namespace + the business reference. */
+export const ledgerReference = (currency: WalletCurrency, reference: string) => {
+    const prefix = WALLET_REF_PREFIX[currency] ?? '';
+    return prefix && !reference.startsWith(prefix) ? `${prefix}${reference}` : reference;
+};
+const JOURNALLED_FIELDS = new Set(Object.values(WALLET_FIELDS));
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const isDuplicate = (err: any) => err?.code === 11000;
 
@@ -145,26 +166,64 @@ class WalletLedgerService {
     /** Guarded atomic update with a known effect (spend, convert, transfers, plain $inc). */
     async applyInc(req: IncRequest): Promise<MovementOutcome> {
         if (!Number.isFinite(req.delta)) throw new Error('Wallet movement delta must be a finite number');
-        const reference = req.reference || this.makeReference(req.source);
+        const legs = req.legs || [];
+        for (const leg of legs) {
+            if (!Number.isFinite(leg.delta) || leg.delta === 0) throw new Error('Wallet movement leg delta must be a non-zero finite number');
+            if (leg.currency === req.currency || legs.filter((l) => l.currency === leg.currency).length > 1) {
+                throw new Error(`Wallet movement leg ${leg.currency} repeats a balance of the same write`);
+            }
+        }
+        for (const f of Object.keys(req.extraInc || {})) {
+            if (JOURNALLED_FIELDS.has(f)) throw new Error(`Wallet movement: ${f} is a journalled balance, pass it as a leg`);
+        }
+        const base = req.reference || this.makeReference(req.source);
+        const reference = ledgerReference(req.currency, base);
         const direction = req.delta < 0 ? WalletMovementDirection.DEBIT : WalletMovementDirection.CREDIT;
-        const claim = await this.claim(req, direction, req.delta, reference);
+        const claim = await this.claim({ ...req, reference }, direction, req.delta, reference);
         if (!claim.claimed) return claim.outcome;
 
+        // Each leg is claimed under its own namespace. The base claim above is the
+        // idempotency key; a leg already present means a crash left half a write.
+        const claimedLegs: Array<{ currency: WalletCurrency; delta: number; reference: string; direction: WalletMovementDirection }> = [];
+        for (const leg of legs) {
+            const legRef = ledgerReference(leg.currency, base);
+            const legDir = leg.delta < 0 ? WalletMovementDirection.DEBIT : WalletMovementDirection.CREDIT;
+            try {
+                await WalletMovementModel.create({
+                    reference: legRef, direction: legDir, userId: new Types.ObjectId(req.userId.toString()), currency: leg.currency,
+                    amount: 0, requestedAmount: leg.delta, source: leg.source || req.source, description: leg.description || req.description,
+                    status: WalletMovementStatus.PENDING,
+                });
+            } catch (err) {
+                for (const c of claimedLegs) await this.unclaim(c.reference, c.direction);
+                await this.unclaim(reference, direction);
+                if (isDuplicate(err)) {
+                    log.error(`Wallet movement leg ${legDir} ${legRef} already exists while its base ${reference} was free: refused`);
+                    return { applied: false, pendingConflict: true, reference, user: await UserModel.findById(req.userId).exec() };
+                }
+                throw err;
+            }
+            claimedLegs.push({ currency: leg.currency, delta: leg.delta, reference: legRef, direction: legDir });
+        }
+
         const field = balanceField(req.currency);
+        const inc: Record<string, number> = { [field]: req.delta, ...(req.extraInc || {}) };
+        for (const leg of claimedLegs) inc[balanceField(leg.currency)] = leg.delta;
         let before: IUser | null;
         try {
             before = await UserModel.findOneAndUpdate(
                 { _id: req.userId, ...(req.guard || {}) },
-                { $inc: { [field]: req.delta, ...(req.extraInc || {}) } } as UpdateQuery<IUser>,
+                { $inc: inc } as UpdateQuery<IUser>,
                 { new: false },
             ).exec();
         } catch (err) {
             // The write may or may not have reached the server: keep the PENDING
-            // claim so a replay refuses instead of moving the balance twice.
+            // claims so a replay refuses instead of moving the balance twice.
             log.error(`Wallet movement ${direction} ${reference}: update failed (${(err as Error).message}); PENDING row kept for review`);
             throw err;
         }
         if (!before) {
+            for (const c of claimedLegs) await this.unclaim(c.reference, c.direction);
             await this.unclaim(reference, direction);
             const exists = await UserModel.exists({ _id: req.userId });
             return { applied: false, guardFailed: !!exists, userNotFound: !exists, reference, user: null };
@@ -172,12 +231,17 @@ class WalletLedgerService {
         const balanceBefore = Number((before as any)[field] ?? 0);
         const balanceAfter = round2(balanceBefore + req.delta);
         await this.markApplied(reference, direction, { amount: Math.abs(req.delta), balanceBefore, balanceAfter });
+        for (const c of claimedLegs) {
+            const legBefore = Number((before as any)[balanceField(c.currency)] ?? 0);
+            await this.markApplied(c.reference, c.direction, { amount: Math.abs(c.delta), balanceBefore: legBefore, balanceAfter: round2(legBefore + c.delta) });
+        }
         const user = await UserModel.findById(req.userId).exec();
         return { applied: true, reference, user, balanceAfter };
     }
 
     /** Debt-aware change: compare-and-set on the fields the computation read. */
     async applyComputed(req: ComputedRequest): Promise<MovementOutcome> {
+        if (req.currency !== 'XAF' && req.currency !== 'USD') throw new Error('Debt-aware movements exist for XAF and USD only');
         const reference = req.reference || this.makeReference(req.source);
         const direction = req.requestedAmount < 0 ? WalletMovementDirection.DEBIT : WalletMovementDirection.CREDIT;
         const claim = await this.claim(req, direction, req.requestedAmount, reference);

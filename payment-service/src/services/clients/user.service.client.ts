@@ -254,7 +254,7 @@ class UserServiceClient {
      * Returns true if applied, false if user-service refused the debit (insufficient
      * funds). Throws on transport / 5xx errors so the caller can retry or alert.
      */
-    async updateSbcLiveBalance(userId: string, amount: number): Promise<boolean> {
+    async updateSbcLiveBalance(userId: string, amount: number, reference?: string): Promise<boolean> {
         if (!this.baseUrl) {
             log.error('Cannot update SBC Live balance: User service URL not configured.');
             throw new AppError('User service is not configured.', 503);
@@ -262,7 +262,8 @@ class UserServiceClient {
         const path = `/users/internal/${userId}/sbc-live-balance`;
         try {
             log.info(`Updating sbcLiveBalance for user ${userId} by ${amount}`);
-            const response = await this.request<{ success: boolean; data?: { sbcLiveBalance?: number } }>('post', path, { amount });
+            // `reference` (user-service journals it; ignored by an older one) makes a replay move nothing.
+            const response = await this.request<{ success: boolean; data?: { sbcLiveBalance?: number } }>('post', path, { amount, ...(reference ? { reference } : {}) });
             if (response?.success) {
                 log.info(`Updated sbcLiveBalance for user ${userId}. New balance: ${response.data?.sbcLiveBalance ?? 'N/A'}`);
                 return true;

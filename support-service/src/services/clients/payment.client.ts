@@ -59,3 +59,23 @@ export async function financeSummary(query: { from?: string; to?: string; countr
 export async function financeWithdrawals(query: Record<string, string | number | undefined>) {
     return requireOk('payment', await serviceRequest('payment', 'GET', `${BASE}/finance/withdrawals`, { query }));
 }
+
+// Commission reversal (approval `commission_reversal`, 2026-11-23).
+export interface CommissionInfo {
+    transactionId: string; amount: number; currency: string; status: string; createdAt: string; description?: string;
+    isCommission: boolean; level: number | null; sourceUserId: string | null; reversible: boolean; reversed: boolean;
+}
+
+/** The commission if it belongs to this member, else null. */
+export async function getCommission(transactionId: string, userId: string): Promise<CommissionInfo | null> {
+    const r = await serviceRequest<CommissionInfo>('payment', 'GET', `${BASE}/commissions/${enc(transactionId)}`, { query: { userId } });
+    if (r.ok) return r.data ?? null;
+    if (r.status === 404 && !isRouteMissing(r)) return null;
+    throw new DependencyError('payment', r.status);
+}
+
+export async function reverseCommission(transactionId: string, body: { userId: string; reason: string; approvalId: string }): Promise<OwnerActionResult> {
+    const r = await serviceRequest('payment', 'POST', `${BASE}/commissions/${enc(transactionId)}/reverse`, { body, timeoutMs: 30000 });
+    if (isRouteMissing(r) || r.status >= 500) throw new DependencyError('payment', r.status);
+    return { ok: r.ok, status: r.status, code: r.code, message: r.message, data: r.data };
+}

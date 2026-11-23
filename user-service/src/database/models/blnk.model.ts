@@ -1,4 +1,5 @@
 import { Schema, Types, model } from 'mongoose';
+import { WALLET_CURRENCIES } from './wallet-movement.model';
 
 /**
  * Security plan Phase 2: the Mongo side of the second ledger (Blnk).
@@ -10,7 +11,7 @@ import { Schema, Types, model } from 'mongoose';
  */
 const BlnkBalanceSchema = new Schema({
     userId: { type: Schema.Types.ObjectId, required: true },
-    currency: { type: String, enum: ['XAF', 'USD'], required: true },
+    currency: { type: String, enum: WALLET_CURRENCIES, required: true },
     balanceId: { type: String, required: true },
     openingPosted: { type: Boolean, default: false },
     createdAt: { type: Date, default: () => new Date() },

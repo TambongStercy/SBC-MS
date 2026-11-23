@@ -1,6 +1,8 @@
 import { Types } from 'mongoose';
 import UserModel from '../../database/models/user.model';
-import WalletMovementModel, { IWalletMovement, WalletMovementStatus } from '../../database/models/wallet-movement.model';
+import WalletMovementModel, {
+    IWalletMovement, WALLET_FIELDS, WalletCurrency, WalletMovementStatus, moneyCurrencyOf,
+} from '../../database/models/wallet-movement.model';
 import WalletOpeningBalanceModel from '../../database/models/wallet-opening-balance.model';
 import { BlnkBalanceModel, BlnkStateModel, BlnkSyncModel, BlnkSyncStatus } from '../../database/models/blnk.model';
 import { blnk, BlnkError, blnkConfig, blnkEnabled, PRECISION } from './blnk.client';
@@ -34,9 +36,17 @@ const STUCK_PENDING_MS = 15 * 60 * 1000;
 export const LAG_ALERT_MS = 5 * 60 * 1000;
 
 /** Internal Blnk balance on the other side of each movement (plan: @Commissions, @Fees, …). */
-export function counterpartFor(m: Pick<IWalletMovement, 'source' | 'reference' | 'direction'>): string {
+export function counterpartFor(m: Pick<IWalletMovement, 'source' | 'reference' | 'direction'> & { currency?: string }): string {
     const s = `${m.source || ''}`.toLowerCase();
     const ref = `${m.reference || ''}`.toLowerCase();
+    // The four extra balances (2026-11-23).
+    if (m.currency === 'ACTIVATION') {
+        return s.includes('leaderboard') ? '@LeaderboardBonus' : s.startsWith('admin-adjust') ? '@Adjustments' : '@Activation';
+    }
+    if (m.currency === 'ADVERTISING') return '@Advertising';
+    if (m.currency === 'EVENT_ORGANIZER') return '@EventOrganizer';
+    if (m.currency === 'SBC_LIVE') return '@SbcLive';
+    if (s.startsWith('commission-reversal') || ref.startsWith('commission-reversal:')) return '@Commissions';
     if (s === 'commission') return '@Commissions';
     if (s === 'deposit') return '@Deposits';
     if (s.startsWith('withdrawal') || s.includes('payout') || s.startsWith('support-regularize') || s.startsWith('admin-manual-complete')
@@ -47,6 +57,10 @@ export function counterpartFor(m: Pick<IWalletMovement, 'source' | 'reference' |
     if (s.startsWith('admin-adjust')) return '@Adjustments';
     if (s.includes('leaderboard')) return '@LeaderboardBonus';
     if (s.includes('activation')) return '@Activation';
+    // Main-balance side of the transfers out of the extra balances.
+    if (s.startsWith('advertising')) return '@Advertising';
+    if (s.startsWith('event-organizer')) return '@EventOrganizer';
+    if (s.startsWith('sbc-live')) return '@SbcLive';
     return '@Unclassified';
 }
 
@@ -111,11 +125,12 @@ async function createLedgerOnce(): Promise<string> {
  * opening balance posted from @OpeningBalances (reference
  * `opening:<userId>:<currency>`, so it is posted once).
  */
-export async function ensureMemberBalance(userId: Types.ObjectId, currency: 'XAF' | 'USD'): Promise<{ balanceId: string }> {
+export async function ensureMemberBalance(userId: Types.ObjectId, currency: WalletCurrency): Promise<{ balanceId: string }> {
     let row = await BlnkBalanceModel.findOne({ userId, currency }).lean();
     if (!row) {
         const ledgerId = await ensureLedger();
-        const b = await blnk.createBalance(ledgerId, currency, { userId: String(userId) });
+        // One Blnk balance per journalled balance; the four extra ones hold XAF.
+        const b = await blnk.createBalance(ledgerId, moneyCurrencyOf(currency), { userId: String(userId), wallet: currency });
         try {
             row = (await BlnkBalanceModel.create({ userId, currency, balanceId: b.balance_id })).toObject();
         } catch (err: any) {
@@ -130,7 +145,7 @@ export async function ensureMemberBalance(userId: Types.ObjectId, currency: 'XAF
             const reference = `opening:${userId}:${currency}`;
             try {
                 await blnk.post({
-                    amount: Math.abs(amount), reference, currency, description: 'Solde d’ouverture (instantané)',
+                    amount: Math.abs(amount), reference, currency: moneyCurrencyOf(currency), description: 'Solde d’ouverture (instantané)',
                     source: amount > 0 ? '@OpeningBalances' : row!.balanceId, destination: amount > 0 ? row!.balanceId : '@OpeningBalances',
                     allow_overdraft: true, skip_queue: true, meta_data: { userId: String(userId), kind: 'opening', snapshotAt: opening?.snapshotAt },
                 });
@@ -154,13 +169,40 @@ async function record(m: IWalletMovement, status: BlnkSyncStatus, extra: { txId?
     );
 }
 
-/** Posts one movement. Returns 'stop' when Blnk is unreachable (retry later, nothing skipped). */
-async function syncOne(m: IWalletMovement): Promise<BlnkSyncStatus | 'stop'> {
+/**
+ * Where the opening snapshot of a balance stands (scripts/snapshot-opening-balances.ts --apply
+ * writes `openingSnapshot:<balance>` = {startedAt, doneAt}). XAF and USD were snapshotted before
+ * this state existed (2026-11-21): done.
+ */
+export async function openingSnapshotState(currency: WalletCurrency): Promise<'none' | 'running' | 'done'> {
+    if (currency === 'XAF' || currency === 'USD') return 'done';
+    const v = await state<{ startedAt?: string; doneAt?: string }>(`openingSnapshot:${currency}`);
+    return !v?.startedAt ? 'none' : v.doneAt ? 'done' : 'running';
+}
+export const markOpeningSnapshot = (currency: WalletCurrency, field: 'startedAt' | 'doneAt') =>
+    BlnkStateModel.updateOne(
+        { _id: `openingSnapshot:${currency}` },
+        field === 'startedAt'
+            ? { $set: { 'value.startedAt': new Date().toISOString(), at: new Date() }, $unset: { 'value.doneAt': '' } }
+            : { $set: { 'value.doneAt': new Date().toISOString(), at: new Date() } },
+        { upsert: true },
+    );
+
+/** Posts one movement. Returns 'stop' when Blnk is unreachable or an opening snapshot is running (retry later, nothing skipped). */
+async function syncOne(m: IWalletMovement): Promise<BlnkSyncStatus | 'stop' | 'wait_opening'> {
     if (await BlnkSyncModel.exists({ movementId: m._id })) return 'synced';
     const opening = await WalletOpeningBalanceModel.findOne({ userId: m.userId, currency: m.currency }, { snapshotAt: 1 }).lean();
     if (opening && m.appliedAt && new Date(m.appliedAt) <= new Date(opening.snapshotAt)) {
         await record(m, 'skipped_in_opening');
         return 'skipped_in_opening';
+    }
+    if (!opening) {
+        // A balance journalled before its first opening snapshot (the four extra balances were
+        // added 2026-11-23 while the worker was running): until the snapshot starts, every movement
+        // will be inside the member's opening; while it runs, we cannot tell yet, so wait.
+        const snap = await openingSnapshotState(m.currency);
+        if (snap === 'none') { await record(m, 'skipped_in_opening'); return 'skipped_in_opening'; }
+        if (snap === 'running') return 'wait_opening';
     }
     if (!(m.amount > 0)) {
         await record(m, 'skipped_zero');
@@ -172,10 +214,12 @@ async function syncOne(m: IWalletMovement): Promise<BlnkSyncStatus | 'stop'> {
         const { balanceId } = await ensureMemberBalance(m.userId, m.currency);
         const credit = m.direction === 'CREDIT';
         const tx = await blnk.post({
-            amount: round2(m.amount), reference, currency: m.currency, description: (m.description || m.source || '').slice(0, 200),
+            amount: round2(m.amount), reference, currency: moneyCurrencyOf(m.currency), description: (m.description || m.source || '').slice(0, 200),
             source: credit ? counterpart : balanceId, destination: credit ? balanceId : counterpart,
-            // The member's balance never goes below 0 in Blnk; the internal accounts may.
-            allow_overdraft: credit, skip_queue: true,
+            // The member's balance never goes below 0 in Blnk; the internal accounts may. Exception:
+            // the event-organiser balance, which a resale refund may take below zero on purpose
+            // (user.repository applyEventOrganizerMovement), so Blnk must follow it there.
+            allow_overdraft: credit || m.currency === 'EVENT_ORGANIZER', skip_queue: true,
             meta_data: { userId: String(m.userId), movementId: String(m._id), source: m.source, reference: m.reference },
         });
         await record(m, 'synced', { txId: tx.transaction_id, counterpart });
@@ -222,6 +266,7 @@ export async function syncBatch(limit = 200, now: Date = new Date()) {
         } else {
             const r = await syncOne(m);
             if (r === 'stop') { out.stopped = 'blnk_unavailable'; break; }
+            if (r === 'wait_opening') { out.stopped = 'opening_snapshot_running'; break; }
             if (r === 'synced') out.synced++;
             else if (r === 'rejected') out.rejected++;
             else out.skipped++;
@@ -242,13 +287,13 @@ export async function syncLagMs(now: Date = new Date()): Promise<number> {
 }
 
 /** Movements of this member not posted to Blnk yet (after the cursor). */
-async function pendingFor(userId: Types.ObjectId, currency: 'XAF' | 'USD'): Promise<number> {
+async function pendingFor(userId: Types.ObjectId, currency: WalletCurrency): Promise<number> {
     const cursor = await state<string>('cursor');
     return WalletMovementModel.countDocuments({ userId, currency, ...(cursor ? { _id: { $gt: new Types.ObjectId(cursor) } } : {}) });
 }
 
 export interface TripleCheck {
-    userId: string; currency: 'XAF' | 'USD';
+    userId: string; currency: WalletCurrency;
     a: number; b: number | null; c: number | null; cInflight: number | null;
     pendingSync: number; agree: boolean; reason: string | null;
 }
@@ -260,10 +305,10 @@ const tolerance = (currency: string) => (currency === 'USD' ? 0.01 : 1);
  * A, B and C for one member and currency (withdrawal pre-check and nightly
  * shadow comparison). Read-only: never creates a Blnk balance.
  */
-export async function tripleCheck(userIdIn: string, currency: 'XAF' | 'USD' = 'XAF'): Promise<TripleCheck> {
+export async function tripleCheck(userIdIn: string, currency: WalletCurrency = 'XAF'): Promise<TripleCheck> {
     const userId = new Types.ObjectId(userIdIn);
     const [user, opening, net, row, pending] = await Promise.all([
-        UserModel.findById(userId).select('balance usdBalance').lean(),
+        UserModel.findById(userId).select(WALLET_FIELDS[currency]).lean(),
         WalletOpeningBalanceModel.findOne({ userId, currency }).lean(),
         WalletMovementModel.aggregate([
             { $match: { userId, currency, status: WalletMovementStatus.APPLIED } },
@@ -274,7 +319,7 @@ export async function tripleCheck(userIdIn: string, currency: 'XAF' | 'USD' = 'X
         BlnkBalanceModel.findOne({ userId, currency }).lean(),
         pendingFor(userId, currency),
     ]);
-    const a = round2(Number((currency === 'USD' ? (user as any)?.usdBalance : (user as any)?.balance) ?? 0));
+    const a = round2(Number((user as any)?.[WALLET_FIELDS[currency]] ?? 0));
     const b = round2(Number(opening?.amount ?? 0) + Number(net[0]?.net ?? 0));
     let c: number | null = null;
     let cInflight: number | null = null;

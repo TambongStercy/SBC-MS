@@ -131,7 +131,9 @@ class LeaderboardBonusService {
             }
 
             try {
-                const updated = await userRepository.updateActivationBalance(q.userId, tier.amountXaf);
+                const updated = await userRepository.updateActivationBalance(q.userId, tier.amountXaf, {
+                    reference: `leaderboard-bonus:${q.userId}:${month}`, source: 'leaderboard-bonus', description: `Bonus classement ${month}`,
+                });
                 if (!updated) throw new Error('User not found');
 
                 await LeaderboardBonusModel.updateOne({ _id: row._id }, { status: 'paid', paidAt: new Date() });

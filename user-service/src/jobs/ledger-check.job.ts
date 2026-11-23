@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { Types } from 'mongoose';
 import UserModel from '../database/models/user.model';
-import WalletMovementModel, { WalletMovementStatus } from '../database/models/wallet-movement.model';
+import WalletMovementModel, { WALLET_FIELDS, WalletCurrency, WalletMovementStatus } from '../database/models/wallet-movement.model';
 import WalletOpeningBalanceModel from '../database/models/wallet-opening-balance.model';
 import BalanceReservationModel, { ReservationState } from '../database/models/balance-reservation.model';
 import { openSupportCase } from '../services/clients/support.service.client';
@@ -17,7 +17,7 @@ const STALE_PENDING_MS = 15 * 60 * 1000;
 export interface LedgerFinding {
     kind: 'balance' | 'pending_movement' | 'reserved';
     userId: string;
-    currency: 'XAF' | 'USD';
+    currency: WalletCurrency;
     expected?: number;
     actual?: number;
     reference?: string;
@@ -60,13 +60,13 @@ async function balanceFindings(): Promise<LedgerFinding[]> {
         const ids = [...new Set(batch.map((o) => o.userId.toString()))].map((id) => new Types.ObjectId(id));
         const check = async () => {
             const net = await netSinceSnapshot(ids);
-            const users = await UserModel.find({ _id: { $in: ids } }).select('balance usdBalance').lean();
+            const users = await UserModel.find({ _id: { $in: ids } }).select(Object.values(WALLET_FIELDS).join(' ')).lean();
             const byId = new Map(users.map((u: any) => [u._id.toString(), u]));
             const out: LedgerFinding[] = [];
             for (const o of batch) {
                 const u: any = byId.get(o.userId.toString());
                 if (!u) continue;
-                const actual = Number((o.currency === 'USD' ? u.usdBalance : u.balance) ?? 0);
+                const actual = Number(u[WALLET_FIELDS[o.currency as WalletCurrency]] ?? 0);
                 const expected = round2(o.amount + (net.get(`${o.userId}:${o.currency}`) ?? 0));
                 if (Math.abs(actual - expected) > TOLERANCE) {
                     out.push({ kind: 'balance', userId: o.userId.toString(), currency: o.currency, expected, actual: round2(actual) });
@@ -188,20 +188,20 @@ export const ledgerCheckJob = new LedgerCheckJob();
  * usdBalance) against balance B (opening snapshot + APPLIED movements since),
  * per currency. A member without an opening snapshot gets no entry.
  */
-export async function ledgerBalances(userIdsIn: string[]): Promise<Map<string, { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[]>> {
+export async function ledgerBalances(userIdsIn: string[]): Promise<Map<string, { currency: WalletCurrency; actual: number; expected: number; matches: boolean }[]>> {
     const ids = userIdsIn.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-    const out = new Map<string, { currency: 'XAF' | 'USD'; actual: number; expected: number; matches: boolean }[]>();
+    const out = new Map<string, { currency: WalletCurrency; actual: number; expected: number; matches: boolean }[]>();
     if (!ids.length) return out;
     const [openings, net, users] = await Promise.all([
         WalletOpeningBalanceModel.find({ userId: { $in: ids } }).lean(),
         netSinceSnapshot(ids),
-        UserModel.find({ _id: { $in: ids } }).select('balance usdBalance').lean(),
+        UserModel.find({ _id: { $in: ids } }).select(Object.values(WALLET_FIELDS).join(' ')).lean(),
     ]);
     const byId = new Map(users.map((u: any) => [u._id.toString(), u]));
     for (const o of openings as any[]) {
         const u: any = byId.get(o.userId.toString());
         if (!u) continue;
-        const actual = round2(Number((o.currency === 'USD' ? u.usdBalance : u.balance) ?? 0));
+        const actual = round2(Number(u[WALLET_FIELDS[o.currency as WalletCurrency]] ?? 0));
         const expected = round2(o.amount + (net.get(`${o.userId}:${o.currency}`) ?? 0));
         const list = out.get(o.userId.toString()) ?? [];
         list.push({ currency: o.currency, actual, expected, matches: Math.abs(actual - expected) <= TOLERANCE });

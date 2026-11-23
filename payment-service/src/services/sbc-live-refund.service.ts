@@ -173,6 +173,7 @@ class SbcLiveRefundService {
             const ok = await userServiceClient.updateSbcLiveBalance(
                 refund.creatorUserId.toString(),
                 -refund.creatorClawbackAmount,
+                `sbc-live-refund:${String(refund._id)}`,
             );
             if (!ok) {
                 refund.status = RefundStatus.FAILED_INSUFFICIENT_FUNDS;

@@ -24,6 +24,7 @@ export const APPROVER_PERMISSION: Record<ApprovalType, Permission> = {
   authenticator_reset: 'authenticator.reset.approve',
   account_freeze: 'risk.decide',
   risk_release: 'risk.decide',
+  commission_reversal: 'finance.regularize.approve',
 };
 
 /** The payload in plain words; known keys get French labels. */
@@ -32,6 +33,7 @@ const PAYLOAD_LABEL: Record<string, string> = {
   plan: 'Offre', transactionId: 'Retrait', action: 'Action', amount: 'Montant', currency: 'Devise', evidence: 'Preuves', ticketId: 'Ticket', caseId: 'Dossier',
   momoNumber: 'Nouveau numéro Mobile Money', momoOperator: 'Opérateur',
   identityVerification: 'Identité vérifiée (pièce + selfie)', identityCheckedBy: 'Identité vérifiée par',
+  level: 'Niveau de commission', sourceUserId: 'Filleul à l’origine', paidAt: 'Versée le',
 };
 const VALUE_LABEL: Record<string, string> = {
   complete: 'Marquer réussi', fail: 'Marquer échoué', email: 'E-mail', phoneNumber: 'Téléphone', momo: 'Mobile Money',
