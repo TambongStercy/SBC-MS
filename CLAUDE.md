@@ -2094,6 +2094,32 @@ hand-started process (it holds port 3009) and stop it, make sure
 `sbclove-service/.env` has the same `JWT_SECRET` as `user-service/.env`, and run
 `npm install` there if `node_modules` is missing (see the section above).
 
+### SBC Impact Challenge v2 (event-service `modules/impact`, Phase 1, 2026-11-23)
+
+The multi-stage contest of the cahier des charges (qualification → 20 candidates → weeks 1–3 →
+TOP 3 → live final → tombola → SBC Impact showcase). Phase 1 = editions, candidates,
+qualification; rules, API and checks: `docs/impact-challenge/PHASE1.md`. The old monthly
+Impact Challenge (tombola-service `/api/challenges`) is untouched until v2 replaces it.
+- **Rufus's rules (2026-11-23):** an invitation = a level-1 filleul whose FIRST CLASSIQUE/CIBLE
+  pack was paid in the qualification window (a pack the candidate activated for them counts);
+  TOP 3 by week-3 paid votes; final 50 % paid votes / 30 % public vote / 20 % jury; vote money
+  all to SBC; 1 paid vote = 1 tombola ticket weighing 1 (tickets 1–10), ½ (11–50), ¼ (51+);
+  prizes editable, no same prize category twice in 365 days; no legal check of the tombola.
+- **Counting:** user-service `POST /users/internal/impact/invitations` (`reachedAt` = time of the
+  N-th paid pack, so seats follow payment order). The User model's soft-delete hook rewrites any
+  find, so "deleted" accounts can only be excluded by listing the usable ones.
+- **Seats:** only `assignSeats` in the leader-locked job (`impact-leader`, every
+  `IMPACT_TICK_MS` = 10 s) hands them out: waiting list first, then by `reachedAt`. Unique
+  partial indexes on `(editionId, seatNumber)` / `(editionId, waitlistRank)`. Never call it
+  from a request handler: two writers could exceed the seat count.
+- **Locks:** rules + qualification settings freeze when qualification opens, competition
+  settings when it starts (409 `RULES_LOCKED` with `details.fields`); prizes stay editable.
+- **Gateway:** `/api/tickets/impact/admin/*` → module `impactChallenge`; `/public/*` and `/me*`
+  are member/public routes.
+- **Verified 2026-11-23** on the local dev copy of prod: four real sponsors (181/120/89/32 paid
+  filleuls since 2026-06-01) got exactly the counts and reach times computed directly in Mongo,
+  seats in payment order though they applied in reverse.
+
 ### SBC Support (support-service, 2026-11-17)
 
 Agent desk + member « Aide » + internal case/view-task intake. Contract:
