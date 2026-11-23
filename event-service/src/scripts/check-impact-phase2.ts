@@ -181,6 +181,11 @@ const main = async () => {
     check('accounts created after the vote opened are refused', (await refusal(() => votes.castFreeVote(member({ createdAt: new Date() }), { candidateId: String(cA._id) }, sig)))?.code === 'ACCOUNT_TOO_RECENT');
     check('a candidate cannot vote for themselves (default)', (await refusal(() => votes.castFreeVote(A, { candidateId: String(cA._id) }, sig)))?.code === 'SELF_VOTE');
     check('no vote for a candidate without a published video', (await refusal(() => votes.castFreeVote(member(), { candidateId: String(cD._id) }, sig)))?.code === 'CANDIDATE_NOT_VOTABLE');
+    const mv = await votes.myVotes(V1);
+    check('my votes: named, and no more free vote', mv.freeVote?.candidateName === 'Candidat a' && mv.canFreeVote?.ok === false && mv.canFreeVote.code === 'ALREADY_VOTED');
+    check('my votes: a new member may vote', (await votes.myVotes(member())).canFreeVote?.ok === true);
+    check('my votes: a non-member is told before tapping', (await votes.myVotes(member({ isMember: false }))).canFreeVote?.code === 'MEMBERS_ONLY');
+    check('my votes: a candidate knows their own candidacy', (await votes.myVotes(A)).myCandidateId === String(cA._id));
     await votes.castFreeVote(member(), { candidateId: String(cA._id) }, sig);
     check('free counters', (await cand(A))!.votes.free === 2 && (await cand(B))!.votes.free === 1);
     check('paid votes are closed in week 2', (await refusal(() => votes.startPurchase(member(), { candidateId: String(cA._id), packIndex: 0, method: 'MOBILE_MONEY', idempotencyKey: key() }, sig)))?.code === 'VOTE_CLOSED');

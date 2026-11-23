@@ -99,7 +99,7 @@ videoFileId? }, review: { reason, at } | null, publishedAt, externalUrl, created
 | `POST /me/submissions/project` | `{ problem, solution, howItWorks, targetCustomers, businessModel, expectedImpact, fundingUse, outlook }` (20–2000 characters each) `+ videoFileId?` | `Submission` |
 | `POST /free-votes` | `{ candidateId }` | `{ candidateId, at }` |
 | `POST /vote-purchases` | `{ candidateId, packIndex, method: 'MOBILE_MONEY' \| 'BALANCE', idempotencyKey }` | `{ transaction: Purchase, sessionId: string \| null }` |
-| `GET /me/votes` | — | `{ freeVote: { candidateId, at } \| null, purchases: Purchase[] }` |
+| `GET /me/votes` | — | `{ freeVote: { candidateId, candidateName, at } \| null, purchases: (Purchase & { candidateName })[], myCandidateId: string \| null, canFreeVote: { ok, code?, message? } \| null }` (`canFreeVote` is null while the free round is not open; when `ok` is false it carries the refusal the vote would get: `ALREADY_VOTED`, `MEMBERS_ONLY`, `ACCOUNT_TOO_RECENT`…) |
 | `GET /me/vote-purchases/:id` | — | `Purchase` |
 
 - **`idempotencyKey`:** 8–100 characters from `[A-Za-z0-9_-]`, a NEW one per click. Resending the same
@@ -172,7 +172,7 @@ Buyers (push only, since e-mail is the mail server's scarcest resource):
 
 ## Checks
 
-event-service `src/scripts/check-impact-phase2.ts` has 71 checks (real Mongo; user-, payment- and
+event-service `src/scripts/check-impact-phase2.ts` has 75 checks (real Mongo; user-, payment- and
 notification-service stubbed with the same exactly-once-per-reference behaviour). It covers:
 - launch, publication, submissions and versions;
 - free-vote rules and 10 simultaneous votes;

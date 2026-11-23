@@ -449,14 +449,44 @@ export const retryRefunds = async (): Promise<number> => {
 
 // ---------- Reads ----------
 
+/**
+ * The member's votes, with the names to show, their own candidacy (so a page
+ * can hide « voter pour moi »), and whether they may still vote for free —
+ * known before the tap, with the reason when they may not.
+ */
 export const myVotes = async (userId: string) => {
     const e = await currentEdition();
-    if (!e) return { freeVote: null, purchases: [] };
-    const [fv, txs] = await Promise.all([
-        ImpactFreeVote.findOne({ editionId: e._id, voterUserId: new Types.ObjectId(userId) }).lean(),
-        ImpactVoteTx.find({ editionId: e._id, userId: new Types.ObjectId(userId) }).sort({ createdAt: -1 }).limit(50).lean(),
+    if (!e) return { freeVote: null, purchases: [], myCandidateId: null, canFreeVote: null };
+    const uid = new Types.ObjectId(userId);
+    const [fv, txs, mine] = await Promise.all([
+        ImpactFreeVote.findOne({ editionId: e._id, voterUserId: uid }).lean(),
+        ImpactVoteTx.find({ editionId: e._id, userId: uid }).sort({ createdAt: -1 }).limit(50).lean(),
+        ImpactCandidate.findOne({ editionId: e._id, userId: uid }).select('_id').lean(),
     ]);
-    return { freeVote: fv ? { candidateId: String(fv.candidateId), at: fv.at } : null, purchases: txs.map(presentTx) };
+    const ids = [...new Set([fv ? String(fv.candidateId) : null, ...txs.map((t) => String(t.candidateId))].filter(Boolean) as string[])];
+    const cands = ids.length ? await ImpactCandidate.find({ _id: { $in: ids.map((i) => new Types.ObjectId(i)) } }).select('profile.name').lean() : [];
+    const nameOf = new Map(cands.map((c) => [String(c._id), c.profile?.name ?? null]));
+
+    // Free vote: only meaningful while the round is open.
+    let canFreeVote: { ok: boolean; code?: string; message?: string } | null = null;
+    if (roundOpen(e, RoundKey.FREE)) {
+        if (fv) canFreeVote = { ok: false, code: 'ALREADY_VOTED', message: 'Vous avez déjà voté.' };
+        else {
+            try {
+                await assertFreeVoter(e, userId);
+                canFreeVote = { ok: true };
+            } catch (err) {
+                canFreeVote = { ok: false, code: (err as AppError).code, message: (err as Error).message };
+            }
+        }
+    }
+    return {
+        freeVote: fv ? { candidateId: String(fv.candidateId), candidateName: nameOf.get(String(fv.candidateId)) ?? null, at: fv.at } : null,
+        purchases: txs.map((t) => ({ ...presentTx(t), candidateName: nameOf.get(String(t.candidateId)) ?? null })),
+        myCandidateId: mine ? String(mine._id) : null,
+        // A candidate's own page: free self-votes follow settings.freeVote.selfVote, paid ones settings.paidSelfVote.
+        canFreeVote,
+    };
 };
 
 export const getMyPurchase = async (userId: string, txId: string) => {
