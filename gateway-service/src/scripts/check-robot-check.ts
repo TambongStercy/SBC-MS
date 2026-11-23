@@ -81,7 +81,8 @@ const main = async () => {
 
     // ---- routes ----
     check('protected actions matched (case, trailing slash, query)', rc.actionFor('POST', '/api/users/Login/?x=1') === 'login' && rc.actionFor('POST', '/api/transactions/withdrawal/initiate') === 'withdrawal'
-        && rc.actionFor('POST', '/api/support/public/tickets') === 'public_ticket' && rc.actionFor('GET', '/api/users/login') === null && rc.actionFor('POST', '/api/users/verify-otp') === null);
+        && rc.actionFor('POST', '/api/support/public/tickets') === 'public_ticket' && rc.actionFor('GET', '/api/users/login') === null && rc.actionFor('POST', '/api/users/verify-otp') === null
+        && rc.actionFor('POST', '/api/users/admin/login') === 'admin_login' && rc.actionFor('POST', '/api/users/admin/login/totp') === null);
     const ch = await fetch(`${base}/api/altcha/challenge`);
     const cj: any = await ch.json();
     check('challenge: signed, 10 min, not cacheable, no answer inside', ch.headers.get('cache-control') === 'no-store' && typeof cj.signature === 'string'

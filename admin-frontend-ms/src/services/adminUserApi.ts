@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { attachSigning } from '../lib/signAxios';
+import { adoptSignInKey, prepareSignInKey } from '../lib/requestSigning';
+import { takeRobotAnswer } from '../lib/robotCheck';
 import type { Permissions } from '../lib/permissions';
 
 // Define PaginationOptions locally
@@ -138,6 +141,9 @@ const apiClient = axios.create({
     },
 });
 
+// Security plan Phase 9: registered first so it runs after the token interceptor below.
+attachSigning(apiClient);
+
 // Interceptor to add Auth token
 apiClient.interceptors.request.use((config) => {
     const token = localStorage.getItem('adminToken'); // Simple token storage, context is better
@@ -176,10 +182,13 @@ export interface AdminSignedIn extends AdminLoginResponse {
     backupCodesRemaining?: number;
 }
 
-const postLoginStep = async <T>(path: string, body: Record<string, string>): Promise<T> => {
+const postLoginStep = async <T>(path: string, body: Record<string, string>, headers?: Record<string, string>): Promise<T> => {
     try {
-        const response = await apiClient.post<RawApiResponse<T>>(path, body);
+        const response = await apiClient.post<RawApiResponse<T>>(path, body, headers ? { headers } : undefined);
         if (response.data && response.data.success === true && response.data.data) {
+            // Security plan Phase 9: the key made for this sign-in now signs this token's requests.
+            const token = (response.data.data as { token?: unknown }).token;
+            if (typeof token === 'string' && token) await adoptSignInKey(token);
             return response.data.data;
         }
         throw new Error(response.data?.message || 'La connexion a échoué.');
@@ -192,8 +201,11 @@ const postLoginStep = async <T>(path: string, body: Record<string, string>): Pro
     }
 };
 
-export const loginAdmin = (credentials: { email: string; password: string }): Promise<AdminLoginStep> =>
-    postLoginStep<AdminLoginStep>('/users/admin/login', credentials);
+/** The password step carries the anti-robot answer (ALTCHA, solved while the admin types). */
+export const loginAdmin = async (credentials: { email: string; password: string }): Promise<AdminLoginStep> => {
+    const answer = await takeRobotAnswer().catch(() => null);
+    return postLoginStep<AdminLoginStep>('/users/admin/login', credentials, answer ? { 'X-SBC-Altcha': answer } : undefined);
+};
 
 /** First sign-in only: the code emailed to the account. */
 export const verifyAdminEmailCode = (challengeId: string, code: string): Promise<{ step: 'enroll'; challengeId: string }> =>
@@ -202,12 +214,18 @@ export const verifyAdminEmailCode = (challengeId: string, code: string): Promise
 export const startAdminEnrolment = (challengeId: string): Promise<AdminEnrolment> =>
     postLoginStep('/users/admin/login/enroll/start', { challengeId });
 
-export const confirmAdminEnrolment = (challengeId: string, code: string): Promise<AdminSignedIn> =>
-    postLoginStep('/users/admin/login/enroll/confirm', { challengeId, code });
+/** The steps that issue the token also carry this browser's new signing key (Security plan Phase 9). */
+const withKey = async (body: Record<string, string>) => {
+    const devicePublicKey = await prepareSignInKey().catch(() => null);
+    return devicePublicKey ? { ...body, devicePublicKey } : body;
+};
+
+export const confirmAdminEnrolment = async (challengeId: string, code: string): Promise<AdminSignedIn> =>
+    postLoginStep('/users/admin/login/enroll/confirm', await withKey({ challengeId, code }));
 
 /** The authenticator's 6 digits, or one backup code. */
-export const completeAdminTotp = (challengeId: string, answer: { code: string } | { backupCode: string }): Promise<AdminSignedIn> =>
-    postLoginStep('/users/admin/login/totp', { challengeId, ...answer });
+export const completeAdminTotp = async (challengeId: string, answer: { code: string } | { backupCode: string }): Promise<AdminSignedIn> =>
+    postLoginStep('/users/admin/login/totp', await withKey({ challengeId, ...answer }));
 
 export const listUsers = async (
     filters: AdminUserListFilters = {},

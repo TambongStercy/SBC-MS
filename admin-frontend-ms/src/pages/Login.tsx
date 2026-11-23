@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useState, FormEvent, useEffect, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
+import { prepareRobotAnswer } from "../lib/robotCheck";
 import { Button, Checkbox, Field, Input } from "../components/ui";
 import {
   completeAdminTotp, confirmAdminEnrolment, startAdminEnrolment, verifyAdminEmailCode,
@@ -78,6 +79,9 @@ function Login() {
       navigate('/');
     }
   }, [isAdminAuthenticated, navigate]);
+
+  // Security plan Phase 9: the anti-robot answer is solved while the admin types.
+  useEffect(() => { prepareRobotAnswer(); }, []);
 
   // Set-up step: fetch the key and its QR code once per challenge.
   useEffect(() => {

@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { isValidObjectId } from 'mongoose';
 import UserModel, { ADMIN_CAPABLE_ROLES, UserRole } from '../../database/models/user.model';
 import * as adminAuth from '../../services/admin-auth.service';
+import { bindAtSignIn } from '../../services/session-keys.service';
 import { AppError } from '../../utils/errors';
 import logger from '../../utils/logger';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -27,6 +29,17 @@ const run = (fn: (req: AuthenticatedRequest) => Promise<unknown>) => async (req:
     }
 };
 
+/**
+ * Security plan Phase 9 (admin, like members): the admin app's signing key (`devicePublicKey`,
+ * made at sign-in) is bound to the token it gets, so the gateway can tell its signed requests
+ * from a token copied out of the browser. Log-only, never fails the sign-in.
+ */
+async function withSessionKey<T extends { token: string }>(req: Request, result: T): Promise<T> {
+    const claims = jwt.decode(result.token) as { userId?: string } | null;
+    if (claims?.userId) await bindAtSignIn(result.token, claims.userId, req.body?.devicePublicKey, req.header('x-sbc-device'));
+    return result;
+}
+
 /** The admin session id carried by the token (absent on member-app tokens). */
 export const sessionIdOf = (req: AuthenticatedRequest): string => String((req.user as any)?.asid || '');
 
@@ -38,8 +51,8 @@ export const adminAuthController = {
     login: run(req => adminAuth.login(req.body || {}, ctxOf(req))),
     verifyEmailCode: run(req => adminAuth.verifyEmailCode(req.body || {}, ctxOf(req))),
     enrollStart: run(req => adminAuth.enrollStart(req.body || {})),
-    enrollConfirm: run(req => adminAuth.enrollConfirm(req.body || {}, ctxOf(req))),
-    completeTotp: run(req => adminAuth.completeTotp(req.body || {}, ctxOf(req))),
+    enrollConfirm: run(async req => withSessionKey(req, await adminAuth.enrollConfirm(req.body || {}, ctxOf(req)))),
+    completeTotp: run(async req => withSessionKey(req, await adminAuth.completeTotp(req.body || {}, ctxOf(req)))),
 
     logout: run(async req => {
         const sid = sessionIdOf(req);

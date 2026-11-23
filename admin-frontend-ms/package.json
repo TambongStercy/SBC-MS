@@ -16,6 +16,7 @@
     "@hugeicons/core-free-icons": "^4.4.0",
     "@hugeicons/react": "^1.1.10",
     "@tanstack/react-query": "^5.107.1",
+    "altcha-lib": "2.8.0",
     "axios": "^1.7.7",
     "canvas-confetti": "^1.9.3",
     "class-variance-authority": "^0.7.1",

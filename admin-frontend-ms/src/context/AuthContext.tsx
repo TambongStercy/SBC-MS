@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
+import { clearSessionKey } from '../lib/requestSigning';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { AdminUserData, loginAdmin, AdminLoginStep, AdminLoginResponse } from '../services/adminUserApi';
@@ -97,6 +98,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const logout = useCallback(() => {
+    void clearSessionKey(); // Security plan Phase 9: this browser's signing key is forgotten
     setToken(null);
     setAdminUser(null);
     setAccessError(false);
