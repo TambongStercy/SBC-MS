@@ -9,7 +9,8 @@ import logger from '../../utils/logger';
  *
  * - recorded sessions of a member: POST /v2/api/{project}/sessions/search, filter `user_id`
  *   (the camelCase `userId` filter breaks on ClickHouse 26 in v1.28.0);
- * - live sessions of a member: GET /api/{project}/assist/sessions?userId=.
+ * - live sessions of a member: GET /api/{project}/assist/sessions?userID= (capital ID: `userId`
+ *   is silently ignored and returns nothing, checked on preprod 2026-11-23).
  */
 
 const log = logger.getLogger('OpenReplay');
@@ -102,7 +103,7 @@ export async function recordedSessions(userId: string, days = 30, limit = 20): P
 
 /** The member's sessions open right now (the app is on screen). */
 export async function liveSessions(userId: string): Promise<ReplaySession[]> {
-    const data = await authed('GET', `/api/${config.openreplay.projectId}/assist/sessions?userId=${encodeURIComponent(userId)}`);
+    const data = await authed('GET', `/api/${config.openreplay.projectId}/assist/sessions?userID=${encodeURIComponent(userId)}`);
     return (Array.isArray(data?.sessions) ? data.sessions : []).map((s: any) => present(s, true)).filter(Boolean) as ReplaySession[];
 }
 
