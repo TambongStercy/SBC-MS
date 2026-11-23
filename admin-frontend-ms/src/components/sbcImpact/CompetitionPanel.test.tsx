@@ -29,7 +29,7 @@ const conflict = (code: string, message: string, details?: unknown) => new Axios
 
 function renderPanel(e: Edition, extra: Partial<Parameters<typeof CompetitionPanel>[0]> = {}) {
     const props = {
-        edition: e, canWrite: true, onChanged: vi.fn(), onOpenCandidate: vi.fn(), onShowCandidates: vi.fn(), onShowTop3: vi.fn(), ...extra,
+        edition: e, canWrite: true, onChanged: vi.fn(), onOpenCandidate: vi.fn(), onShowCandidates: vi.fn(), onShowTop3: vi.fn(), onShowFinal: vi.fn(), ...extra,
     };
     render(<CompetitionPanel {...props} />);
     return props;

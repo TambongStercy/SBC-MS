@@ -92,6 +92,10 @@ export interface Edition {
             name?: string | null; projectName?: string | null; seatNumber?: number | null; paidAmount?: number | null; freeVotes?: number | null;
         }[];
     } | null;
+    // Phase 3
+    jury?: { lockedAt?: string | null; lockedBy?: string | null } | null;
+    live?: { onStageCandidateId: string | null; phase: LivePhase | null; startedAt?: string; updatedAt?: string } | null;
+    result?: FinalResult | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -387,6 +391,15 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
     'vote.purchase_started': 'Achat de votes lancé',
     'vote.late_refund': 'Paiement tardif remboursé',
     'vote.refunded_by_admin': 'Achat remboursé par l’administration',
+    // Phase 3
+    'jury.juror_added': 'Juré ajouté',
+    'jury.juror_removed': 'Juré retiré',
+    'jury.score_saved': 'Note du jury enregistrée',
+    'jury.score_updated': 'Note du jury corrigée',
+    'jury.locked': 'Notes du jury verrouillées',
+    'final.started': 'Finale démarrée',
+    'final.on_stage': 'Passage sur scène',
+    'final.result_published': 'Résultat publié',
 };
 
 export const auditActionLabel = (action: string) => AUDIT_ACTION_LABELS[action] ?? action;
@@ -441,6 +454,8 @@ const FIELD_LABELS: Record<string, string> = {
     'rounds.FREE.closesAt': 'fin du vote gratuit',
     'rounds.PAID.opensAt': 'ouverture des votes payants',
     'rounds.PAID.closesAt': 'fin des votes payants',
+    'rounds.FINAL.opensAt': 'ouverture du vote public de la finale',
+    'rounds.FINAL.closesAt': 'fin du vote public de la finale',
 };
 
 /** "settings.maxCandidates" → "nombre de candidats" (unknown keys as they are). */
@@ -522,8 +537,8 @@ export function photoUrl(fileId?: string | null, width?: number): string {
 // Phase 2: weeks 1–3, contents, votes, TOP 3 (docs/impact-challenge/PHASE2.md)
 // =====================================================================
 
-export type Stage = 'WEEK1' | 'WEEK2' | 'WEEK3' | 'TOP3';
-export type RoundKey = 'FREE' | 'PAID';
+export type Stage = 'WEEK1' | 'WEEK2' | 'WEEK3' | 'TOP3' | 'LIVE' | 'RESULT';
+export type RoundKey = 'FREE' | 'PAID' | 'FINAL';
 export type RoundStatus = 'SCHEDULED' | 'OPEN' | 'CLOSED';
 
 export interface Round {
@@ -534,8 +549,13 @@ export interface Round {
     closedAt?: string | null;
 }
 
-/** The week a round belongs to: it opens only then (backend ROUND_STAGE). */
-export const ROUND_STAGE: Record<RoundKey, Stage> = { FREE: 'WEEK2', PAID: 'WEEK3' };
+/** The stage a round belongs to: it opens only then (backend ROUND_STAGE). */
+export const ROUND_STAGE: Record<RoundKey, Stage> = { FREE: 'WEEK2', PAID: 'WEEK3', FINAL: 'LIVE' };
+/** A round as stored, or a scheduled one without dates (editions created before it existed). */
+export const roundOf = (e: Edition, k: RoundKey): Round => e.rounds?.[k] ?? { status: 'SCHEDULED' };
+
+/** …and the edition status it runs in (backend ROUND_EDITION_STATUS). */
+export const ROUND_EDITION_STATUS: Record<RoundKey, EditionStatus> = { FREE: 'COMPETITION', PAID: 'COMPETITION', FINAL: 'FINAL' };
 
 export type SubmissionKind = 'VIDEO' | 'PROJECT';
 export type SubmissionStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'RESUBMIT_REQUESTED';
@@ -776,10 +796,12 @@ export const STAGE_LABELS: Record<Stage, string> = {
     WEEK1: 'Semaine 1 · Présentation',
     WEEK2: 'Semaine 2 · Vidéo et vote gratuit',
     WEEK3: 'Semaine 3 · Projet et votes payants',
-    TOP3: 'TOP 3',
+    TOP3: 'TOP 3 · Préparation de la finale',
+    LIVE: 'Finale en direct',
+    RESULT: 'Résultat publié',
 };
 
-export const ROUND_LABELS: Record<RoundKey, string> = { FREE: 'Vote gratuit', PAID: 'Votes payants' };
+export const ROUND_LABELS: Record<RoundKey, string> = { FREE: 'Vote gratuit', PAID: 'Votes payants', FINAL: 'Vote public de la finale' };
 export const ROUND_STATUS_LABELS: Record<RoundStatus, string> = { SCHEDULED: 'Programmé', OPEN: 'Ouvert', CLOSED: 'Clos' };
 
 export const SUBMISSION_KIND_LABELS: Record<SubmissionKind, string> = { VIDEO: 'Vidéo « Ma vision de SBC »', PROJECT: 'Présentation du projet' };
@@ -816,3 +838,140 @@ const FLAG_LABELS: Record<string, string> = {
     AMOUNT_MISMATCH: 'Montant payé différent',
 };
 export const flagLabel = (f: string) => FLAG_LABELS[f] ?? f;
+
+// =====================================================================
+// Phase 3: the live final, the jury, the result (docs/impact-challenge/PHASE3.md)
+// =====================================================================
+
+export type LivePhase = 'PRESENTATION' | 'QUESTIONS' | 'SCORING';
+
+export const LIVE_PHASE_LABELS: Record<LivePhase, string> = {
+    PRESENTATION: 'Présentation',
+    QUESTIONS: 'Questions',
+    SCORING: 'Notation',
+};
+
+/** `GET /admin/members/lookup`: one account by e-mail or phone (contact masked). */
+export interface MemberLookup {
+    found: boolean;
+    /** Several accounts share this number: search by e-mail. */
+    ambiguous?: boolean;
+    userId?: string;
+    name?: string;
+    avatar?: string;
+    contactHint?: string;
+}
+
+export interface JuryCriterionDef { key: string; label: string; max: number }
+
+export interface JurorRow {
+    _id: string;
+    userId: string;
+    name: string;
+    addedAt: string;
+    removedAt: string | null;
+    /** Finalists this juror has marked. */
+    scored: number;
+    scores: { candidateId: string; total: number; updatedAt: string; edits: number }[];
+}
+
+export interface JuryOverview {
+    lockedAt: string | null;
+    criteria: JuryCriterionDef[];
+    maxTotal: number;
+    finalists: { _id: string; name: string }[];
+    jurors: JurorRow[];
+}
+
+export interface JuryScoreDetail {
+    candidateId: string;
+    jurorUserId: string;
+    jurorName: string | null;
+    jurorRemoved: boolean;
+    scores: Record<string, number>;
+    total: number;
+    comment: string | null;
+    updatedAt: string;
+    /** Earlier versions, oldest first. */
+    history: { scores: Record<string, number>; total: number; comment?: string; at: string }[];
+}
+
+export interface FinalResultRow {
+    candidateId: string;
+    name: string;
+    projectName: string;
+    paidVotes: number;
+    finalVotes: number;
+    juryAverage: number;
+    juryMax: number;
+    jurorsCount: number;
+    /** Each part on 0–100 (the best finalist of the part = 100). */
+    components: { paidVotes: number; publicVote: number; jury: number };
+    score: number;
+    rank: number;
+}
+
+export interface FinalResult {
+    publishedAt: string;
+    by?: string;
+    weights: { paidVotes: number; publicVote: number; jury: number };
+    rows: FinalResultRow[];
+    winnerCandidateId: string;
+}
+
+export interface MissingScore { candidateId: string; name: string; scoredBy: number; notScoredBy: string[] }
+
+export type ResultPreview =
+    | {
+        published: false;
+        weights: { paidVotes: number; publicVote: number; jury: number };
+        rows: FinalResultRow[];
+        missing: MissingScore[];
+        blockers: { code: string; message: string; details?: unknown }[];
+        warnings: string[];
+        formula: string;
+    }
+    | { published: true; result: FinalResult; formula: string };
+
+// ---------- Calls ----------
+
+export const lookupMember = async (contact: string): Promise<MemberLookup> =>
+    unwrap(await apiClient.get(`${BASE}/members/lookup`, { params: { contact } }), 'La recherche du membre a échoué.');
+
+export const getJury = async (id: string): Promise<JuryOverview> =>
+    unwrap(await apiClient.get(`${BASE}/editions/${id}/jury`), 'Impossible de charger le jury.');
+
+export const getJuryScores = async (id: string): Promise<JuryScoreDetail[]> =>
+    unwrap(await apiClient.get(`${BASE}/editions/${id}/jury/scores`), 'Impossible de charger les notes.') ?? [];
+
+export const addJuror = async (id: string, userId: string): Promise<{ _id: string; userId: string; name: string }> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/jury`, { userId }), 'Le juré n’a pas pu être ajouté.');
+
+export const removeJuror = async (id: string, jurorId: string, reason: string): Promise<unknown> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/jury/${jurorId}/remove`, { reason }), 'Le juré n’a pas pu être retiré.');
+
+export const startFinal = async (id: string): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/final/start`), 'La finale n’a pas pu démarrer.');
+
+/** Who is on stage (null = nobody) and what is happening. */
+export const setOnStage = async (id: string, candidateId: string | null, phase?: LivePhase | null): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/final/on-stage`, { candidateId, ...(phase ? { phase } : {}) }), 'Le passage sur scène n’a pas pu être enregistré.');
+
+export const lockJury = async (id: string): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/jury/lock`), 'Les notes n’ont pas pu être verrouillées.');
+
+export const getResult = async (id: string): Promise<ResultPreview> =>
+    unwrap(await apiClient.get(`${BASE}/editions/${id}/result`), 'Impossible de calculer le résultat.');
+
+/** Needs the admin's code (the apiClient interceptor asks for it). `expectedOrder` = the ids in the order shown. */
+export const publishResult = async (id: string, expectedOrder: string[]): Promise<Edition> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/result`, { expectedOrder }), 'Le résultat n’a pas pu être publié.');
+
+// ---------- The member app ----------
+
+/**
+ * The member app's address (VITE_MEMBER_APP_URL; the production site by
+ * default). The live screen of the final is its `/impact-challenge/finale` page.
+ */
+export const MEMBER_APP_URL = String(import.meta.env.VITE_MEMBER_APP_URL || 'https://sniperbuisnesscenter.com').replace(/\/+$/, '');
+export const liveScreenUrl = () => `${MEMBER_APP_URL}/impact-challenge/finale`;

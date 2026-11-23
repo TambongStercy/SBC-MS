@@ -14,9 +14,9 @@ import { CANDIDATE_FILTER_KEYS } from './status';
 
 const PAGE_SIZE = 20;
 
-/** Statuses an edition can hold up to the TOP 3 (the final's statuses come with Phase 3). */
+/** Statuses an edition's candidates can hold, up to the final's winner. */
 const STATUS_OPTIONS: CandidateStatus[] = [
-    'QUALIFYING', 'WAITLIST', 'OFFICIAL', 'STAGE_2', 'STAGE_3', 'FINALIST', 'ELIMINATED', 'NOT_SELECTED', 'SUSPENDED', 'DISQUALIFIED', 'WITHDRAWN',
+    'QUALIFYING', 'WAITLIST', 'OFFICIAL', 'STAGE_2', 'STAGE_3', 'FINALIST', 'WINNER', 'ELIMINATED', 'NOT_SELECTED', 'SUSPENDED', 'DISQUALIFIED', 'WITHDRAWN',
 ];
 
 /** Free and paid votes (competition), and the TOP 3 rank once decided. */
