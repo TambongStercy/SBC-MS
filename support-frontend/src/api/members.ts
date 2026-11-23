@@ -6,6 +6,9 @@ export interface CommissionInfo {
   isCommission: boolean; level: number | null; sourceUserId: string | null; reversible: boolean; reversed: boolean;
 }
 
+export type ReplaySession = { sessionId: string; startedAt: string | null; durationMs: number | null; pages: number | null; device: string | null; live: boolean };
+export type AssistStart = { grantId: string; expiresAt: string; live: (ReplaySession & { url: string })[] };
+
 export const membersApi = {
   search: (q: string) => api.post<MemberHit[]>('/members/search', { q }), // POST: an email or phone never goes in a URL
   get: (id: string) => api.get<{ member: SupportMember }>(`/members/${encodeURIComponent(id)}`),
@@ -14,6 +17,13 @@ export const membersApi = {
   tickets: (id: string) => api.get<Ticket[]>(`/members/${encodeURIComponent(id)}/tickets`),
   /** Security plan Phase 4: score, reasons, linked accounts, KYC (finance managers). */
   risk: (id: string) => api.get<RiskCard>(`/members/${encodeURIComponent(id)}/risk`),
+  // Session replay + live assistance (OpenReplay, 2026-11-23). Links come only from the audited calls.
+  sessions: (id: string) => api.get<{ live: ReplaySession[]; recorded: ReplaySession[] }>(`/members/${encodeURIComponent(id)}/sessions`),
+  openSession: (id: string, sessionId: string, live: boolean) =>
+    api.post<{ url: string }>(`/members/${encodeURIComponent(id)}/sessions/${encodeURIComponent(sessionId)}/open`, { live }),
+  startAssist: (id: string, ticketId?: string) =>
+    api.post<AssistStart>(`/members/${encodeURIComponent(id)}/assist`, ticketId ? { ticketId } : {}),
+  endAssist: (grantId: string) => api.post<{ ended: boolean }>(`/members/assist/${encodeURIComponent(grantId)}/end`, {}),
   /** After the approval: sends the confirmation code to the member's NEW email or number. */
   sendContactCode: (approvalId: string) => api.post<{ ok: boolean }>(`/members/contact-change/${encodeURIComponent(approvalId)}/send-code`, {}),
   /** Applies the change with the code the member received (needs a reauth token). */

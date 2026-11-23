@@ -34,6 +34,7 @@ export const PERMISSIONS = [
     'risk.read', 'risk.decide', 'authenticator.reset.request', 'authenticator.reset.approve', 'approvals.override',
     // KYC level 3 (2026-11-22).
     'identity.review',
+    'replay.read', 'assist.control',
 ] as const;
 export type Permission = typeof PERMISSIONS[number];
 
@@ -84,6 +85,11 @@ const MATRIX: Record<Permission, Role[]> = {
     // KYC level 3 (decided 2026-11-22): any support agent reviews an ID document + selfie.
     // The verifiers (WhatsApp views only) are left out.
     'identity.review': [A, FA, FM, VS, SA],
+    // Session replay (2026-11-23): a member's recordings and live screen, from the member card.
+    'replay.read': [A, FA, FM, VS, SA],
+    // Live assistance with remote control (2026-11-23): support administrators only. The member
+    // still has to accept every control request, and sensitive screens refuse it.
+    'assist.control': [SA],
 };
 
 // The super manager can do everything a finance manager can (plus approvals.override).

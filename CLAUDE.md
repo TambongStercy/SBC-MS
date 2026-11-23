@@ -820,8 +820,9 @@ activations, unfinished payments. Each admin number opens the list behind it.
   add up to the total.
 - **Support:** permission `activity.read` (every role but verifier); an agent's
   `countries` (Administration → Agents → « Pays suivis ») limits the panel.
-- Not done: session replay link on attempts (field `replayUrl`, the replay branch
-  is not merged), anti-robot reason (sign-ups refused by the robot check in enforce mode never reach user-service; `robot_check_days` has them), payments
+- Not done: session replay link on attempts (field `replayUrl`; the recording exists now, but a
+  sign-up attempt is written before the app knows its session; search the member's sessions from
+  the desk member page instead), anti-robot reason (sign-ups refused by the robot check in enforce mode never reach user-service; `robot_check_days` has them), payments
   split web/app (no signal on payment requests).
 - Checks: `user-service/src/scripts/check-activity-dashboard.ts` (local Mongo +
   Redis), support `src/tests/activity.test.ts`.
@@ -2114,12 +2115,21 @@ Agent desk + member « Aide » + internal case/view-task intake. Contract:
   vhosts list `livekit.sniperbuisnesscenter.com`, change it if LiveKit lives elsewhere.
   Without it both apps poll (5 s ticket, 15 s lists). Local: a `livekit/livekit-server`
   container (`--dev`-style key) on `ws://localhost:7890`.
-- **Session replay (OpenReplay, self-hosted):** the member app records every session
-  (names, emails, phones visible; passwords and codes never recorded) and sends the session id + link when the member opens a
-  ticket. The desk shows « Revoir la session » only for tickets that have one; the link
-  comes from `POST /desk/tickets/:id/replay`, audited (`ticket.replay.opened`). Links
-  not on `OPENREPLAY_DASHBOARD_URL` are dropped. Needs its own server (not the prod box):
-  see `docs/support/OPENREPLAY.md`.
+- **Session replay and live assistance (OpenReplay, self-hosted, 2026-11-23):** OpenReplay v1.28.0
+  runs on the **secondary server** (`/opt/openreplay`, `replay.sniperbusinesscenter.com`, 30-day
+  retention; projects 1 « SBC membres », 2 « SBC preprod »). The member app records every visit
+  (passwords, codes, authenticator key/QR, backup codes and identity photos never recorded) and
+  sends the session with each ticket (« Revoir la session », audited `ticket.replay.opened`).
+  The member page has « Sessions » (`replay.read`, audited list and openings; « Regarder » live =
+  watch-only grant) and, for support administrators (`assist.control`), « Assistance en direct »
+  (also on tickets): a 30-min desk grant that allows asking for control (`assistgrants`, audited
+  `assist.started`/`ended`). The member app asks `GET /me/assist/grant` before showing the viewing
+  prompt and the control prompt, the member must accept each (policy section 13), and
+  sensitive screens (money out, codes, passwords, contact/payout changes, authenticator setup,
+  identity, data) refuse control. An agent's OpenReplay account must use their desk e-mail.
+  Env: `OPENREPLAY_DASHBOARD_URL`, `OPENREPLAY_PROJECT_ID`, `OPENREPLAY_API_EMAIL`/`_PASSWORD`.
+  Install, accounts, agent access: `docs/support/OPENREPLAY.md`. Tests: support
+  `src/tests/assist.test.ts`, desk `MemberSessionsPanel.test.tsx`, UI `remoteAssist.test.ts`.
 - **Requests without an account:** `POST /api/support/public/tickets` (member app
   `/signaler-un-probleme`, linked from the sign-in page) for people who cannot sign in.
   The gateway's anti-robot check (ALTCHA, see Phase 9 part 3) + hidden field + 3/h and 10/day per IP. The person then chats like a member

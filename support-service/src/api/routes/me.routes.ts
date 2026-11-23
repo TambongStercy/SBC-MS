@@ -17,6 +17,7 @@ import { memberRealtimeToken } from '../../services/realtime.service';
 import { cleanContact } from '../../services/contact.service';
 import { recordClientErrors } from '../../services/client-error.service';
 import { MAX_IMAGE_BYTES, memberLatest, memberSubmit } from '../../services/identity.service';
+import { memberGrant } from '../../services/assist.service';
 
 /** Member help space (/api/support/me/*), member JWT, any role. */
 const router = Router();
@@ -67,6 +68,11 @@ router.get('/tickets/categories', (_req, res) => {
 });
 
 // ---- live updates: a listen-only LiveKit token for the member's own room ({ enabled:false } without LiveKit) ----
+// Live assistance: the member app asks before showing a remote-control prompt (desk grant for this agent?).
+router.get('/assist/grant', memberLimit('assist-grant', 30, 60, 'Trop de demandes. Réessayez dans une minute.'), ah(async (req, res) => {
+    res.json({ success: true, data: await memberGrant(memberOf(req).userId, req.query.agent) });
+}));
+
 router.get('/realtime/token', ah(async (req, res) => {
     res.json({ success: true, data: await memberRealtimeToken(memberOf(req).userId) });
 }));
