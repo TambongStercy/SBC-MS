@@ -48,6 +48,7 @@ import { memberAuthService } from './member-auth.service';
 import { addressTail, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
 import { isSameMomo, momoChangeLocks, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
+import { AccountBannedError } from './account-ban.service';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
 import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsForCountry } from '../utils/country-filter';
 import { AdminFilters, dateMatch } from '../utils/admin-filters';
@@ -555,6 +556,8 @@ export class UserService {
         const isMatch = await bcrypt.compare(passwordAttempt, user.password);
         if (!isMatch) { throw new Error('WRONG_PASSWORD: Invalid email or password'); }
 
+        // Suspended (services/account-ban.service.ts): said only now that the password matched (no enumeration).
+        if ((user as any).ban?.at) { throw new AccountBannedError(); }
         if (user.blocked) { throw new Error('User account is blocked'); }
 
         // Update IP Address (async)

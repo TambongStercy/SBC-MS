@@ -79,7 +79,9 @@ const CONTRACT_KEYS = ['_id', 'name', 'email', 'phoneNumber', 'country', 'city',
     'isVerified', 'blocked', 'deleted', 'referrerId', 'referrerName', 'balance', 'usdBalance', 'reservedBalance', 'debt',
     'withdrawalLockedUntil', 'subscriptions',
     // Security plan Phase 2 (ledger) and Phase 5 (geo, frozen, Mobile Money; masked by support-service per agent permission).
-    'ledger', 'geo', 'frozen', 'momoNumber', 'momoOperator'].sort();
+    'ledger', 'geo', 'frozen', 'momoNumber', 'momoOperator',
+    // Account suspension (2026-11-23, services/account-ban.service.ts).
+    'ban', 'banHistory'].sort();
 
 async function main() {
     await mongoose.connect(DB);

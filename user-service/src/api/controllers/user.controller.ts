@@ -14,6 +14,7 @@ import { AppError, OtpThrottledError } from '../../utils/errors';
 import { memberAuthService } from '../../services/member-auth.service';
 import { normalizePhoneNumber } from '../../utils/phone.utils';
 import UserModel, { UserRole } from '../../database/models/user.model';
+import { AccountBannedError, bannedBody, isBanned } from '../../services/account-ban.service';
 import { authorize } from '../middleware/rbac.middleware';
 import { notificationService, DeliveryChannel } from '../../services/clients/notification.service.client';
 import config from '../../config';
@@ -999,6 +1000,12 @@ export class UserController {
             res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
             recordPasswordStep(signin, normalizedPhone || email || typed(), 'code_sent', (result as any)?.userId ? String((result as any).userId) : null);
         } catch (error: any) {
+            // Suspended account, right password (services/account-ban.service.ts): member app contract.
+            if (error instanceof AccountBannedError) {
+                recordPasswordStep(signin, normalizedPhone || email || typed(), 'blocked');
+                res.status(403).json(bannedBody());
+                return;
+            }
             // Check if the error is due to user not found (potential recovery case)
             const isUserNotFound = error.message?.startsWith('USER_NOT_FOUND:');
             const isWrongPassword = error.message?.startsWith('WRONG_PASSWORD:');
@@ -1128,6 +1135,11 @@ export class UserController {
             const userProfile = await this.userService.getUserProfile(userId.toString());
 
             recordCodeStep(signinContext(req), String(userId), !!(result.isValid && result.newToken));
+            // A code asked before the suspension must not open a session (only said once the code matched).
+            if (result.isValid && result.newToken && isBanned(await UserModel.findById(userId).select('ban').lean() as any)) {
+                res.status(403).json(bannedBody());
+                return;
+            }
             if (result.isValid && result.newToken) {
                 // If valid and a new token was generated, return it
                 this.log.info(`OTP verification successful for userId: ${userId}`);
@@ -1166,6 +1178,11 @@ export class UserController {
             }
 
             const userId = req.user.userId;
+            // Suspended member: the database decides here (the auth middleware's Redis flag fails open).
+            if (isBanned(await UserModel.findById(userId).select('ban').lean() as any)) {
+                res.status(403).json(bannedBody());
+                return;
+            }
             // Ensure userId is a string before passing
             const userProfile = await this.userService.getUserProfile(userId.toString());
 
