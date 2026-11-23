@@ -141,7 +141,10 @@ export const listSubmissions = async (editionId: string, q: Record<string, any>)
     const filter: Record<string, unknown> = { editionId: e._id, current: true };
     if (q.kind) filter.kind = kindOf(q.kind);
     if (q.status && Object.values(SubmissionStatus).includes(q.status)) filter.status = q.status;
-    const rows = await ImpactSubmission.find(filter).sort({ status: 1, createdAt: 1 }).limit(200).lean();
+    // Pending first (oldest first), then new version requested, accepted, refused.
+    const ORDER: Record<string, number> = { PENDING: 0, RESUBMIT_REQUESTED: 1, ACCEPTED: 2, REJECTED: 3 };
+    const rows = (await ImpactSubmission.find(filter).limit(500).lean())
+        .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || a.createdAt.getTime() - b.createdAt.getTime());
     const cands = await ImpactCandidate.find({ _id: { $in: rows.map((r) => r.candidateId) } }).select('profile.name profile.projectName profile.photoFileId seatNumber status').lean();
     const by = new Map(cands.map((c) => [String(c._id), c]));
     return rows.map((r) => {

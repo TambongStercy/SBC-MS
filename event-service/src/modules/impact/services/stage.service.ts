@@ -226,8 +226,13 @@ export const openRoundNow = async (actor: Actor, id: string, key: string) => {
     const e = await getEdition(id);
     if (e.stage !== ROUND_STAGE[k]) throw new AppError(`Ce vote s’ouvre en ${ROUND_STAGE[k] === CompetitionStage.WEEK2 ? 'semaine 2' : 'semaine 3'}.`, 409, true, 'WRONG_STAGE');
     if (!e.rounds?.[k]?.closesAt) throw new AppError('Programmez d’abord la fin du vote.', 409, true, 'ROUND_NOT_SCHEDULED');
+    const r = e.rounds[k];
+    if (r.status !== RoundStatus.SCHEDULED) throw new AppError('Ce vote est déjà ouvert ou clos.', 409, true, 'ROUND_STARTED');
+    if (r.closesAt! <= new Date()) {
+        throw new AppError('La fin du vote est déjà passée : changez-la avant d’ouvrir.', 400, true, 'INVALID_SCHEDULE', { field: `rounds.${k}.closesAt` });
+    }
     const done = await openRound(e, k, actor);
-    if (!done) throw new AppError('Ce vote ne peut pas être ouvert (déjà ouvert, clos, ou fin passée).', 409, true, 'ROUND_NOT_OPENABLE');
+    if (!done) throw new AppError('Le vote a changé entre-temps. Rechargez la page.', 409, true, 'ROUND_NOT_OPENABLE');
     return done;
 };
 
@@ -313,10 +318,24 @@ interface RankRow {
  * their last counted vote), then to the earlier seat. Recounts from the
  * ledgers first, so the decision never rests on a drifted counter.
  */
-export const top3Preview = async (id: string) => {
+export const top3Preview = async (id: string, opts: { recount?: boolean } = {}) => {
     const e = await getEdition(id);
     const st = settingsOf(e.settings);
-    await recountVotes(e._id);
+    // Once decided, the podium is the frozen one (with its names), never recomputed.
+    if (e.top3?.decidedAt) {
+        return {
+            ranking: e.top3.ranking.map((r: any) => ({
+                candidateId: String(r.candidateId), name: r.name ?? null, projectName: r.projectName ?? null, seatNumber: r.seatNumber ?? null,
+                status: r.finalist ? CandidateStatus.FINALIST : CandidateStatus.ELIMINATED, paidVotes: r.paidVotes, paidAmount: r.paidAmount ?? null,
+                freeVotes: r.freeVotes ?? null, lastPaidAt: r.lastPaidAt ?? null, rank: r.rank, finalist: r.finalist,
+            })),
+            finalistsCount: st.finalistsCount, tieAtCut: false, blockers: [], flaggedPurchases: 0, decided: true,
+            decidedAt: e.top3.decidedAt,
+        };
+    }
+    // A read does not write: the ledgers are recounted only when asked (« Recompter ») and
+    // always by the confirmation itself.
+    if (opts.recount) await recountVotes(e._id);
     const racers = await ImpactCandidate.find({
         editionId: e._id,
         $or: [{ status: CandidateStatus.STAGE_3 }, { status: CandidateStatus.SUSPENDED, suspendedFrom: CandidateStatus.STAGE_3 }],
@@ -334,7 +353,7 @@ export const top3Preview = async (id: string) => {
     const firstOut = ranking[st.finalistsCount];
     const tieAtCut = Boolean(cutoff && firstOut && cutoff.paidVotes === firstOut.paidVotes);
 
-    const blockers: { code: string; message: string }[] = [];
+    const blockers: { code: string; message: string; until?: Date }[] = [];
     if (e.status !== EditionStatus.COMPETITION || e.stage !== CompetitionStage.WEEK3) {
         blockers.push({ code: 'WRONG_STAGE', message: 'Le TOP 3 se désigne en fin de semaine 3.' });
     }
@@ -343,14 +362,14 @@ export const top3Preview = async (id: string) => {
     const graceEnd = paid?.closedAt ? paid.closedAt.getTime() + st.settlementGraceMin * 60_000 : null;
     if (graceEnd && Date.now() < graceEnd) {
         const pending = await ImpactVoteTx.countDocuments({ editionId: e._id, status: VoteTxStatus.PENDING, createdAt: { $lt: paid!.closedAt } });
-        if (pending) blockers.push({ code: 'PAYMENTS_SETTLING', message: `${pending} paiement(s) lancé(s) avant la clôture en cours de confirmation (jusqu’à ${new Date(graceEnd).toISOString()}).` });
+        if (pending) blockers.push({ code: 'PAYMENTS_SETTLING', message: `${pending} paiement(s) lancé(s) avant la clôture en cours de confirmation : attendez la fin du délai de ${st.settlementGraceMin} minutes.`, until: new Date(graceEnd) });
     }
     if (ranking.some((r) => r.status === CandidateStatus.SUSPENDED)) {
         blockers.push({ code: 'SUSPENDED_CANDIDATES', message: 'Un candidat est suspendu : rétablissez-le ou disqualifiez-le d’abord.' });
     }
     if (ranking.length < st.finalistsCount) blockers.push({ code: 'NOT_ENOUGH_CANDIDATES', message: `Moins de ${st.finalistsCount} candidats en course.` });
     const flagged = await ImpactVoteTx.countDocuments({ editionId: e._id, flags: { $ne: [] }, status: VoteTxStatus.SUCCESS });
-    return { ranking, finalistsCount: st.finalistsCount, tieAtCut, blockers, flaggedPurchases: flagged, decided: Boolean(e.top3?.decidedAt) };
+    return { ranking, finalistsCount: st.finalistsCount, tieAtCut, blockers, flaggedPurchases: flagged, decided: false, decidedAt: null };
 };
 
 /**
@@ -359,7 +378,7 @@ export const top3Preview = async (id: string) => {
  * refused, so nobody confirms a podium they did not read.
  */
 export const top3Confirm = async (actor: Actor, id: string, body: Record<string, any>) => {
-    const preview = await top3Preview(id);
+    const preview = await top3Preview(id, { recount: true });
     if (preview.decided) throw new AppError('Le TOP 3 est déjà désigné.', 409, true, 'ALREADY_DECIDED');
     if (preview.blockers.length) throw new AppError(preview.blockers[0].message, 409, true, preview.blockers[0].code, { blockers: preview.blockers });
     const seen: string[] = Array.isArray(body?.expectedOrder) ? body.expectedOrder.map(String) : [];
@@ -374,7 +393,10 @@ export const top3Confirm = async (actor: Actor, id: string, body: Record<string,
                 status: EditionStatus.FINAL, stage: CompetitionStage.TOP3,
                 top3: {
                     decidedAt: now, by: oid(actor.userId),
-                    ranking: preview.ranking.map((r) => ({ candidateId: new Types.ObjectId(r.candidateId), rank: r.rank, paidVotes: r.paidVotes, lastPaidAt: r.lastPaidAt, finalist: r.finalist })),
+                    ranking: preview.ranking.map((r) => ({
+                        candidateId: new Types.ObjectId(r.candidateId), rank: r.rank, paidVotes: r.paidVotes, lastPaidAt: r.lastPaidAt, finalist: r.finalist,
+                        name: r.name, projectName: r.projectName, seatNumber: r.seatNumber, paidAmount: r.paidAmount, freeVotes: r.freeVotes,
+                    })),
                 },
             },
             $push: {

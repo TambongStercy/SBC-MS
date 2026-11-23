@@ -107,7 +107,7 @@ adminRouter.post('/editions/:id/advance-stage', h(async (req) => editions.adminE
 adminRouter.put('/editions/:id/rounds/:key', h(async (req) => editions.adminEdition(await stages.scheduleRound(admin(req), req.params.id, req.params.key, req.body ?? {}))));
 adminRouter.post('/editions/:id/rounds/:key/open', h(async (req) => editions.adminEdition(await stages.openRoundNow(admin(req), req.params.id, req.params.key))));
 adminRouter.post('/editions/:id/rounds/:key/close', h(async (req) => editions.adminEdition(await stages.closeRoundNow(admin(req), req.params.id, req.params.key, reasonOf(req)))));
-adminRouter.get('/editions/:id/top3', h(async (req) => stages.top3Preview(req.params.id)));
+adminRouter.get('/editions/:id/top3', h(async (req) => stages.top3Preview(req.params.id, { recount: req.query.recount === '1' })));
 adminRouter.post('/editions/:id/top3', requireAdminStepUp('impact_top3'), h(async (req) => {
     const r = await stages.top3Confirm(admin(req), req.params.id, req.body ?? {});
     return { edition: editions.adminEdition(r.edition), ranking: r.ranking };

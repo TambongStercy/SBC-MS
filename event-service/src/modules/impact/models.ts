@@ -41,7 +41,10 @@ export interface IImpactEdition extends Document {
     top3?: {
         decidedAt: Date;
         by: Types.ObjectId;
-        ranking: { candidateId: Types.ObjectId; rank: number; paidVotes: number; lastPaidAt?: Date | null; finalist: boolean }[];
+        ranking: {
+            candidateId: Types.ObjectId; rank: number; paidVotes: number; lastPaidAt?: Date | null; finalist: boolean;
+            name?: string; projectName?: string; seatNumber?: number; paidAmount?: number; freeVotes?: number;
+        }[];
     };
     createdBy: Types.ObjectId;
     createdAt: Date;
@@ -97,7 +100,10 @@ const EditionSchema = new Schema<IImpactEdition>({
     top3: {
         decidedAt: Date,
         by: S.ObjectId,
-        ranking: [{ candidateId: S.ObjectId, rank: Number, paidVotes: Number, lastPaidAt: Date, finalist: Boolean, _id: false }],
+        ranking: [{
+            candidateId: S.ObjectId, rank: Number, paidVotes: Number, lastPaidAt: Date, finalist: Boolean,
+            name: String, projectName: String, seatNumber: Number, paidAmount: Number, freeVotes: Number, _id: false,
+        }],
     },
     createdBy: { type: S.ObjectId, required: true },
 }, { timestamps: true });

@@ -281,7 +281,9 @@ const main = async () => {
     // A 5 (P1), B 1, C 11, D 0 → C, A finalists. Tie test: give B 4 more → B 5 = A 5; A reached 5 first.
     await ImpactVoteTx.create({ editionId: e._id, candidateId: cB._id, userId: new Types.ObjectId(), votes: 4, amount: 800, method: PayMethod.MOBILE_MONEY, status: VoteTxStatus.SUCCESS, idempotencyKey: key(), settledAt: new Date(), votesCreditedAt: new Date() });
     await ImpactCandidate.updateOne({ _id: cA._id }, { $set: { 'votes.paid': 999 } }); // a drifted counter
-    const pre = await stages.top3Preview(String(e._id));
+    const readOnly = await stages.top3Preview(String(e._id));
+    check('reading the TOP 3 does not write (no recount unless asked)', readOnly.ranking.find((r) => r.candidateId === String(cA._id))?.paidVotes === 999 && (await cand(A))!.votes.paid === 999);
+    const pre = await stages.top3Preview(String(e._id), { recount: true });
     const order = pre.ranking.map((r) => r.candidateId);
     check('the preview recounts from the ledgers (drifted counter ignored)', pre.ranking.find((r) => r.candidateId === String(cA._id))?.paidVotes === 5);
     check('ranking by paid votes, ties to the first to reach the total', order.join() === [cC._id, cA._id, cB._id, cD._id].map(String).join(), pre.ranking.map((r) => `${r.name}:${r.paidVotes}`).join(' '));
@@ -292,6 +294,8 @@ const main = async () => {
     check('TOP 3 set: edition in final', conf.edition.status === EditionStatus.FINAL && conf.edition.stage === CompetitionStage.TOP3);
     check('finalists and eliminated', (await cand(C))!.status === CandidateStatus.FINALIST && (await cand(A))!.status === CandidateStatus.FINALIST && (await cand(B))!.status === CandidateStatus.ELIMINATED && (await cand(B))!.rank === 3);
     check('finalist and non-finalist notices', pushes.some((p) => p.kind === 'impact-finalist' && p.userId === C) && pushes.some((p) => p.kind === 'impact-not-finalist' && p.userId === B));
+    const frozen = await stages.top3Preview(String(e._id));
+    check('once decided, the preview is the frozen podium with its names', frozen.decided === true && frozen.ranking[0].name === 'Candidat c' && frozen.ranking.length === 4);
     check('the TOP 3 is set once', (await refusal(() => stages.top3Confirm(ADMIN, String(e._id), { expectedOrder: order })))?.code === 'ALREADY_DECIDED');
     const sOk = (await ImpactVoteTx.findOne({ status: VoteTxStatus.SUCCESS, lateSettlement: { $ne: true }, method: PayMethod.MOBILE_MONEY }))!;
     check('no refund once the TOP 3 is set', (await refusal(() => votes.refundPurchase(ADMIN, String(sOk._id), { reason: 'Achat signalé comme frauduleux' })))?.code === 'ALREADY_DECIDED');
@@ -303,6 +307,15 @@ const main = async () => {
     // ---------- Admin reads ----------
     const list = await votes.listPurchases(String(e._id), {});
     check('purchases list with revenue (refunds excluded)', list.totals.revenue > 0 && list.items.every((i) => i.buyerName));
+    check('purchases carry the candidate name', list.items.every((i) => i.candidateName && i.candidateName.startsWith('Candidat')));
+    await ImpactVoteTx.updateOne({ _id: sOk._id }, { $set: { 'refund.uncertain': true } });
+    const unc = await votes.listPurchases(String(e._id), { refundUncertain: '1' });
+    check('filter: refunds with an unknown outcome', unc.total === 1 && unc.totals.uncertainRefunds === 1);
+    await ImpactVoteTx.updateOne({ _id: sOk._id }, { $unset: { 'refund.uncertain': 1 } });
+    const fvl = await votes.listFreeVotes(String(e._id), {});
+    check('free votes carry the candidate name', fvl.items.every((i) => i.candidateName));
+    const subs = await submissions.listSubmissions(String(e._id), { kind: 'VIDEO' });
+    check('contents: refused / accepted after pending ones (pending first)', subs.length > 0 && subs.every((x, i) => i === 0 || ['PENDING', 'RESUBMIT_REQUESTED', 'ACCEPTED', 'REJECTED'].indexOf(subs[i - 1].status) <= ['PENDING', 'RESUBMIT_REQUESTED', 'ACCEPTED', 'REJECTED'].indexOf(x.status)));
     const an = await votes.anomalies(String(e._id));
     check('anomaly report: the wrong-amount payment is listed', an.paidVotes.flagged.some((f) => f.flags.includes('AMOUNT_MISMATCH')));
     await ImpactCandidate.updateOne({ _id: cD._id }, { $set: { 'profile.name': '=HYPERLINK("http://x")' } });

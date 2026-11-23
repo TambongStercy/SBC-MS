@@ -495,6 +495,13 @@ export const getMyPurchase = async (userId: string, txId: string) => {
     return presentTx(t);
 };
 
+const candidateNames = async (ids: string[]) => {
+    const uniq = [...new Set(ids)].filter((i) => Types.ObjectId.isValid(i));
+    if (!uniq.length) return new Map<string, string>();
+    const rows = await ImpactCandidate.find({ _id: { $in: uniq.map((i) => new Types.ObjectId(i)) } }).select('profile.name').lean();
+    return new Map(rows.map((c) => [String(c._id), c.profile?.name ?? '']));
+};
+
 const names = async (ids: string[]) => {
     if (!ids.length) return new Map<string, string>();
     try {
@@ -514,9 +521,9 @@ export const listFreeVotes = async (editionId: string, q: Record<string, any>) =
         ImpactFreeVote.find(filter).sort({ at: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
         ImpactFreeVote.countDocuments(filter),
     ]);
-    const n = await names(rows.map((r) => String(r.voterUserId)));
+    const [n, cn] = await Promise.all([names(rows.map((r) => String(r.voterUserId))), candidateNames(rows.map((r) => String(r.candidateId)))]);
     return {
-        items: rows.map((r) => ({ _id: String(r._id), candidateId: String(r.candidateId), voterUserId: String(r.voterUserId), voterName: n.get(String(r.voterUserId)) ?? null, at: r.at })),
+        items: rows.map((r) => ({ _id: String(r._id), candidateId: String(r.candidateId), candidateName: cn.get(String(r.candidateId)) ?? null, voterUserId: String(r.voterUserId), voterName: n.get(String(r.voterUserId)) ?? null, at: r.at })),
         total, page, limit,
     };
 };
@@ -528,6 +535,7 @@ export const listPurchases = async (editionId: string, q: Record<string, any>) =
     if (q.method && Object.values(PayMethod).includes(q.method)) filter.method = q.method;
     if (q.candidateId && Types.ObjectId.isValid(String(q.candidateId))) filter.candidateId = new Types.ObjectId(String(q.candidateId));
     if (q.flagged === '1' || q.flagged === 'true') filter.flags = { $ne: [] };
+    if (q.refundUncertain === '1' || q.refundUncertain === 'true') filter['refund.uncertain'] = true;
     const page = Math.max(1, Number(q.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(q.limit) || 50));
     const [rows, total, totals] = await Promise.all([
@@ -543,14 +551,18 @@ export const listPurchases = async (editionId: string, q: Record<string, any>) =
             },
         ]),
     ]);
-    const n = await names(rows.map((r) => String(r.userId)));
+    const [n, cn, uncertain] = await Promise.all([
+        names(rows.map((r) => String(r.userId))),
+        candidateNames(rows.map((r) => String(r.candidateId))),
+        ImpactVoteTx.countDocuments({ editionId: e._id, 'refund.uncertain': true }),
+    ]);
     const byStatus = Object.fromEntries(totals.map((t) => [t._id, { count: t.n, amount: t.amount, votes: t.votes, countedVotes: t.counted }]));
     const success = byStatus[VoteTxStatus.SUCCESS];
     return {
-        items: rows.map((r) => ({ ...presentTx(r), userId: String(r.userId), buyerName: n.get(String(r.userId)) ?? null, flags: r.flags, refundUncertain: Boolean(r.refund?.uncertain), providerStatus: r.providerStatus ?? null })),
+        items: rows.map((r) => ({ ...presentTx(r), userId: String(r.userId), buyerName: n.get(String(r.userId)) ?? null, candidateName: cn.get(String(r.candidateId)) ?? null, flags: r.flags, refundUncertain: Boolean(r.refund?.uncertain), providerStatus: r.providerStatus ?? null })),
         total, page, limit,
         // Revenue = paid purchases that were not refunded (late ones are refunded).
-        totals: { byStatus, revenue: (success?.amount ?? 0), countedVotes: success?.countedVotes ?? 0 },
+        totals: { byStatus, revenue: (success?.amount ?? 0), countedVotes: success?.countedVotes ?? 0, uncertainRefunds: uncertain },
     };
 };
 
@@ -586,17 +598,23 @@ export const anomalies = async (editionId: string) => {
         ImpactVoteTx.find({ editionId: e._id, flags: { $ne: [] } }).sort({ createdAt: -1 }).limit(50).lean(),
         ImpactVoteTx.find({ editionId: e._id, 'refund.uncertain': true }).limit(50).lean(),
     ]);
-    const n = await names(buyers.map((b) => String(b._id)));
+    const [n, cn] = await Promise.all([
+        names([...buyers.map((b) => String(b._id)), ...flagged.map((t) => String(t.userId)), ...stuckRefunds.map((t) => String(t.userId))]),
+        candidateNames([...bursts.map((r) => String(r._id.c)), ...flagged.map((t) => String(t.candidateId)), ...stuckRefunds.map((t) => String(t.candidateId))]),
+    ]);
+    const withNames = (t: IImpactVoteTx | Record<string, any>) => ({
+        ...presentTx(t), userId: String(t.userId), buyerName: n.get(String(t.userId)) ?? null, candidateName: cn.get(String(t.candidateId)) ?? null,
+    });
     return {
         freeVotes: {
             sharedNetworks: byIp.map((r) => ({ network: r._id.slice(0, 8), voters: r.voters, candidates: r.candidates.length })),
             sharedDevices: byUa.map((r) => ({ device: r._id.slice(0, 8), voters: r.voters })),
-            bursts: bursts.map((r) => ({ candidateId: String(r._id.c), at: r._id.b, votes: r.n })),
+            bursts: bursts.map((r) => ({ candidateId: String(r._id.c), candidateName: cn.get(String(r._id.c)) ?? null, at: r._id.b, votes: r.n })),
         },
         paidVotes: {
             topBuyers: buyers.map((b) => ({ userId: String(b._id), name: n.get(String(b._id)) ?? null, amount: b.amount, votes: b.votes, purchases: b.purchases, candidates: b.candidates.length })),
-            flagged: flagged.map((t) => ({ ...presentTx(t), flags: t.flags, providerStatus: t.providerStatus ?? null })),
-            uncertainRefunds: stuckRefunds.map((t) => presentTx(t)),
+            flagged: flagged.map((t) => ({ ...withNames(t), flags: t.flags, providerStatus: t.providerStatus ?? null })),
+            uncertainRefunds: stuckRefunds.map(withNames),
         },
     };
 };
