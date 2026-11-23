@@ -744,7 +744,9 @@ Design and outcomes: `docs/security-plan/phase9-browser-only.md`. **Log-only**: 
       support form: one HMAC, used once.
     - `log` counts into user-service `robot_check_days` (report:
       `dist/scripts/report-robot-checks.js`); `enforce` answers 403 `ROBOT_CHECK_FAILED`.
-      **Run it in `log`**: Phase 9 stays log-only (decided 2026-11-22).
+      **Run it in `log`**: Phase 9 stays log-only (decided 2026-11-22). Exception (2026-11-23):
+      `ROBOT_CHECK_ENFORCE=login,signup` refuses those two actions under `log`, since sign-up no
+      longer sends a code (see "Email verified after payment").
     - A member's forged or replayed answer feeds `automation_seen` (`robot`).
   - **Apps:** the web app (`utils/robotCheck.ts`) and the desk (`auth/robotCheck.ts`) solve one
     answer while the page opens (about 1.4 s on a very slow phone) and send it. Turnstile is
@@ -986,6 +988,24 @@ Contract: `docs/support/CONTRACT.md` (« Phase 5 » in §3.1, routes in §2.1, p
 - Not done (need Phase 4 / 2): release of a held withdrawal, commission reversal approvals.
 - Checks: `user-service/src/scripts/check-support-phase5.ts`, support `src/tests/phase5.test.ts`,
   support-frontend `MemberSecurityPanel.test.tsx`.
+
+### Email verified after payment, not at sign-up (Sterling, 2026-11-23)
+The code at sign-up lost people before they paid. `services/email-verification.service.ts`:
+- **Sign-up:** a member sign-up gets its token at once (no code; `register` answers `token` +
+  `user`, the controller's `startSession` binds the browser key and notes the sign-in, and
+  `markSignupCompleted` fires at sign-up). An annonceur sign-up keeps the code (no pack to pay).
+- **Sign-in while unpaid and unverified** (`codeFreeAccess`: never had a subscription, no XAF/USD/
+  activation balance, role user, not annonceur): the password is enough (`login` answers a token,
+  sign-in attempt outcome `signed_in`). Once paid or verified, every sign-in sends a code as before.
+- **After payment:** `getUserProfile` adds `emailVerificationRequired` (paid, never verified, account
+  created from `EMAIL_VERIFY_GATE_SINCE`, default 2026-11-23). The member app blocks on it.
+  `POST /users/me/verify-email/request` (code with purpose `verifyEmail`, e-mail channel only, same
+  per-account send limit), `…/confirm {code}`, `…/correct {email, password}` (only while unverified;
+  domain, uniqueness and password checked; no withdrawal lock, it was never verified).
+- **Not gated:** on prod 22,181 of the 63,610 active subscribers were unverified on 2026-11-23 (older
+  sign-ups); their next e-mailed sign-in code verifies them, as before.
+- Switch back: `SIGNUP_EMAIL_CODE=at_signup`. Check: `src/scripts/check-email-verify-after-payment.ts` (23).
+- Gateway: `ROBOT_CHECK_ENFORCE=login,signup` (sign-up no longer filters robots with a code).
 
 ### Member authenticator (Security plan Phase 3, Sterling 2026-11-20)
 

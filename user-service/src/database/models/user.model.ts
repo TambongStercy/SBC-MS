@@ -62,7 +62,7 @@ interface IOtp extends Document {
 }
 
 /** Codes bound to one change. The support ones are issued by SBC Support (internal contact-change) and confirm only that. */
-export type OtpPurpose = 'changeEmail' | 'changePhone' | 'changeMomo' | 'changeCrypto' | 'setupAuthenticator' | 'supportChangeEmail' | 'supportChangePhone';
+export type OtpPurpose = 'verifyEmail' | 'changeEmail' | 'changePhone' | 'changeMomo' | 'changeCrypto' | 'setupAuthenticator' | 'supportChangeEmail' | 'supportChangePhone';
 
 // Interface defining the User document structure (FIELDS ONLY)
 /** Security plan Phase 7. Only accounts holding money get a status; thresholds in config/dormancy.ts. */
@@ -228,7 +228,7 @@ export interface IUser extends Document {
 const otpSchema = new Schema<IOtp>({
     code: { type: String, required: true },
     expiration: { type: Date, required: true },
-    purpose: { type: String, enum: ['changeEmail', 'changePhone', 'changeMomo', 'changeCrypto', 'setupAuthenticator', 'supportChangeEmail', 'supportChangePhone'] },
+    purpose: { type: String, enum: ['verifyEmail', 'changeEmail', 'changePhone', 'changeMomo', 'changeCrypto', 'setupAuthenticator', 'supportChangeEmail', 'supportChangePhone'] },
     target: { type: String },
 }, { _id: false });
 
