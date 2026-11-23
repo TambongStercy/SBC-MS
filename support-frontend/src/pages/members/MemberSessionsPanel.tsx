@@ -13,7 +13,7 @@ import { formatDateTime } from '../../lib/format';
  * Session replay + live assistance (OpenReplay, 2026-11-23) on the member page and on a ticket.
  * - « Sessions » (`replay.read`): the member's sessions open now and recordings of the last
  *   30 days; each opening goes through an audited call that gives the link.
- * - « Assistance en direct » (`assist.control`, support administrators): opens a 30-minute grant
+ * - « Assistance en direct » (`assist.control`, support agents and administrators): opens a 30-minute grant
  *   for this agent, then the live view in OpenReplay, where « Remote control » asks the member.
  *   The member must accept; the withdrawal, code, password, contact-change, authenticator,
  *   identity and data pages refuse control whatever happens. The agent's OpenReplay account

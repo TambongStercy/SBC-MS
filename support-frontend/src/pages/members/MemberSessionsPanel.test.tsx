@@ -29,10 +29,10 @@ function setup(roles: Parameters<typeof makeAgent>[0], extra: Record<string, unk
 afterEach(() => vi.restoreAllMocks());
 
 describe('member sessions panel', () => {
-  it('a support agent lists sessions on demand and opens one through the audited call; no live assistance', async () => {
+  it('a finance agent lists sessions on demand and opens one through the audited call; no live assistance', async () => {
     const tab = { opener: {}, location: { href: '' }, close: vi.fn() };
     vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
-    const m = setup(['support_agent'], { 'POST /members/m1/sessions/7700000000000001/open': { data: { url: 'https://replay.test/2/session/7700000000000001' } } });
+    const m = setup(['finance_agent'], { 'POST /members/m1/sessions/7700000000000001/open': { data: { url: 'https://replay.test/2/session/7700000000000001' } } });
     renderWithProviders(<App />, { path: '/membres/m1' });
     fireEvent.click(await screen.findByRole('button', { name: 'Afficher' }));
     expect(await screen.findByText('En direct')).toBeInTheDocument();
@@ -41,6 +41,13 @@ describe('member sessions panel', () => {
     await waitFor(() => expect(tab.location.href).toBe('https://replay.test/2/session/7700000000000001'));
     expect(tab.opener).toBeNull();
     expect(m.find('POST', '/members/m1/sessions/7700000000000001/open')[0].body).toEqual({ live: false });
+  });
+
+  it('a support agent now has live assistance too', async () => {
+    setup(['support_agent']);
+    renderWithProviders(<App />, { path: '/membres/m1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Afficher' }));
+    expect(await screen.findByRole('button', { name: /Assistance en direct/ })).toBeInTheDocument();
   });
 
   it('a support administrator opens live assistance: grant first, then the live view', async () => {

@@ -69,7 +69,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   support_agent: [
     'members.read', 'members.contact.request', 'tickets.read', 'tickets.reply',
     'activation.check', 'activation.manual.request', 'kb.edit', 'activity.read', 'authenticator.reset.request', 'identity.review',
-    'replay.read',
+    'replay.read', 'assist.control',
   ],
   finance_agent: [
     'members.read', 'tickets.read', 'tickets.reply', 'activation.check', 'activation.manual.request',

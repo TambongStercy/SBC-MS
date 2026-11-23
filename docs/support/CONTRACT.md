@@ -391,7 +391,7 @@ a reliable data message on topic `support` after every ticket change
 | `authenticator.reset.approve` | | | ✓ | | | |
 | `identity.review` (KYC level 3, « Identités ») | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | `replay.read` (member « Sessions »: recordings, live view) | ✓ | ✓ | ✓ | | ✓ | ✓ |
-| `assist.control` (« Assistance en direct »: remote control with the member's consent) | | | | | | ✓ |
+| `assist.control` (« Assistance en direct »: remote control with the member's consent) | ✓ | | | | | ✓ |
 | `agents.manage`, `settings.manage`, `audit.read` | | | | | | ✓ |
 
 An approver must differ from the requester (except a super_manager, see above). Masking: `+237 6•• •• 34`, `j•••@gmail.com`.

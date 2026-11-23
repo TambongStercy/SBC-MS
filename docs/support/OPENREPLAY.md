@@ -82,7 +82,7 @@ them live by taking control of their screen, **only after the member accepts**.
   goes through `POST /desk/members/:id/sessions/:sessionId/open` (only a session of that member;
   audited `member.replay.opened` / `member.live.watched`). « Regarder » on a live session opens a
   **watch-only grant** for that agent (the member is still asked).
-- **« Assistance en direct »** (`assist.control`: support administrators only), on the member
+- **« Assistance en direct »** (`assist.control`: support agents and support administrators), on the member
   page and on a ticket: `POST /desk/members/:id/assist {ticketId?}` opens a grant for
   `ASSIST_GRANT_MINUTES` (30) for this agent that also allows asking for control, audited `assist.started` (and a note on the ticket),
   and opens the member's live view; there the agent clicks « Remote control ». « Terminer »
