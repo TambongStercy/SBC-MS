@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import UserModel from '../database/models/user.model';
 import SubscriptionModel from '../database/models/subscription.model';
 import ReferralModel from '../database/models/referral.model';
-import { PRIVACY_POLICY_VERSION } from '../config/privacy';
+import { PRIVACY_POLICY_VERSION, isBeninCountry } from '../config/privacy';
 import logger from '../utils/logger';
 import { UserGeoDayModel } from '../database/models/user-geo-day.model';
 import { forgetConsent } from './activity-signals.service';
@@ -18,13 +18,23 @@ const httpError = (status: number, message: string) => Object.assign(new Error(m
  * pages; objection is the contact-sharing switch and notification settings.
  */
 
-/** Records the consents a member gives in the consent window. */
+/**
+ * Records the consents a member gives in the consent window. Every member accepts the
+ * policy (version 2026-12 adds the security signals, session recordings and e-mail
+ * checks, so everyone is asked again); only Benin members also accept the transfer of
+ * their data outside Benin (APDP), and for them it stays required.
+ */
 export async function recordConsents(userId: string, input: { privacy?: unknown; dataTransfer?: unknown }, ip?: string) {
-    if (input?.privacy !== true || input?.dataTransfer !== true) {
-        throw httpError(400, 'Les deux accords sont nécessaires pour continuer.');
+    const member = await UserModel.findById(userId).select('country').lean() as any;
+    if (!member) throw httpError(404, 'Utilisateur introuvable.');
+    const benin = isBeninCountry(member.country);
+    if (input?.privacy !== true || (benin && input?.dataTransfer !== true)) {
+        throw httpError(400, benin ? 'Les deux accords sont nécessaires pour continuer.' : 'Votre accord est nécessaire pour continuer.');
     }
     const at = { acceptedAt: new Date(), version: PRIVACY_POLICY_VERSION, ...(ip ? { ip } : {}) };
-    await UserModel.updateOne({ _id: userId }, { $set: { 'consents.privacy': at, 'consents.dataTransfer': at } });
+    const set: Record<string, unknown> = { 'consents.privacy': at };
+    if (input.dataTransfer === true) set['consents.dataTransfer'] = at;
+    await UserModel.updateOne({ _id: userId }, { $set: set });
     log.info(`Consents ${PRIVACY_POLICY_VERSION} recorded for user ${userId}`);
     forgetConsent(userId); // signals start (or stop) at the next gateway batch
     const user = await UserModel.findById(userId).select('consents').lean() as any;

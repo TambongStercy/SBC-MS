@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { currentClientSource } from '../../utils/request-client';
 import config from '../../config';
 import logger from '../../utils/logger';
 import { AxiosInstance } from 'axios';
@@ -186,6 +187,9 @@ class PaymentServiceClient {
      */
     async createIntent(payload: CreateIntentPayload): Promise<PaymentIntentData> {
         const url = '/payments/intents'; // Target the /payments endpoint
+        // Phase 10 web/app split: where the member asked from (reporting only).
+        const clientSource = currentClientSource();
+        if (clientSource && !payload.metadata?.clientSource) payload = { ...payload, metadata: { ...(payload.metadata || {}), clientSource } };
         this.log.info(`Sending create payment intent request to ${this.apiClient.defaults.baseURL}${url} for user ${payload.userId}`);
         this.log.debug('Create intent payload:', payload);
         try {

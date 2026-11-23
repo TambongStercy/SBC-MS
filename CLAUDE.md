@@ -638,9 +638,15 @@ push), so a hijacker cannot silence it.
     desk's member page shows each payment's recorded failure (support branches).
   - A retry on the same payment moves the previous `failure` to `failureHistory`
     (kept), so each attempt keeps its own reason (#432).
+- **Web/app split (2026-11-23):** user-service keeps the member's `X-SBC-Client` for the request
+  (`utils/request-client.ts`, AsyncLocalStorage) and its payment client adds
+  `metadata.clientSource` (`web`/`app`/`api`) to every intent it creates (packs, products, extra
+  numbers). payment-service stores it (`unknown` when the creating service sends none: ads, events,
+  tombola, relance, older intents), leaves it out of the "same payment" key, and the summary has
+  `bySource`. Reporting only.
 - Not done (plan items): offering another provider (each country has ONE
   provider today, BF aside; needs Rufus's call and other provider accounts),
-  web/app split (no signal on payment requests), DR Congo and NOWPayments
+  the source on intents created by the other services, DR Congo and NOWPayments
   routes (provider investigations), support case on paid-not-credited (support
   service not merged).
 - Checks: `payment-service/src/scripts/check-payment-conversion.ts`,
@@ -671,9 +677,12 @@ push), so a hijacker cannot silence it.
   30, 03:30 Douala). In the data export; erased on account deletion.
 - **Web app:** `utils/deviceSignals.ts` wraps `fetch` for same-origin `/api/`
   calls only (a cross-origin custom header would trigger a CORS preflight).
-- **To switch on:** Rufus approves `docs/security-plan/privacy-signals-draft.md`
-  → publish it and bump `PRIVACY_POLICY_VERSION` to `2026-12` (backend + app) →
-  `ACTIVITY_SIGNALS_ENABLED=true` in gateway `.env`.
+- **Switched on (2026-11-23, text accepted by Rufus):** policy version `2026-12` is published
+  (`/confidentialite` sections 12–14: signals, session recordings + remote help, e-mail checks;
+  `docs/security-plan/privacy-signals-draft.md`). **Every member** (not only Benin) is asked to
+  accept it in the consent window; `POST /users/me/consents` needs `privacy: true` from everyone and
+  `dataTransfer: true` from Benin members only (`isBeninCountry`). Signals start for a member once
+  they accept. Preprod gateway: `ACTIVITY_SIGNALS_ENABLED=true`; prod: not yet.
 - **Sign-in attempts (2026-11-22, plan item 3):** `signin_attempts` (TTL 180 days,
   `services/signin-attempts.service.ts`).
   - **What is recorded:** every `POST /users/login` with its outcome (`code_sent`,
