@@ -41,6 +41,15 @@ is('POST', '/api/users/admin/dormant-accounts/export', 'finance', 'read');
 is('GET', '/api/users/admin/dormant-accounts/exports/abc/download', 'finance', 'read');
 is('POST', '/api/users/admin/dormant-accounts/abc/checked', 'finance', 'write');
 is('POST', '/api/users/admin/dormant-accounts/abc/freeze-request', 'finance', 'write');
+// Phase 7 part 2: réactivation. Text read/preview = finance read; send/cancel = finance write;
+// editing and approving the text = super admin only.
+is('GET', '/api/users/admin/dormant-accounts/reactivation/text', 'finance', 'read');
+is('PUT', '/api/users/admin/dormant-accounts/reactivation/text/draft', 'staff', 'write');
+is('POST', '/api/users/admin/dormant-accounts/reactivation/text/approve', 'staff', 'write');
+is('POST', '/api/users/admin/dormant-accounts/reactivation/preview', 'finance', 'read');
+is('GET', '/api/users/admin/dormant-accounts/reactivation/campaigns', 'finance', 'read');
+is('POST', '/api/users/admin/dormant-accounts/reactivation/campaigns', 'finance', 'write');
+is('POST', '/api/users/admin/dormant-accounts/reactivation/campaigns/abc/cancel', 'finance', 'write');
 is('PUT', '/api/users/admin/staff/abc', 'staff', 'write');
 is('POST', '/api/users/sub-admins', 'staff', 'write');
 is('GET', '/api/payments/admin/withdrawals/pending', 'withdrawals', 'read');

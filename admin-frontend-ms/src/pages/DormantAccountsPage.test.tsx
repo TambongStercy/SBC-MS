@@ -14,6 +14,14 @@ vi.mock('../services/adminDormantApi', async () => ({
   downloadDormantExport: vi.fn(),
   markDormantChecked: vi.fn(),
   requestDormantFreeze: vi.fn(),
+  // Phase 7 part 2 panel (its own test: components/finance/ReactivationPanel.test.tsx)
+  getReactivationText: vi.fn(() => new Promise(() => undefined)),
+  listReactivationCampaigns: vi.fn(() => Promise.resolve([])),
+  saveReactivationDraft: vi.fn(),
+  approveReactivationText: vi.fn(),
+  previewReactivation: vi.fn(),
+  startReactivationCampaign: vi.fn(),
+  cancelReactivationCampaign: vi.fn(),
 }));
 
 const tot = (count: number, xafEq: number) => ({ count, xaf: xafEq, usd: 0, xafEq });

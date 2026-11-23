@@ -114,3 +114,61 @@ export async function requestDormantFreeze(userId: string, reason: string): Prom
   const r = await apiClient.post(`/users/admin/dormant-accounts/${userId}/freeze-request`, { reason });
   return r.data.data;
 }
+
+// ---------------------------------------------------------------- Phase 7 part 2: réactivation campaign
+
+export interface ReactivationText { subject: string; body: string; pushTitle: string; pushBody: string }
+export interface ReactivationTextState {
+  draft: ReactivationText & { updatedBy: string | null; updatedAt: string | null };
+  approved: (ReactivationText & { version: number; approvedBy: string; approvedAt: string }) | null;
+  draftApproved: boolean;
+  isDefault: boolean;
+}
+export type ReactivationExclusion = 'inactive' | 'frozen' | 'fraud' | 'recent_contact' | 'unreachable' | 'test_mode' | 'returned' | 'cancelled' | 'send_failed';
+export interface ReactivationPreview {
+  matched: number; sendable: number; excluded: Partial<Record<ReactivationExclusion, number>>; reachKnown: boolean;
+  withEmail: number; withPush: number; mode: 'live' | 'allowlist'; capped: boolean; minDays: number; approvedVersion: number | null;
+}
+export interface ReactivationCampaign {
+  id: string; status: 'building' | 'sending' | 'done' | 'cancelled' | 'failed'; mode: 'live' | 'allowlist';
+  filters: DormantFilters; textVersion: number | null; createdBy: string; createdAt: string; builtAt: string | null; finishedAt: string | null;
+  waitUntil: string | null; pending: number; error: string | null;
+  counts: { targets: number; sent: number; failed: number; skipped: number; returned: number; emailSent: number; pushSent: number };
+  excluded: Partial<Record<ReactivationExclusion, number>>;
+}
+
+export async function getReactivationText(): Promise<ReactivationTextState> {
+  const r = await apiClient.get('/users/admin/dormant-accounts/reactivation/text');
+  return r.data.data;
+}
+
+export async function saveReactivationDraft(text: ReactivationText): Promise<ReactivationTextState> {
+  const r = await apiClient.put('/users/admin/dormant-accounts/reactivation/text/draft', text);
+  return r.data.data;
+}
+
+export async function approveReactivationText(): Promise<ReactivationTextState> {
+  const r = await apiClient.post('/users/admin/dormant-accounts/reactivation/text/approve', {});
+  return r.data.data;
+}
+
+export async function previewReactivation(filters: DormantFilters): Promise<ReactivationPreview> {
+  const r = await apiClient.post('/users/admin/dormant-accounts/reactivation/preview', { filters: clean(filters) });
+  return r.data.data;
+}
+
+/** Needs the admin's own authenticator code: the apiClient interceptor asks for it and resends. */
+export async function startReactivationCampaign(filters: DormantFilters): Promise<{ id: string; status: string; mode: string }> {
+  const r = await apiClient.post('/users/admin/dormant-accounts/reactivation/campaigns', { filters: clean(filters) });
+  return r.data.data;
+}
+
+export async function listReactivationCampaigns(): Promise<ReactivationCampaign[]> {
+  const r = await apiClient.get('/users/admin/dormant-accounts/reactivation/campaigns');
+  return r.data.data;
+}
+
+export async function cancelReactivationCampaign(id: string): Promise<{ cancelled: boolean; notSent: number }> {
+  const r = await apiClient.post(`/users/admin/dormant-accounts/reactivation/campaigns/${id}/cancel`, {});
+  return r.data.data;
+}

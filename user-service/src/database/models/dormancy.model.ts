@@ -69,3 +69,84 @@ const ExportSchema = new Schema({
 ExportSchema.index({ createdAt: 1 });
 ExportSchema.index({ createdBy: 1, status: 1 });
 export const DormancyExportModel = model('DormancyExport', ExportSchema);
+
+/**
+ * Phase 7 part 2: the « réactivation » campaign.
+ *
+ * - dormancy_reactivation_texts: one document (`_id: 'reactivation'`) with the draft a super
+ *   admin edits and the APPROVED version (who, when, version number). A send always uses the
+ *   approved version, copied into the campaign.
+ * - dormancy_campaigns: one per send, with its filters, the approved text it used, and its counters.
+ * - dormancy_campaign_targets: one row per member per campaign (unique), the outbox the sender
+ *   works through (resumable after a restart).
+ * - dormancy_contacts: one row per member (`_id` = userId): when a réactivation last went to
+ *   them. Claimed with one conditional upsert, so a second campaign inside 30 days is refused by
+ *   the database itself (duplicate key), not by a read-then-write.
+ */
+const TextFields = {
+    subject: { type: String, required: true },
+    body: { type: String, required: true },
+    pushTitle: { type: String, required: true },
+    pushBody: { type: String, required: true },
+};
+const ReactivationTextSchema = new Schema({
+    _id: { type: String },
+    draft: { type: new Schema({ ...TextFields, updatedBy: { type: String }, updatedAt: { type: Date } }, { _id: false }), default: null },
+    approved: { type: new Schema({ ...TextFields, version: { type: Number, required: true }, approvedBy: { type: String, required: true }, approvedAt: { type: Date, required: true } }, { _id: false }), default: null },
+}, { collection: 'dormancy_reactivation_texts', versionKey: false });
+export const DormancyReactivationTextModel = model('DormancyReactivationText', ReactivationTextSchema);
+
+const CampaignSchema = new Schema({
+    status: { type: String, enum: ['building', 'sending', 'done', 'cancelled', 'failed'], required: true },
+    filters: { type: Schema.Types.Mixed, default: {} },
+    text: { type: Schema.Types.Mixed, required: true }, // the approved version used (subject, body, push, version)
+    mode: { type: String, enum: ['live', 'allowlist'], required: true },
+    createdBy: { type: String, required: true },
+    createdAt: { type: Date, default: () => new Date() },
+    builtAt: { type: Date, default: null },
+    finishedAt: { type: Date, default: null },
+    /** The mail budget said wait (night, minute full, relance's daily total): no call before this. */
+    waitUntil: { type: Date, default: null },
+    cancelledBy: { type: String, default: null },
+    error: { type: String, default: null },
+    counts: {
+        _id: false,
+        targets: { type: Number, default: 0 },
+        sent: { type: Number, default: 0 },
+        failed: { type: Number, default: 0 },
+        skipped: { type: Number, default: 0 },
+        returned: { type: Number, default: 0 },
+        emailSent: { type: Number, default: 0 },
+        pushSent: { type: Number, default: 0 },
+    },
+    /** Why members were left out, at build and at send time ({ reason: count }). */
+    excluded: { type: Schema.Types.Mixed, default: {} },
+}, { collection: 'dormancy_campaigns', versionKey: false });
+CampaignSchema.index({ createdAt: -1 });
+CampaignSchema.index({ status: 1 });
+export const DormancyCampaignModel = model('DormancyCampaign', CampaignSchema);
+
+const TargetSchema = new Schema({
+    campaignId: { type: Schema.Types.ObjectId, required: true },
+    userId: { type: Schema.Types.ObjectId, required: true },
+    status: { type: String, enum: ['pending', 'sent', 'failed', 'skipped'], default: 'pending' },
+    reason: { type: String, default: null },
+    attempts: { type: Number, default: 0 },
+    nextAt: { type: Date, default: () => new Date() },
+    email: { type: String, default: null },
+    push: { type: String, default: null },
+    sentAt: { type: Date, default: null },
+    returnedAt: { type: Date, default: null },
+}, { collection: 'dormancy_campaign_targets', versionKey: false });
+TargetSchema.index({ campaignId: 1, userId: 1 }, { unique: true });
+TargetSchema.index({ status: 1, nextAt: 1 });
+TargetSchema.index({ userId: 1, sentAt: -1 });
+TargetSchema.index({ sentAt: 1 }, { expireAfterSeconds: 400 * 86400 });
+export const DormancyCampaignTargetModel = model('DormancyCampaignTarget', TargetSchema);
+
+const ContactSchema = new Schema({
+    _id: { type: Schema.Types.ObjectId },
+    lastAt: { type: Date, required: true },
+    campaignId: { type: Schema.Types.ObjectId, required: true },
+}, { collection: 'dormancy_contacts', versionKey: false });
+export const DormancyContactModel = model('DormancyContact', ContactSchema);
