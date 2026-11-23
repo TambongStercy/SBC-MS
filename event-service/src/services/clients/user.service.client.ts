@@ -207,6 +207,7 @@ export interface ImpactMember {
     referralCode?: string;
     isMember: boolean;
     unavailable: boolean;
+    createdAt?: string;
 }
 
 /** Profile subset for candidacies. Throws on failure (eligibility must not be guessed). */
@@ -215,4 +216,25 @@ export const getImpactMembers = async (userIds: string[]): Promise<ImpactMember[
     const { data } = await client.post('/users/internal/impact/members', { userIds });
     if (!data?.success) throw new AppError(data?.message || 'user-service refused impact/members', 502);
     return data.data as ImpactMember[];
+};
+
+/**
+ * The admin's own authenticator code before a money or result action (same
+ * check as payment-service's requireAdminStepUp). Keeps user-service's status
+ * and code (ADMIN_CODE_REQUIRED / _INVALID / _LOCKED); unreachable → 503.
+ */
+export const adminStepUp = async (input: {
+    userId: string; sid: string; code?: string; backupCode?: string; action: string; ip?: string; userAgent?: string;
+}): Promise<{ until: string; method: string }> => {
+    try {
+        const { data } = await client.post('/users/internal/admin-step-up', input, { timeout: 8000 });
+        return data?.data;
+    } catch (err: any) {
+        const status = err?.response?.status;
+        if (status && status < 500) {
+            throw new AppError(err.response?.data?.message || 'Code requis.', status, true, err.response?.data?.code);
+        }
+        log.error(`admin step-up check failed for ${input.userId}: ${err?.message}`);
+        throw new AppError('La vérification du code est momentanément indisponible. Réessayez dans quelques minutes.', 503, true, 'STEP_UP_UNAVAILABLE');
+    }
 };

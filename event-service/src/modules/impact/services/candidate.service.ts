@@ -7,10 +7,12 @@ import {
     CandidateStatus, CONSENT_VERSION, EditionStatus, editionRank, ProfileReview, SEAT_LOST_STATUSES, STATUS_LABEL_FR,
 } from '../types';
 import {
-    Actor, audit, isRegistrationOpen, notifyCandidate, parseProfile, publicEdition, transitionCandidate,
+    Actor, audit, isRegistrationOpen, notifyCandidate, parseProfile, publicEdition, timeOf, transitionCandidate,
 } from '../lib';
 import { currentEdition, getEdition } from './edition.service';
 import { refreshInvitations, seatHolders } from './qualification.service';
+import { invalidateBoard } from './board.service';
+import { currentSubmissions } from './submission.service';
 
 const log = logger.getLogger('ImpactCandidates');
 
@@ -45,6 +47,9 @@ export const presentCandidate = (c: IImpactCandidate, e: IImpactEdition) => ({
     seatNumber: c.seatNumber ?? null,
     seatAt: c.seatAt ?? null,
     waitlistRank: c.waitlistRank ?? null,
+    votes: { free: c.votes?.free ?? 0, paid: c.votes?.paid ?? 0, paidAmount: c.votes?.paidAmount ?? 0 },
+    rank: c.rank ?? null,
+    publishedAt: c.publishedAt ?? null,
     review: c.review,
     profileUpdatedAt: c.profileUpdatedAt,
     statusHistory: c.statusHistory,
@@ -80,7 +85,7 @@ const EDITABLE_STATUSES = [CandidateStatus.QUALIFYING, CandidateStatus.WAITLIST,
 /** The member's space: the current edition, their candidacy, and whether they can apply. */
 export const mySpace = async (userId: string) => {
     const e = await currentEdition();
-    if (!e) return { edition: null, candidacy: null, canApply: false, blocker: applyBlocker(null), canEdit: false, canWithdraw: false };
+    if (!e) return { edition: null, candidacy: null, submissions: null, canApply: false, blocker: applyBlocker(null), canEdit: false, canWithdraw: false };
     const [c, taken] = await Promise.all([
         ImpactCandidate.findOne({ editionId: e._id, userId: oid(userId, 'Membre') }),
         seatHolders(e._id),
@@ -90,6 +95,7 @@ export const mySpace = async (userId: string) => {
     return {
         edition: publicEdition(e, taken),
         candidacy: c ? presentCandidate(c, e) : null,
+        submissions: c ? await currentSubmissions(c._id) : null,
         canApply: !c && !blocker,
         blocker,
         // The same rules updateMine / withdrawMine apply, so the app never guesses them.
@@ -286,7 +292,7 @@ export const getCandidateForAdmin = async (id: string) => {
  */
 const expectSameProfile = (c: IImpactCandidate, body: Record<string, any>) => {
     if (body?.profileUpdatedAt === undefined) return;
-    const seen = new Date(String(body.profileUpdatedAt)).getTime();
+    const seen = timeOf(body.profileUpdatedAt);
     if (seen !== c.profileUpdatedAt?.getTime()) {
         throw new AppError('Le profil a été modifié depuis votre lecture. Rechargez-le avant de décider.', 409, true, 'STALE');
     }
@@ -331,6 +337,7 @@ export const adminEditProfile = async (actor: Actor, id: string, body: Record<st
         { new: true },
     );
     if (!done) throw new AppError('Le profil vient d’être modifié. Rechargez-le.', 409, true, 'STALE');
+    invalidateBoard();
     await audit({ actor, action: 'candidate.profile_edited_by_admin', editionId: e._id, candidateId: c._id, before, after: profile, reason });
     return presentCandidate(done, e);
 };
@@ -345,6 +352,7 @@ export const suspend = async (actor: Actor, id: string, body: Record<string, any
     const reason = reasonOf(body, 10);
     const done = await transitionCandidate(c._id, SUSPENDABLE, CandidateStatus.SUSPENDED, { by: actor.userId, reason, set: { suspendedFrom: c.status } });
     if (!done) throw new AppError('Ce candidat ne peut pas être suspendu dans son état actuel.', 409, true, 'BAD_STATUS');
+    invalidateBoard();
     await audit({ actor, action: 'candidate.suspended', editionId: e._id, candidateId: c._id, before: { status: c.status }, reason });
     await notifyCandidate(done, 'impact-suspended', 'SBC Impact Challenge : candidature suspendue',
         `Ta candidature au SBC Impact Challenge est suspendue : ${reason}. Contacte le support SBC pour en savoir plus.`);
@@ -357,6 +365,7 @@ export const reinstate = async (actor: Actor, id: string, body: Record<string, a
     if (c.status !== CandidateStatus.SUSPENDED || !c.suspendedFrom) throw new AppError('Ce candidat n’est pas suspendu.', 409, true, 'BAD_STATUS');
     const done = await transitionCandidate(c._id, [CandidateStatus.SUSPENDED], c.suspendedFrom, { by: actor.userId, reason, unset: ['suspendedFrom'] });
     if (!done) throw new AppError('Le candidat a changé entre-temps. Rechargez la page.', 409, true, 'BAD_STATUS');
+    invalidateBoard();
     await audit({ actor, action: 'candidate.reinstated', editionId: e._id, candidateId: c._id, after: { status: c.suspendedFrom }, reason });
     await notifyCandidate(done, 'impact-reinstated', 'SBC Impact Challenge : candidature rétablie',
         'Ta candidature au SBC Impact Challenge est rétablie.');
@@ -370,6 +379,7 @@ export const disqualify = async (actor: Actor, id: string, body: Record<string, 
     const from = [...SUSPENDABLE, CandidateStatus.SUSPENDED];
     const done = await transitionCandidate(c._id, from, CandidateStatus.DISQUALIFIED, { by: actor.userId, reason });
     if (!done) throw new AppError('Ce candidat ne peut pas être disqualifié dans son état actuel.', 409, true, 'BAD_STATUS');
+    invalidateBoard();
     await audit({ actor, action: 'candidate.disqualified', editionId: e._id, candidateId: c._id, before: { status: c.status, seatNumber: c.seatNumber }, reason });
     await notifyCandidate(done, 'impact-disqualified', 'SBC Impact Challenge : candidature retirée',
         `Ta candidature au SBC Impact Challenge a été retirée par l’équipe SBC : ${reason}.`);
@@ -416,4 +426,26 @@ export const recountEdition = async (actor: Actor, editionId: string) => {
     }
     await audit({ actor, action: 'edition.recounted', editionId: e._id, after: { updated } });
     return { updated };
+};
+
+/**
+ * The official candidates as CSV, for SBC's social media team (flyers and
+ * Facebook posts of week 1, spec §5): one line per published candidate.
+ */
+export const exportCandidatesCsv = async (editionId: string) => {
+    const e = await getEdition(editionId);
+    const rows = await ImpactCandidate.find({ editionId: e._id, seatNumber: { $exists: true }, status: { $nin: [CandidateStatus.DISQUALIFIED, CandidateStatus.WITHDRAWN] } })
+        .sort({ seatNumber: 1 }).lean();
+    const cell = (v: unknown) => {
+        const s = String(v ?? '').replace(/\r?\n/g, ' ');
+        // Quote everything; neutralise spreadsheet formulas.
+        return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+    };
+    const head = ['Place', 'Nom', 'Identifiant SBC', 'Ville', 'Pays', 'Activité', 'Catégorie', 'Projet', 'Description du projet', 'Photo', 'Statut', 'Votes gratuits', 'Votes payants'];
+    const lines = rows.map((c) => [
+        c.seatNumber, c.profile.name, c.sbcId, c.profile.city, c.profile.country, c.profile.activity, c.profile.category,
+        c.profile.projectName, c.profile.projectDescription, `/api/settings/files/${encodeURIComponent(c.profile.photoFileId)}`,
+        STATUS_LABEL_FR[c.status], c.votes?.free ?? 0, c.votes?.paid ?? 0,
+    ].map(cell).join(','));
+    return '\uFEFF' + [head.map(cell).join(','), ...lines].join('\r\n');
 };

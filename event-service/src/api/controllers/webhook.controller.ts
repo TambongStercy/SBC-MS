@@ -3,6 +3,7 @@ import * as orderService from '../../services/order.service';
 import * as resaleService from '../../services/resale.service';
 import { getPaymentIntentState } from '../../services/clients/payment.service.client';
 import { settleVoteFromWebhook } from '../../modules/animation/services/paid-vote.service';
+import { settleImpactVote } from '../../modules/impact/services/vote.service';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('WebhookController');
@@ -38,6 +39,12 @@ export const paymentConfirmation = async (req: Request, res: Response, next: Nex
             status = 'SUCCEEDED';
             metadata = intent.metadata;
             verifiedAmount = intent.amount;
+        }
+
+        // SBC Impact Challenge vote packs (money all SBC's; status already verified above).
+        if (metadata?.impactVoteTxId) {
+            const impact = await settleImpactVote({ sessionId, status, verifiedAmount });
+            if (impact.handled) return res.json({ success: true, data: impact });
         }
 
         // Vote packs (animation module) carry their own transaction id.

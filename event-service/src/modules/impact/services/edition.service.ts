@@ -3,7 +3,7 @@ import { AppError } from '../../../utils/errors';
 import { IImpactEdition, ImpactCandidate, ImpactEdition } from '../models';
 import {
     CandidateStatus, COMPETITION_LOCKED, DEFAULT_SETTINGS, EditionSettings, EditionStatus, editionRank,
-    LIVE_EDITION_STATUSES, QUALIFICATION_LOCKED, SEAT_LOST_STATUSES,
+    LIVE_EDITION_STATUSES, QUALIFICATION_LOCKED, SEAT_LOST_STATUSES, settingsOf,
 } from '../types';
 import { Actor, audit, notifyCandidate, publicEdition, validateSettings } from '../lib';
 import { seatHolders } from './qualification.service';
@@ -101,7 +101,7 @@ export const createEdition = async (actor: Actor, body: Record<string, any>) => 
         finalAt: optDate(body.schedule?.finalAt, 'finalAt'),
     };
     checkSchedule(schedule);
-    const settings = validateSettings({ ...DEFAULT_SETTINGS, ...(body.settings ?? {}) } as EditionSettings);
+    const settings = validateSettings(settingsOf(body.settings ?? {}) as EditionSettings);
     let slug = slugify(String(body.slug || name));
     if (await ImpactEdition.exists({ slug })) slug = `${slug}-${Date.now().toString(36)}`;
     const e = await ImpactEdition.create({
@@ -156,9 +156,10 @@ export const updateEdition = async (actor: Actor, id: string, body: Record<strin
     }
 
     if (body.settings) {
-        const merged = validateSettings({ ...e.settings, ...body.settings } as EditionSettings);
-        if (rank >= 1) for (const k of QUALIFICATION_LOCKED) if (!same(merged[k], e.settings[k])) locked.push(`settings.${k}`);
-        if (rank >= 3) for (const k of COMPETITION_LOCKED) if (!same(merged[k], e.settings[k])) locked.push(`settings.${k}`);
+        const cur = settingsOf(e.settings);
+        const merged = validateSettings({ ...cur, ...body.settings, freeVote: { ...cur.freeVote, ...(body.settings.freeVote ?? {}) } } as EditionSettings);
+        if (rank >= 1) for (const k of QUALIFICATION_LOCKED) if (!same(merged[k], cur[k])) locked.push(`settings.${k}`);
+        if (rank >= 3) for (const k of COMPETITION_LOCKED) if (!same(merged[k], cur[k])) locked.push(`settings.${k}`);
         e.settings = merged;
         e.markModified('settings');
     }

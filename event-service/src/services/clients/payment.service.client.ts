@@ -194,3 +194,58 @@ export const getPaymentIntentState = async (sessionId: string): Promise<PaymentI
         throw new AppError(`payment-service intent lookup failed: ${error.message}`, 502);
     }
 };
+
+// ---------- SBC Impact Challenge: paid votes ----------
+
+/**
+ * Mobile Money payment of an Impact vote pack. The result comes back to
+ * /api/tickets/webhooks/payment-confirmation like every event-service payment,
+ * routed by `metadata.impactVoteTxId`. All the money is SBC's (Rufus): no
+ * organizer share, no commission split.
+ */
+export const createImpactVoteIntent = async (args: {
+    userId: string; amount: number; impactVoteTxId: string; editionName: string; candidateName: string; votes: number;
+}) => openIntent({
+    userId: args.userId,
+    amount: args.amount,
+    paymentType: 'IMPACT_VOTE',
+    metadata: {
+        impactVoteTxId: args.impactVoteTxId,
+        eventTitle: `${args.votes} vote${args.votes > 1 ? 's' : ''} pour ${args.candidateName} — ${args.editionName}`,
+    },
+});
+
+/** Thrown when the member's available SBC balance is too low (payment-service 409). */
+export class InsufficientBalanceError extends AppError {
+    constructor() { super('Solde SBC insuffisant.', 409, true, 'INSUFFICIENT_BALANCE'); }
+}
+
+/**
+ * Pays from the member's SBC balance (payment-service /internal/balance-spend:
+ * exactly once per reference, refused beyond balance − debt − reserved).
+ * 409 → InsufficientBalanceError; any other failure throws an AppError and the
+ * outcome is UNKNOWN to the caller (retry with the same reference is safe).
+ */
+export const spendFromBalance = async (args: { userId: string; amount: number; reference: string; description: string; metadata?: Record<string, unknown> }) => {
+    try {
+        const { data } = await client.post('/internal/balance-spend', args, { timeout: 15000 });
+        if (!data?.success) throw new AppError(data?.message || 'Paiement par solde refusé.', 502);
+        return data.data as { transactionId: string; amount: number };
+    } catch (err: any) {
+        if (err instanceof AppError) throw err;
+        if (err?.response?.status === 409) throw new InsufficientBalanceError();
+        throw new AppError(err?.response?.data?.message || 'Le service de paiement est injoignable.', err?.response?.status || 502);
+    }
+};
+
+/** Gives a balance payment back, at most once per reference. */
+export const refundBalanceSpend = async (args: { userId: string; reference: string; description: string }) => {
+    try {
+        const { data } = await client.post('/internal/balance-refund', args, { timeout: 15000 });
+        if (!data?.success) throw new AppError(data?.message || 'Remboursement refusé.', 502);
+        return data.data;
+    } catch (err: any) {
+        if (err instanceof AppError) throw err;
+        throw new AppError(err?.response?.data?.message || 'Le service de paiement est injoignable.', err?.response?.status || 502);
+    }
+};

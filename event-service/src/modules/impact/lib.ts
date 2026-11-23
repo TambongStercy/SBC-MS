@@ -4,7 +4,7 @@ import logger from '../../utils/logger';
 import { notifyUser } from '../../services/clients/notification.service.client';
 import { CandidateProfile, IImpactCandidate, IImpactEdition, ImpactAudit, ImpactCandidate } from './models';
 import {
-    CandidateStatus, EditionSettings, ProfileField, TicketTier,
+    CandidateStatus, DEFAULT_SETTINGS, EditionSettings, ProfileField, RoundKey, settingsOf, TicketTier,
 } from './types';
 
 const log = logger.getLogger('Impact');
@@ -200,6 +200,15 @@ export const validateSettings = (s: EditionSettings): EditionSettings => {
         showcaseMonths: int(s.showcaseMonths, 'Durée SBC Impact', 12, 120),
         categories: [],
         profileFields: [],
+        // Missing booleans take the defaults (editions created before these existed).
+        freeVote: {
+            membersOnly: (s.freeVote?.membersOnly ?? DEFAULT_SETTINGS.freeVote.membersOnly) === true,
+            accountsOlderThanRound: (s.freeVote?.accountsOlderThanRound ?? DEFAULT_SETTINGS.freeVote.accountsOlderThanRound) === true,
+            selfVote: (s.freeVote?.selfVote ?? DEFAULT_SETTINGS.freeVote.selfVote) === true,
+        },
+        paidSelfVote: (s.paidSelfVote ?? DEFAULT_SETTINGS.paidSelfVote) === true,
+        balancePayment: (s.balancePayment ?? DEFAULT_SETTINGS.balancePayment) === true,
+        settlementGraceMin: int(s.settlementGraceMin ?? DEFAULT_SETTINGS.settlementGraceMin, 'Délai de confirmation des paiements (min)', 0, 120),
     };
     const w = out.weights;
     if (w.paidVotes + w.publicVote + w.jury !== 100) {
@@ -262,8 +271,16 @@ export const validateSettings = (s: EditionSettings): EditionSettings => {
     return out;
 };
 
+/** A vote round as members see it. */
+const publicRound = (e: IImpactEdition, k: RoundKey) => {
+    const r = (e as any).rounds?.[k];
+    return r ? { status: r.status, opensAt: r.opensAt ?? null, closesAt: r.closesAt ?? null, openedAt: r.openedAt ?? null, closedAt: r.closedAt ?? null } : null;
+};
+
 /** Public view of an edition (no internal counters or cursors). */
-export const publicEdition = (e: IImpactEdition, seatsTaken: number) => ({
+export const publicEdition = (e: IImpactEdition, seatsTaken: number) => {
+    const st = settingsOf(e.settings);
+    return ({
     _id: String(e._id),
     name: e.name,
     slug: e.slug,
@@ -273,24 +290,31 @@ export const publicEdition = (e: IImpactEdition, seatsTaken: number) => ({
     schedule: e.schedule,
     registrationOpen: isRegistrationOpen(e),
     registrationClosedReason: e.registrationClosedReason ?? null,
-    seats: { taken: seatsTaken, max: e.settings.maxCandidates },
+    seats: { taken: seatsTaken, max: st.maxCandidates },
+    stage: (e as any).stage ?? null,
+    rounds: { FREE: publicRound(e, RoundKey.FREE), PAID: publicRound(e, RoundKey.PAID) },
     settings: {
-        maxCandidates: e.settings.maxCandidates,
-        invitationsRequired: e.settings.invitationsRequired,
-        waitlistSize: e.settings.waitlistSize,
-        finalistsCount: e.settings.finalistsCount,
-        votePrice: e.settings.votePrice,
-        votePacks: e.settings.votePacks,
-        weights: e.settings.weights,
-        juryCriteria: e.settings.juryCriteria,
-        ticketTiers: e.settings.ticketTiers,
-        prizes: e.settings.prizes.map((p) => ({ key: p.key, label: p.label })),
-        prizeCooldownDays: e.settings.prizeCooldownDays,
-        showcaseMonths: e.settings.showcaseMonths,
-        categories: e.settings.categories,
-        profileFields: e.settings.profileFields,
+        maxCandidates: st.maxCandidates,
+        invitationsRequired: st.invitationsRequired,
+        waitlistSize: st.waitlistSize,
+        finalistsCount: st.finalistsCount,
+        votePrice: st.votePrice,
+        votePacks: st.votePacks,
+        weights: st.weights,
+        juryCriteria: st.juryCriteria,
+        ticketTiers: st.ticketTiers,
+        prizes: st.prizes.map((p) => ({ key: p.key, label: p.label })),
+        prizeCooldownDays: st.prizeCooldownDays,
+        showcaseMonths: st.showcaseMonths,
+        categories: st.categories,
+        profileFields: st.profileFields,
+        freeVote: st.freeVote,
+        paidSelfVote: st.paidSelfVote,
+        balancePayment: st.balancePayment,
+        settlementGraceMin: st.settlementGraceMin,
     },
-});
+    });
+};
 
 /** New profiles are accepted: qualification running, inside its dates, seats left. */
 export const isRegistrationOpen = (e: IImpactEdition, now = new Date()) =>
@@ -298,3 +322,6 @@ export const isRegistrationOpen = (e: IImpactEdition, now = new Date()) =>
     && !e.registrationClosedAt
     && now >= e.schedule.qualificationOpensAt
     && now <= e.schedule.qualificationClosesAt;
+
+/** Milliseconds of a date sent as an ISO string or a Date (String(date) would drop the milliseconds). */
+export const timeOf = (v: unknown): number => (v instanceof Date ? v.getTime() : new Date(String(v)).getTime());
