@@ -10,6 +10,8 @@
  *     (queued/fresh: 90 days; not_allowlisted/off: 1 day); deleted member dropped; no e-mail;
  *   - an e-mail change sends `forget` first, then (flagged) a new check;
  *   - secondary down → kept with a back-off;
+ *   - KYC_L2_ONLY_EMAILS set: other addresses are skipped on the main server (never sent), not
+ *     retried daily, and queued again once the list is emptied;
  *   - the member view carries `level2`.
  *
  *   npx ts-node --transpile-only src/scripts/check-kyc-l2.ts
@@ -161,6 +163,26 @@ const main = async () => {
     const row: any = await KycL2QueueModel.findById(coded).lean();
     check('secondary down → kept with a back-off', d.failed === 1 && row?.attempts === 1 && row?.nextAt > new Date() && row?.claimToken === null);
     down = false;
+
+    // ---- local allowlist: other addresses never leave the main server ----
+    await KycL2QueueModel.deleteMany({}); await KycL2RequestModel.deleteMany({});
+    (config.kycL2 as any).onlyEmails = new Set(['test.allowed@example.org']);
+    const ok1 = await mk({ email: 'Test.Allowed@example.org' });
+    const other = await mk({ email: 'someone.real@gmail.com' });
+    await member(ok1, 'hold', 80); await member(other, 'hold', 80);
+    await RiskMemberModel.updateMany({ userId: { $nin: [ok1, other] } }, { $set: { decision: 'allow' } });
+    const t0 = new Date();
+    await l2.sweepFlagged(t0);
+    calls.length = 0;
+    await l2.forwardL2(50, t0);
+    const sentNow = calls.filter(c => c.path === '/v1/l2/enqueue').flatMap(c => c.body.items);
+    check('allowlist set: only the allowlisted address is sent', sentNow.length === 1 && sentNow[0].ref === ok1, JSON.stringify(sentNow.map((i: any) => i.ref)));
+    check('the other member is skipped here, without its address', (await KycL2RequestModel.findById(other).lean() as any)?.outcome === 'skipped_allowlist'
+        && !JSON.stringify(await KycL2RequestModel.find({}).lean()).includes('@'));
+    check('no daily loop: a sweep the next day does not queue the skipped member', await l2.sweepFlagged(new Date(t0.getTime() + 2 * DAY)) === 0);
+    (config.kycL2 as any).onlyEmails = new Set();
+    check('allowlist emptied: the skipped member is queued again', await l2.sweepFlagged(new Date(t0.getTime() + 2 * DAY)) === 1
+        && await KycL2QueueModel.exists({ _id: other }) !== null);
 
     // ---- member view ----
     level2.set(held, { found: ['github'], asked: 20, answered: 9, gravatar: false, checkedAt: new Date().toISOString(), reasons: [], points: 0 });

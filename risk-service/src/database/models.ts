@@ -206,7 +206,7 @@ export const KycL2QueueModel = model('KycL2Queue', KycL2QueueSchema);
 const KycL2RequestSchema = new Schema({
     _id: { type: String },
     trigger: { type: String, required: true },
-    outcome: { type: String, required: true }, // queued | fresh | off | not_allowlisted | invalid | no_email | gone
+    outcome: { type: String, required: true }, // queued | fresh | off | not_allowlisted | invalid | no_email | gone | skipped_allowlist
     at: { type: Date, required: true },
     retryAt: { type: Date, required: true },
 }, { collection: 'kycl2requests', versionKey: false });

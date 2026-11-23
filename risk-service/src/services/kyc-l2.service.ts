@@ -16,8 +16,9 @@ import { callSecondary, kycReady } from './kyc.service';
  *   - a contact change by a member already flagged (`contact_change_flagged`).
  * A member is asked about once per KYC_L2_RECHECK_DAYS (90); a changed e-mail drops the old
  * result on the secondary first. The address is read here (read-only) only at send time and
- * never stored on the main server. The secondary decides the rest: its mode (off|log), its
- * test allowlist, its daily cap and pacing.
+ * never stored on the main server. While KYC_L2_ONLY_EMAILS is set (same list as the
+ * secondary's), any other address is skipped here and never sent. The secondary decides the rest:
+ * its mode (off|log), its own copy of the allowlist, its daily cap and pacing.
  */
 const log = childLogger('KycL2');
 const DAY = 86_400_000;
@@ -26,12 +27,20 @@ const isId = (s: string) => /^[a-f0-9]{24}$/i.test(s);
 
 export const l2Ready = () => kycReady() && !config.kycL2.disabled;
 
+/**
+ * Requests that still count as "asked recently". A member skipped because of the allowlist is not
+ * asked again while it is set (no daily loop), and becomes eligible again as soon as it is emptied.
+ */
+const recentFilter = (now: Date) => (config.kycL2.onlyEmails.size
+    ? { retryAt: { $gt: now } }
+    : { retryAt: { $gt: now }, outcome: { $ne: 'skipped_allowlist' } });
+
 /** Queues members for a lookup, unless asked about recently (`force` skips that, for `manual`). */
 export async function l2Request(userIds: string[], trigger: L2Trigger, now: Date = new Date(), force = false): Promise<number> {
     let ids = [...new Set(userIds.filter(isId))];
     if (!ids.length || config.kycL2.disabled) return 0;
     if (!force) {
-        const recent = new Set((await KycL2RequestModel.find({ _id: { $in: ids }, retryAt: { $gt: now } }, { _id: 1 }).lean() as any[]).map(r => String(r._id)));
+        const recent = new Set((await KycL2RequestModel.find({ _id: { $in: ids }, ...recentFilter(now) }, { _id: 1 }).lean() as any[]).map(r => String(r._id)));
         ids = ids.filter(id => !recent.has(id));
     }
     if (!ids.length) return 0;
@@ -57,7 +66,7 @@ export async function l2EmailChanged(userId: string, flagged: boolean, now: Date
 export async function sweepFlagged(now: Date = new Date(), limit = 5000): Promise<number> {
     const flagged = await RiskMemberModel.find({ decision: { $in: ['require_code', 'hold'] } }, { userId: 1, decision: 1 }).limit(limit).lean() as any[];
     if (!flagged.length) return 0;
-    const recent = new Set((await KycL2RequestModel.find({ _id: { $in: flagged.map(f => f.userId) }, retryAt: { $gt: now } }, { _id: 1 }).lean() as any[]).map(r => String(r._id)));
+    const recent = new Set((await KycL2RequestModel.find({ _id: { $in: flagged.map(f => f.userId) }, ...recentFilter(now) }, { _id: 1 }).lean() as any[]).map(r => String(r._id)));
     const queued = new Set((await KycL2QueueModel.find({ _id: { $in: flagged.map(f => f.userId) } }, { _id: 1 }).lean() as any[]).map(r => String(r._id)));
     let n = 0;
     for (const d of ['hold', 'require_code'] as const) {
@@ -70,7 +79,7 @@ export async function sweepFlagged(now: Date = new Date(), limit = 5000): Promis
 /** How long before the same member may be asked about again, by the secondary's answer. */
 function retryAfterMs(outcome: string): number {
     switch (outcome) {
-        case 'queued': case 'fresh': return config.kycL2.recheckDays * DAY;
+        case 'queued': case 'fresh': case 'skipped_allowlist': return config.kycL2.recheckDays * DAY;
         case 'invalid': case 'no_email': case 'gone': return 30 * DAY;
         default: return DAY; // off, not_allowlisted: asked again tomorrow (the switch may have changed)
     }
@@ -133,6 +142,8 @@ export async function forwardL2(limit = 50, now: Date = new Date()): Promise<L2F
         if (!u || u.deleted) { out.gone += 1; await record(r._id, r.trigger, 'gone'); continue; }
         const email = typeof u.email === 'string' ? u.email.trim().toLowerCase() : '';
         if (!email) { await record(r._id, r.trigger, 'no_email'); continue; }
+        // allowlist set (preprod, tests): anyone else's address never leaves this server
+        if (config.kycL2.onlyEmails.size && !config.kycL2.onlyEmails.has(email)) { await record(r._id, r.trigger, 'skipped_allowlist'); continue; }
         items.push({ ref: r._id, email, trigger: r.trigger });
     }
     if (!items.length) return out;
