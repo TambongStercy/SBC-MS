@@ -55,6 +55,17 @@ const KYC_REASON: Record<string, string> = {
   phone_country_vs_declared: 'Numéro d’un autre pays que le pays déclaré',
   momo_country_vs_declared: 'Mobile Money d’un autre pays que le pays déclaré',
   network_country_elsewhere: 'Connecté depuis un autre pays',
+  email_no_footprint: 'E-mail inconnu partout (adresse neuve ou jetable ?)',
+  email_established: 'E-mail utilisé depuis longtemps ailleurs',
+};
+const L2_TRIGGER: Record<string, string> = {
+  score_hold: 'retraits bloqués', score_require_code: 'score à surveiller', auth_setup_review: 'application d’authentification activée dans des conditions à vérifier',
+  dormant_reactivated: 'compte dormant revenu', contact_change_flagged: 'coordonnées changées alors que le compte était signalé', manual: 'demande manuelle',
+};
+const SERVICE: Record<string, string> = {
+  instagram: 'Instagram', twitter: 'X (Twitter)', discord: 'Discord', pinterest: 'Pinterest', spotify: 'Spotify', google: 'Google', github: 'GitHub',
+  imgur: 'Imgur', tumblr: 'Tumblr', firefox: 'Firefox', lastpass: 'LastPass', quora: 'Quora', wattpad: 'Wattpad', freelancer: 'Freelancer',
+  soundcloud: 'SoundCloud', strava: 'Strava', archive: 'Internet Archive', codecademy: 'Codecademy', envato: 'Envato', nike: 'Nike',
 };
 
 export function MemberRiskPanel({ memberId }: { memberId: string }) {
@@ -101,6 +112,26 @@ export function MemberRiskPanel({ memberId }: { memberId: string }) {
         }}
       />
     </Panel>
+  );
+}
+
+/** KYC level 2: a hint, never a verdict (sites change, many do not answer). */
+function EmailFootprint({ l2 }: { l2: NonNullable<NonNullable<Extract<RiskCard, { available: true }>['kyc']>['level2']> }) {
+  return (
+    <div className="mt-2 space-y-1 rounded-md border border-border p-2" data-testid="kyc-level2">
+      <p className="text-xs text-fg-muted">
+        Présence de l’e-mail ailleurs (KYC niveau 2) · vérifié le {formatDate(l2.checkedAt)}{l2.trigger ? ` · ${L2_TRIGGER[l2.trigger] ?? l2.trigger}` : ''}
+      </p>
+      <p className="text-fg">
+        {l2.found.length > 0
+          ? <>Inscrit sur {l2.found.length} service{l2.found.length > 1 ? 's' : ''} : {l2.found.map(f => SERVICE[f] ?? f).join(', ')}</>
+          : <>Inscrit sur aucun des services qui ont répondu</>}
+        <span className="text-xs text-fg-muted"> ({l2.answered} réponse{l2.answered > 1 ? 's' : ''} sur {l2.asked} services interrogés)</span>
+      </p>
+      <p className="text-xs text-fg-muted">
+        Photo Gravatar : {l2.gravatar === true ? 'oui' : l2.gravatar === false ? 'non' : 'pas de réponse'}. Un indice seulement : beaucoup de sites ne répondent pas ou changent.
+      </p>
+    </div>
   );
 }
 
@@ -186,7 +217,7 @@ function RiskBody({ card }: { card: Extract<RiskCard, { available: true }> }) {
       )}
 
       <div>
-        <p className="mb-1 text-xs text-fg-muted">Contrôle des coordonnées (KYC niveau 1)</p>
+        <p className="mb-1 text-xs text-fg-muted">Contrôle des coordonnées (KYC)</p>
         {card.kyc ? (
           <div className="space-y-1">
             <p className="flex flex-wrap items-center gap-2">
@@ -194,6 +225,7 @@ function RiskBody({ card }: { card: Extract<RiskCard, { available: true }> }) {
               <span className="text-xs text-fg-muted">{card.kyc.score} points · vérifié le {formatDate(card.kyc.checkedAt)}{card.kyc.emailDomain ? ` · e-mail chez ${card.kyc.emailDomain}` : ''}</span>
             </p>
             {card.kyc.reasons.length > 0 && <ul className="list-inside list-disc text-fg">{card.kyc.reasons.map(r => <li key={r}>{KYC_REASON[r] ?? r}</li>)}</ul>}
+            {card.kyc.level2 && <EmailFootprint l2={card.kyc.level2} />}
           </div>
         ) : (
           <p className="text-fg-muted">Pas encore vérifié (le contrôle passe la nuit).</p>

@@ -90,7 +90,7 @@ export function signBody(raw: string, ts: number, secret = config.kyc.secret): s
 }
 
 /** A signed POST to kyc-worker on the secondary server. */
-async function callSecondary<T = any>(path: string, body: unknown, timeoutMs = 15_000): Promise<T> {
+export async function callSecondary<T = any>(path: string, body: unknown, timeoutMs = 15_000): Promise<T> {
     const raw = JSON.stringify(body);
     const ts = Math.floor(Date.now() / 1000);
     const res = await axios.post(`${config.kyc.workerUrl}${path}`, raw, {
@@ -264,10 +264,11 @@ export async function kycStatus() {
     if (kycReady()) {
         try { secondary = await callSecondary('/v1/status', {}, 3000); } catch (e: any) { secondaryError = String(e?.response?.status ?? e?.code ?? e?.message).slice(0, 80); }
     }
-    return { ready: kycReady(), outbox, retrying, secondary, secondaryError, ...stats };
+    const { l2Status } = await import('./kyc-l2.service');
+    return { ready: kycReady(), outbox, retrying, secondary, secondaryError, ...stats, level2: await l2Status() };
 }
 
-const shape = (r: any) => ({ level: r.level, score: r.score, band: r.band, reasons: r.reasons, signals: r.signals, variantAccounts: r.variantAccounts, checkedAt: r.checkedAt });
+const shape = (r: any) => ({ level: r.level, score: r.score, band: r.band, reasons: r.reasons, signals: r.signals, variantAccounts: r.variantAccounts, checkedAt: r.checkedAt, level2: r.level2 ?? null });
 
 /**
  * The member's level 1, as the support desk shows it (no email, number or key), read from

@@ -9,6 +9,8 @@ import { datacenterAsns } from './datacenter-asns';
 import { collectFacts } from './facts';
 import { hashOf, phoneKey, tailOf } from './identity';
 import { enqueue as kycEnqueue } from './kyc.service';
+import { l2EmailChanged, l2Request } from './kyc-l2.service';
+import { decisionFor } from './decision.service';
 import { addLiveReason, clearedUpdate, dropCached, expireLiveReasons, sendCases, storeMembers } from './scoring';
 import { timeJob } from '../utils/metrics';
 
@@ -135,7 +137,7 @@ export function hintToEvent(body: any, source: string): EventIn | { error: strin
         case 'authenticator_change': {
             const kind = ['setup', 'reset'].includes(body.kind) ? body.kind : null;
             if (!kind) return { error: 'kind: setup | reset' };
-            return { type, userId, at, source, data: { kind } };
+            return { type, userId, at, source, data: { kind, ...(body.review === true ? { review: true } : {}) } };
         }
         case 'dormant_reactivated':
             return { type, userId, at, source, data: { from: body.from === 'long_dormant' ? 'long_dormant' : 'dormant' } };
@@ -429,11 +431,18 @@ async function handle(e: any, now: Date): Promise<{ rescore: string[]; touched: 
         case 'contact_change': {
             if (e.data?.kind !== 'crypto') await kycEnqueue([userId], 'contact_change', now);
             const linked = e.data?.kind === 'momo' ? await refreshOwnIdentifiers(userId, now) : false;
+            // KYC level 2: a changed address drops its old lookup; a flagged member is looked up again
+            const flagged = (await decisionFor(userId)).decision !== 'allow';
+            if (e.data?.kind === 'email') await l2EmailChanged(userId, flagged, now);
+            else if (flagged) await l2Request([userId], 'contact_change_flagged', now);
             return { rescore: linked ? [userId] : [], touched: [] };
         }
         case 'authenticator_change':
+            // user-service's setup review found a reason (other country, recent change, flagged)
+            if (e.data?.review) await l2Request([userId], 'auth_setup_review', now);
             return { rescore: [], touched: [] }; // kept for the withdrawal rule
         case 'dormant_reactivated':
+            await l2Request([userId], 'dormant_reactivated', now);
             await addLiveReason(userId, { rule: 'dormant_reactivated', points: LIVE_POINTS.dormant_reactivated, detail: e.data?.from === 'long_dormant' ? 'Compte inactif depuis plus d’un an revenu' : 'Compte dormant revenu' }, 30, now);
             return { rescore: [], touched: [userId] };
         case 'balance_mismatch':

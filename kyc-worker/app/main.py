@@ -23,6 +23,13 @@ POST /v1/l3/get     {"ids": [...]} → {"items": {id: request}} (≤ 100; status
 POST /v1/l3/image   {id, kind} → the image bytes (deleted 30 days after the decision)
 POST /v1/l3/decide  {id, decision: approved|refused, by, reason} → the request; 409 if decided
 
+KYC level 2 (where else the e-mail address is used: Holehe sign-up checks + Gravatar,
+app/l2_*.py), only for members risk-service flags; off unless KYC_L2_MODE=log:
+POST /v1/l2/enqueue {"items": [{ref, email, trigger}]} → {"outcomes": {ref: queued|fresh|off|
+                    not_allowlisted|invalid}} (≤ 100; only `queued` keeps the address, until looked up)
+POST /v1/l2/forget  {"refs": [...]} → drops their level 2 (the address changed)
+/v1/results adds `level2` {found, asked, answered, gravatar, trigger, checkedAt, reasons, points}.
+
 Signed requests only: X-KYC-Timestamp (unix seconds) and X-KYC-Signature =
 hex HMAC-SHA256(KYC_SHARED_SECRET, "<timestamp>.<raw body>"), at most 5 min old.
 """
@@ -43,12 +50,15 @@ from fastapi.responses import JSONResponse, Response
 
 from .checks import level1
 from .dns_cache import DomainCache
+from .l2_checks import assess
+from .l2_store import L2Store
 from .l3_store import KINDS, MAX_IMAGE, PURPOSES, L3Store, sniff
-from .store import FIELDS, Store
+from .store import FIELDS, Store, band
 
 MAX_ITEMS = 500
 MAX_NEEDED = 2000
 MAX_RESULTS = 200
+L2_MAX_ITEMS = 100
 MAX_BODY = 512 * 1024
 L3_MAX_BODY = 3 * (MAX_IMAGE * 4 // 3 + 16) + 4096  # three base64 images
 L3_PER_DAY = 3
@@ -80,6 +90,8 @@ def create_app(secret: str | None = None, db_path: str | None = None, lookup=Non
     cache = DomainCache(path, **cache_kwargs)
     store = Store(path, secret)
     l3 = _l3_store(path, l3_key)
+    l2 = L2Store(path, secret, recheck_days=float(os.environ.get("KYC_L2_RECHECK_DAYS", "90")),
+                 retention_days=float(os.environ.get("KYC_L2_RETENTION_DAYS", "365")))
     pool = ThreadPoolExecutor(max_workers=int(os.environ.get("KYC_DNS_THREADS", "16")))
     stats = {"items": 0, "batches": 0, "refused": 0, "started": time.time()}
 
@@ -153,14 +165,42 @@ def create_app(secret: str | None = None, db_path: str | None = None, lookup=Non
         refs = body.get("refs")
         if not isinstance(refs, list) or not 0 < len(refs) <= MAX_RESULTS or not all(ref_ok(r) for r in refs):
             return refuse(400, f"refs: 1 to {MAX_RESULTS} ids")
-        return {"results": store.results(refs)}
+        return {"results": merge_level2(store.results(refs), l2.results(refs))}
 
     @app.post("/v1/status")
     async def status(request: Request):
         _, err = await signed_body(request)
         if err:
             return err
-        return {**store.status(), "level3": l3.status() if l3 else None}
+        return {**store.status(), "level2": l2.status(), "level3": l3.status() if l3 else None}
+
+    # ------------------------------------------------------------ level 2
+    @app.post("/v1/l2/enqueue")
+    async def l2_enqueue(request: Request):
+        body, err = await signed_body(request)
+        if err:
+            return err
+        items = body.get("items")
+        if not isinstance(items, list) or not 0 < len(items) <= L2_MAX_ITEMS or not all(
+                isinstance(i, dict) and ref_ok(i.get("ref")) and isinstance(i.get("email"), str) and len(i["email"]) <= 254
+                and isinstance(i.get("trigger", ""), str) for i in items):
+            return refuse(400, f"items: 1 to {L2_MAX_ITEMS} objects with ref, email and trigger")
+        out = l2.enqueue(items)
+        counts: dict[str, int] = {}
+        for v in out.values():
+            counts[v] = counts.get(v, 0) + 1
+        log.info("level2 enqueue: %s", counts)
+        return {"outcomes": out}
+
+    @app.post("/v1/l2/forget")
+    async def l2_forget(request: Request):
+        body, err = await signed_body(request)
+        if err:
+            return err
+        refs = body.get("refs")
+        if not isinstance(refs, list) or not 0 < len(refs) <= L2_MAX_ITEMS or not all(ref_ok(r) for r in refs):
+            return refuse(400, f"refs: 1 to {L2_MAX_ITEMS} ids")
+        return {"forgotten": l2.forget(refs)}
 
     # ------------------------------------------------------------ level 3
     def l3_off():
@@ -268,6 +308,24 @@ def create_app(secret: str | None = None, db_path: str | None = None, lookup=Non
         return {"results": results}
 
     return app
+
+
+def merge_level2(results: dict[str, dict], level2: dict[str, dict]) -> dict[str, dict]:
+    """Adds each member's level 2 (if any) to their result: `level2` plus its reasons and points
+    on top of level 1's score (informational: no decision reads the score)."""
+    for ref, l2r in level2.items():
+        reasons, pts = assess(l2r["found"], l2r["answered"], l2r["gravatar"])
+        l2r = {**l2r, "reasons": reasons, "points": pts}
+        base = results.get(ref)
+        if base is None:
+            score = max(0, min(100, pts))
+            results[ref] = {"level": 2, "score": score, "band": band(score), "reasons": reasons, "signals": {},
+                            "variantAccounts": 0, "checkedAt": l2r["checkedAt"], "level2": l2r}
+            continue
+        score = max(0, min(100, int(base["score"]) + pts))
+        results[ref] = {**base, "level": 2, "score": score, "band": band(score),
+                        "reasons": list(base.get("reasons") or []) + reasons, "level2": l2r}
+    return results
 
 
 app = None

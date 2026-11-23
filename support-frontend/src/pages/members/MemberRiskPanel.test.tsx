@@ -46,6 +46,26 @@ describe('member risk panel', () => {
     expect(screen.getByText('Numéro •••777')).toBeInTheDocument();
     expect(screen.getByText(/Demande de retrait/)).toHaveTextContent('vers •••777');
     expect(screen.getByText('Le domaine de l’e-mail ne reçoit pas de courrier')).toBeInTheDocument();
+    expect(screen.queryByTestId('kyc-level2')).toBeNull();
+  });
+
+  it('KYC level 2: services where the e-mail is registered, answers, Gravatar, why it was looked up', async () => {
+    setup(['finance_manager'], { data: { ...card, kyc: { ...card.kyc!, level2: { found: ['github', 'spotify'], asked: 20, answered: 8, gravatar: false, trigger: 'score_hold', checkedAt: '2026-11-23T10:00:00Z' } } } });
+    renderWithProviders(<App />, { path: '/membres/m1' });
+    const box = await screen.findByTestId('kyc-level2');
+    expect(box).toHaveTextContent('Inscrit sur 2 services : GitHub, Spotify');
+    expect(box).toHaveTextContent('8 réponses sur 20 services interrogés');
+    expect(box).toHaveTextContent('Photo Gravatar : non');
+    expect(box).toHaveTextContent('retraits bloqués');
+  });
+
+  it('KYC level 2 with nothing found says so; no level 2 → no box', async () => {
+    setup(['finance_manager'], { data: { ...card, kyc: { ...card.kyc!, reasons: ['email_no_footprint'], level2: { found: [], asked: 20, answered: 9, gravatar: null, trigger: 'dormant_reactivated', checkedAt: '2026-11-23T10:00:00Z' } } } });
+    renderWithProviders(<App />, { path: '/membres/m1' });
+    const box = await screen.findByTestId('kyc-level2');
+    expect(box).toHaveTextContent('Inscrit sur aucun des services qui ont répondu');
+    expect(box).toHaveTextContent('Photo Gravatar : pas de réponse');
+    expect(screen.getByText('E-mail inconnu partout (adresse neuve ou jetable ?)')).toBeInTheDocument();
   });
 
   it('not connected yet → says so', async () => {

@@ -1,0 +1,3 @@
+# Holehe 1.61 (2022-07-21, GPL-3.0, github.com/megadose/holehe), sdist checked by hash.
+# Installed with --no-deps --no-build-isolation: its dependencies are pinned in requirements-l2.txt.
+holehe==1.61 --hash=sha256:1a02e7c103b9abcb485eb0aaca36d950ac6bff4ec001d644362cc46739916b3b

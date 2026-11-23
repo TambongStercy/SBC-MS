@@ -1,0 +1,11 @@
+# KYC level 2 (Holehe), installed in the same image; only the kyc-l2 container imports it.
+# Holehe's own dependencies, pinned (all ≥ 2 weeks old on 2026-11-23). setuptools builds its sdist.
+setuptools==84.2.1
+httpx==0.28.1
+termcolor==3.3.0
+bs4==0.0.2
+beautifulsoup4==4.15.0
+soupsieve==4.0.1
+trio==0.35.0
+tqdm==4.70.1
+colorama==0.4.6

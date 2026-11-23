@@ -489,7 +489,11 @@ export type RiskCard =
       linked: { userId: string; name: string | null; country: string | null; score: number; decision: string }[];
       identifiers: { kind: 'phone' | 'device'; uses: string[]; tail: string; count: number; hub: boolean }[];
       events: { type: string; at: string; kind: string | null; amountXaf: number | null; numberTail: string | null }[];
-      kyc: { score: number; band: 'low' | 'medium' | 'high'; reasons: string[]; emailDomain: string | null; checkedAt: string; variantAccounts: number } | null;
+      kyc: {
+        score: number; band: 'low' | 'medium' | 'high'; reasons: string[]; emailDomain: string | null; checkedAt: string; variantAccounts: number;
+        /** KYC level 2: services where the e-mail address is registered (flagged members only). */
+        level2?: { found: string[]; asked: number; answered: number; gravatar: boolean | null; trigger: string | null; checkedAt: string } | null;
+      } | null;
       /** Blocking mode: support's approved release (allowed while the score stays at or under scoreAtRelease). */
       release?: { at: string; by: { id: string; name: string } | null; reason: string | null; scoreAtRelease: number; endedAt: string | null; active: boolean } | null;
     };

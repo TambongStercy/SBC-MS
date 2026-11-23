@@ -7,6 +7,7 @@ import { childLogger } from './lib/logger';
 import { routes } from './api/routes';
 import { flushOutbox } from './services/support.client';
 import { startKycLoop, stopKycLoop } from './services/kyc.service';
+import { startKycL2Loop, stopKycL2Loop } from './services/kyc-l2.service';
 import { closeSources } from './lib/sources';
 import { startLiveLoop, stopLiveLoop } from './services/live.service';
 import { httpMetrics, metricsHandler } from './utils/metrics';
@@ -34,6 +35,7 @@ async function main() {
     redis();
     const server = createApp().listen(config.port, () => log.info({ port: config.port }, 'risk-service listening'));
     startKycLoop();
+    startKycL2Loop();
     startLiveLoop();
     const outbox = setInterval(() => { flushOutbox().catch((e) => log.warn({ message: e?.message }, 'outbox flush failed')); }, 30_000);
 
@@ -41,6 +43,7 @@ async function main() {
         log.warn({ signal }, 'shutting down');
         clearInterval(outbox);
         stopKycLoop();
+        stopKycL2Loop();
         stopLiveLoop();
         server.close(async () => {
             await closeRedis();

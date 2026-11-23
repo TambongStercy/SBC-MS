@@ -984,7 +984,18 @@ Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
   `USERS_MONGODB_URI` are set.
   - Routes: `POST /api/risk/internal/kyc/hint`, `GET /api/risk/internal/kyc/status`, and `kyc` in
     the member view.
-- The score feeds no decision yet. Level 2 (SEON/Holehe) waits for a decision.
+- The score feeds no decision yet.
+- **Level 2 (2026-11-23): where else the e-mail is used, Holehe 1.61 + Gravatar (open source, no
+  paid service).** Only members the engine flags (score ≥ require_code or hold, a risky
+  authenticator setup, a dormant account back, a contact change while flagged), once per 90 days;
+  risk-service `services/kyc-l2.service.ts` (outbox `kycl2queue`, `kycl2requests`; the address is
+  read at send time, never stored on the main server). On the secondary: `/v1/l2/enqueue|forget`,
+  `l2_queue` (address deleted once looked up), `l2_results` (service names, counts, Gravatar,
+  12 months), container **kyc-l2** (`python -m app.l2_runner`; ≤ 500/day, 60 s apart, 30/h per
+  site). Only Holehe `register` modules run, never porn/medical/osint. `KYC_L2_MODE=off|log`;
+  preprod runs `log` with `KYC_L2_ONLY_EMAILS` (test addresses only) until the 20-controlled-account
+  check (`docs/security-plan/phase8-kyc.md` « Level 2 »). Support « Risque » shows it.
+  `python -m app.l2_runner --selftest` lists which sites still answer.
 - **Level 3: ID document + selfie (2026-11-22, open source, not Smile ID).**
   - **Asked on:** a fraud-engine hold, a lost authenticator phone, or lost account details (also
     from a guest request). Not for large withdrawals.
@@ -1000,7 +1011,7 @@ Design, points, measures, deploy: `docs/security-plan/phase8-kyc.md`.
     A withdrawal held by the fraud engine answers 403 `RISK_HOLD` (payment-service, member paths
     only), and the app offers the identity check from it.
   - Details: `docs/security-plan/phase8-kyc.md` « Level 3 ».
-- Checks: `risk-service/src/scripts/check-kyc.ts` (fake secondary; `KYC_REAL_WORKER_URL` for a real one), kyc-worker `pytest`.
+- Checks: `risk-service/src/scripts/check-kyc.ts` (fake secondary; `KYC_REAL_WORKER_URL` for a real one), `check-kyc-l2.ts`, kyc-worker `pytest`.
 
 ### Support integration (Security plan Phase 5, 2026-11-21)
 

@@ -68,5 +68,14 @@ export const config = {
         nightTo: num('KYC_NIGHT_TO', 5),
         disabled: String(process.env.KYC_DISABLED || '').toLowerCase() === 'true',
     },
+    /**
+     * Security plan Phase 8, KYC level 2 (2026-11-23): flagged members' e-mail looked up on the
+     * secondary (its KYC_L2_MODE, allowlist and daily cap decide there). Needs level 1's settings.
+     */
+    kycL2: {
+        disabled: String(process.env.KYC_L2_DISABLED || '').toLowerCase() === 'true',
+        /** A member is looked up at most once in this many days. */
+        recheckDays: Math.max(1, num('KYC_L2_RECHECK_DAYS', 90)),
+    },
 };
 export type Config = typeof config;
