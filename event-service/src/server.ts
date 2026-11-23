@@ -5,6 +5,7 @@ import logger from './utils/logger';
 import app from './app';
 import { startScheduler, stopScheduler } from './services/scheduler.service';
 import { startAnimationJobs, stopAnimationJobs } from './modules/animation/jobs';
+import { startImpactJobs, stopImpactJobs } from './modules/impact/jobs';
 
 const log = logger.getLogger('EventService');
 
@@ -20,13 +21,17 @@ const startServer = async () => {
             log.info(`Event Service started on port ${PORT} in ${config.nodeEnv} mode.`);
             log.info(`Public base URL: ${config.publicBaseUrl}`);
             startScheduler();
-            if (config.scheduler.enabled) startAnimationJobs();
+            if (config.scheduler.enabled) {
+                startAnimationJobs();
+                startImpactJobs();
+            }
         });
 
         const shutdown = (signal: string) => {
             log.warn(`Received ${signal}. Initiating graceful shutdown...`);
             stopScheduler();
             stopAnimationJobs();
+            stopImpactJobs();
             server.close(async () => {
                 log.info('HTTP server closed.');
                 try {

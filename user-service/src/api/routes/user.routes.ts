@@ -24,6 +24,7 @@ import { blnkEnabled } from '../../services/blnk/blnk.client';
 import { tripleCheck } from '../../services/blnk/blnk-sync.service';
 import { isWalletCurrency } from '../../database/models/wallet-movement.model';
 import { BanError, bannedBody, isBanned, unbanAccount, withdrawalBanCheck } from '../../services/account-ban.service';
+import { getImpactInvitations, getImpactMembers } from '../controllers/impact.controller';
 
 const router = Router();
 const log = logger.getLogger('UserRoutes'); // Create logger instance
@@ -196,6 +197,10 @@ serviceRouter.post('/advertising-details', (req, res) => userController.getAdver
 
 // Internal route to get the SBC Event ticket-holder subset (event-service).
 serviceRouter.post('/event-details', (req, res) => userController.getEventDetailsByIds(req, res));
+
+// SBC Impact Challenge (event-service): qualification counter and candidate profile subset.
+serviceRouter.post('/impact/invitations', getImpactInvitations);
+serviceRouter.post('/impact/members', getImpactMembers);
 
 // Internal route to search user IDs by name/email/phone
 serviceRouter.get('/search-ids', (req, res, next) => userController.findUserIdsBySearchTerm(req, res, next));

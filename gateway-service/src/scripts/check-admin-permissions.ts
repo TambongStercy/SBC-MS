@@ -27,6 +27,11 @@ const is = (m: string, p: string, module: string | null, level?: string) => {
         module === null ? r === null : (!!r && r.module === module && (!level || r.level === level)));
 };
 is('GET', '/api/users/admin/users?page=2', 'members', 'read');
+// SBC Impact Challenge v2 (event-service): its own module, not « events »; member and public paths are not admin.
+is('GET', '/api/tickets/impact/admin/editions', 'impactChallenge', 'read');
+is('POST', '/api/tickets/impact/admin/candidates/abc/disqualify', 'impactChallenge', 'write');
+is('GET', '/api/tickets/impact/me', null);
+is('GET', '/api/tickets/impact/public/current', null);
 is('PUT', '/api/users/admin/users/abc', 'members', 'write');
 is('PATCH', '/api/users/admin/users/abc/role', 'staff', 'write');
 is('POST', '/api/users/admin/users/abc/adjust-balance', 'finance', 'write');

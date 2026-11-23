@@ -9,6 +9,7 @@ import adminRoutes from './admin.routes';
 import webhookRoutes from './webhook.routes';
 import meRoutes from './me.routes';
 import { mountAnimation } from '../../modules/animation/routes';
+import { mountImpact } from '../../modules/impact/routes';
 
 const router = Router();
 
@@ -45,5 +46,8 @@ router.use('/tickets/scan', authenticate, requireLaunched, scanRoutes);
 // Animation & Engagement: challenges, votes, rewards, live boards
 // (public, signed-in, event team and jury routers under /tickets/animation/*).
 mountAnimation(router);
+
+// SBC Impact Challenge v2: editions, candidates, qualification (/tickets/impact/*).
+mountImpact(router);
 
 export default router;

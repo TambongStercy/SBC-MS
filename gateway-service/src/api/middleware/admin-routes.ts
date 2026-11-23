@@ -84,6 +84,8 @@ const RULES: Rule[] = [
     { pattern: /^\/api\/sbclove\/admin(\/|$)/, module: 'sbclove' },
     { pattern: /^\/api\/advertising\/admin\/manual-verifications(\/|$)/, module: 'adsProofs' },
     { pattern: /^\/api\/advertising\/admin(\/|$)/, module: 'ads' },
+    // SBC Impact Challenge v2 lives in event-service, under /api/tickets/impact.
+    { pattern: /^\/api\/tickets\/impact\/admin(\/|$)/, module: 'impactChallenge' },
     { pattern: /^\/api\/tickets\/admin(\/|$)/, module: 'events' },
 
     // --- settings-service (members still read settings, formations, events and upload files) ---

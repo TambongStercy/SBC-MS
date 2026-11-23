@@ -36,6 +36,17 @@ const client = axios.create({
 // category's ("Voir mes billets" for events), which is wrong for animation notices.
 const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money'; cta?: string }> = {
     'event-ticket-purchased': { url: '/events/mes-billets', category: 'events' },
+    // SBC Impact Challenge: every candidate notice opens the candidate space.
+    'impact-unlocked': { url: '/impact-challenge/candidat', category: 'events', cta: 'Mon espace candidat' },
+    'impact-promoted': { url: '/impact-challenge/candidat', category: 'events', cta: 'Mon espace candidat' },
+    'impact-waitlisted': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-seats-full': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-not-selected': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-profile-approved': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-profile-changes': { url: '/impact-challenge/candidat', category: 'events', cta: 'Modifier mon profil' },
+    'impact-suspended': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-reinstated': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-disqualified': { url: '/impact-challenge/candidat', category: 'events' },
     'event-cancelled': { url: '/events/mes-billets', category: 'events' },
     'event-reminder': { url: '/events/mes-billets', category: 'events' },
     'refund-processed': { url: '/wallet', category: 'money' },
