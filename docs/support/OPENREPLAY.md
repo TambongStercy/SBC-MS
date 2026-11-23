@@ -1,66 +1,109 @@
-# Session replay with OpenReplay (self-hosted)
+# Session replay and live assistance with OpenReplay (self-hosted)
 
-When a member opens a support ticket, the agent can replay what the member saw
-and did in the app before and while declaring the problem.
+Support can replay what a member saw and did in the app, and (support administrators only) help
+them live by taking control of their screen, **only after the member accepts**.
 
-- **Member app** (SBC-WEB-UI, `src/services/sessionReplay.ts`): records every
-  signed-in session with the OpenReplay tracker. Names, emails and phone
-  numbers stay visible (on screen and in fields), as asked on 2026-11-18.
-  **Passwords and one-time codes are never recorded**: every such field carries
-  `data-openreplay-hidden` (the tracker alone only hides `type="password"`, which
-  the eye icon turns into text), and a test fails if a new one lacks it.
-  Request/response bodies and headers are not recorded. The tracker is off unless
-  `VITE_OPENREPLAY_PROJECT_KEY` and `VITE_OPENREPLAY_INGEST` are set at build
-  time. It stops at sign-out.
-- **Tickets:** the member app sends the current session id and link with the new
-  ticket (form or assistant escalation). support-service keeps the link only if it
-  points at `OPENREPLAY_DASHBOARD_URL`.
-- **Agent desk:** a ticket with a recording shows « Revoir la session du
-  membre ». The link is fetched from `POST /api/support/desk/tickets/:id/replay`,
-  which writes `ticket.replay.opened` to the audit log. The replay opens in
-  OpenReplay, which asks for the agent's OpenReplay account.
+## What runs where (2026-11-23)
 
-## Server (to install once)
+- **Server:** the secondary server (`ubuntu@169.58.159.177`), `/opt/openreplay`: the official
+  v1.28.0 Docker Compose files (released 2026-09-25), run by hand rather than with their
+  installer (which adds the user to the docker group and runs its own Caddy on 80/443):
+  - Caddy removed; OpenReplay's own nginx is published on `127.0.0.1:8090` only, behind the
+    host nginx vhost `replay.sniperbusinesscenter.com` (certbot TLS; the zone's DNS-only `*`
+    wildcard points here). `/ingest` is public (members' browsers); the dashboard is behind
+    OpenReplay's login (rate-limited `/api/login`); `/ws-assist` (live assistance websocket)
+    goes through the same vhost (upgrade headers).
+  - The file store console port (9001) is not published; images pinned (`nginx:1.28.0`,
+    `debian:13-slim`, the rest as their `common.env`: OpenReplay v1.28.0, Postgres 17, Valkey 8,
+    ClickHouse 26.2, RustFS 1.0.0-beta.1).
+  - Secrets: generated on the server into `common.env` / `docker-envs/*.env` (0600), never
+    copied anywhere else.
+  - Containers reach `https://replay.sniperbusinesscenter.com` through the host's public IP
+    (their storage endpoint), which works on this server.
+- **Retention 30 days:** a lifecycle rule on the recording buckets (`migration-files/minio.sh`),
+  a 30-day TTL on ClickHouse `product_analytics.events`, `experimental.sessions` and
+  `experimental.issues`, and a daily belt-and-braces deletion
+  (`/opt/openreplay/retention.sh`, cron `/etc/cron.d/openreplay-retention`, 04:20). Session rows in
+  OpenReplay's Postgres are not purged (no content: the recording itself is gone).
+- **Projects:** `SBC membres` (id 1, for prod later) and `SBC preprod` (id 2). Each has its own
+  project key (not a secret: it ships in the app).
+- **Accounts:** the owner account (credentials only in Sterling's local
+  `admin-auth-local/openreplay-owner.txt`); `support-api@…`, a plain member account used by
+  support-service only (`OPENREPLAY_API_EMAIL` / `_PASSWORD`). Sign-up is closed (OpenReplay
+  refuses a second organisation).
+- **Not backed up** and not in Grafana (recordings are disposable, 30 days); a down OpenReplay
+  only removes replays and live assistance, the app keeps working.
+- Start/stop: `cd /opt/openreplay && sudo docker compose stop|start`. First start was
+  `COMPOSE_PROFILES=migration docker compose up -d` (the 4 migration jobs exit 0).
 
-OpenReplay **does not run on a laptop** and must not share the production box,
-which already carries every SBC service. Official requirements (docs, v1.28.0):
+## Member app (SBC-WEB-UI)
 
-- x86 Ubuntu (the docs name 20.04 LTS), public IP, a domain pointing at it.
-- At least 2 vCPU, 8 GB RAM, 50 GB disk. More disk means longer replay retention.
-- Put it at Contabo Germany, like the other servers. Recordings then stay where
-  the privacy policy already says SBC's data is hosted.
+- **Recording** (`src/services/sessionReplay.ts`, `@openreplay/tracker` 19.0.5): every visit from
+  the moment the app opens, signed-out pages included; the member's id is added at sign-in (same
+  recording) or on a restored session; sign-out starts a new anonymous recording. Names, emails
+  and phone numbers stay visible. **Never recorded:** passwords, one-time codes, the
+  authenticator key, its QR code and `otpauth` link, backup codes, identity photos
+  (`data-openreplay-hidden`; `sessionReplay.test.ts` fails on a missing one). Request and
+  response bodies and headers are not kept, except the body of a failed API answer (the error
+  message) and `x-request-id`.
+- **Build env:** `VITE_OPENREPLAY_PROJECT_KEY` + `VITE_OPENREPLAY_INGEST`
+  (`https://replay.sniperbusinesscenter.com/ingest`), in `/var/www/SBC-WEB-UI-preprod/.env` on the
+  main server (preprod project). The member app has no CSP, so nothing else to open.
+- **Live assistance** (`src/services/remoteAssist.ts`, `@openreplay/tracker-assist` 11.0.21,
+  pinned: the guard uses its internals and a test checks them). Privacy policy section 13: every
+  step needs the member's agreement, each time.
+  1. **Watching live** (`requestConfirm`): nothing leaves the phone before the member taps
+     « Autoriser » on « Le support SBC demande à voir votre écran… ». The prompt appears only if
+     support-service has an open **desk grant** for this member and this agent's OpenReplay e-mail
+     (`GET /api/support/me/assist/grant`); otherwise declined without asking. The agreement ends
+     when the agent leaves; a second agent arriving makes the app ask again.
+  2. **Remote control:** a grant that allows control, then a second French prompt
+     « Autoriser » / « Refuser ». Nothing without it.
+  3. While control runs, a red banner « … contrôle votre écran » with « Arrêter », plus the
+     plugin's own widget (our French template `public/openreplay-assist.html`; the plugin would
+     otherwise fetch one from static.openreplay.com).
+  4. **Never on sensitive screens:** `SENSITIVE_ROUTES` (wallet/money/OTP/withdrawal pages,
+     sign-in/sign-up/password pages, e-mail and phone change, SSO, identity check,
+     `/mes-donnees`) and every component calling `useBlockRemoteControl()` (MoMo and crypto
+     change sheets, authenticator setup, VerifyEmailGate, withdrawal forms, identity form). A
+     request there is declined; control already running ends when the member arrives there.
+     Watching continues, with the hidden fields hidden. A new route whose path looks sensitive
+     fails `remoteAssist.test.ts` until it is listed or exempted with a reason.
+  5. Calls and screen-recording requests can only be declined (no accept button).
+  6. Live assistance only for signed-in members (`ignoreAnonymous`), found by their id.
 
-Steps:
+## Support desk
 
-1. **DNS:** create `replay.sniperbuisnesscenter.com` → the new server's IP
-   (Cloudflare). If the installer needs to obtain the certificate itself, leave the
-   record "DNS only" during the install.
-2. **Install** with the official Docker Compose installer. It installs from the
-   `main` branch of github.com/openreplay/openreplay
-   (`scripts/docker-compose/docker-install.sh`). Read the script first, then run it
-   on the new server and give it `DOMAIN_NAME=replay.sniperbuisnesscenter.com`.
-   The member app's tracker is 19.x, which needs **backend 1.28.0 or later**.
-3. **Owner account:** open `https://replay.sniperbuisnesscenter.com/signup`
-   right after the install and create the owner account before anyone else can.
-   Then create a project ("SBC membres") and copy its **project key**.
-4. **Retention:** set how long replays are kept (agree a duration with SBC; tickets
-   are usually handled within a few days).
-5. **Agents:** invite the support agents who may watch replays as OpenReplay
-   users. A support agent without an OpenReplay account sees the button but cannot
-   open the replay.
-6. **Configuration:**
-   - member app build env (`SBC-WEB-UI/.env.production` or the CI secret):
-     `VITE_OPENREPLAY_PROJECT_KEY=<project key>`,
-     `VITE_OPENREPLAY_INGEST=https://replay.sniperbuisnesscenter.com/ingest`;
-   - `support-service/.env`:
-     `OPENREPLAY_DASHBOARD_URL=https://replay.sniperbuisnesscenter.com`, then
-     `pm2 reload support-service --update-env`.
-7. **Check:** sign in to the member app, open « Aide » → « Nouvelle demande »,
-   send a test request, then open it in the desk and click « Revoir la session du
-   membre ».
+- **Tickets:** the session sent with a request; « Revoir la session du membre » through
+  `POST /desk/tickets/:id/replay` (audited `ticket.replay.opened`).
+- **Member page « Sessions »** (`replay.read`: every role but verifier): live sessions and the
+  last 30 days of recordings, read by support-service from OpenReplay (`GET
+  /desk/members/:id/sessions`, audited `member.sessions.listed`); each « Revoir » / « Regarder »
+  goes through `POST /desk/members/:id/sessions/:sessionId/open` (only a session of that member;
+  audited `member.replay.opened` / `member.live.watched`). « Regarder » on a live session opens a
+  **watch-only grant** for that agent (the member is still asked).
+- **« Assistance en direct »** (`assist.control`: support administrators only), on the member
+  page and on a ticket: `POST /desk/members/:id/assist {ticketId?}` opens a grant for
+  `ASSIST_GRANT_MINUTES` (30) for this agent that also allows asking for control, audited `assist.started` (and a note on the ticket),
+  and opens the member's live view; there the agent clicks « Remote control ». « Terminer »
+  → `POST /desk/members/assist/:grantId/end` (`assist.ended`). Country teams and the conflict rule
+  apply as for every member action.
+- **support-service env:** `OPENREPLAY_DASHBOARD_URL=https://replay.sniperbusinesscenter.com`,
+  `OPENREPLAY_PROJECT_ID` (2 on preprod), `OPENREPLAY_API_EMAIL`, `OPENREPLAY_API_PASSWORD`.
 
-Preprod: use a second project on the same OpenReplay server with its own key, so
-test sessions never mix with members' sessions.
+### Giving an agent access (one OpenReplay account per agent, never shared)
+
+1. Sign in to `https://replay.sniperbusinesscenter.com` as the owner (or an OpenReplay admin).
+2. Preferences → Team → « Add member »: the agent's name and **the same e-mail as their desk
+   account** (the member app matches the grant on it). Leave « Admin » off.
+3. OpenReplay has no mail server here: copy the invitation link it shows and hand it to the agent
+   directly (not in a group chat). They set their own password.
+4. Remove the OpenReplay account the day the desk account is deactivated (Preferences → Team).
+
+In the community edition every OpenReplay user can watch replays and live sessions and press
+« Remote control »; what stops control outside the desk is the grant check in the member app (no
+grant → declined without a prompt) and the member's consent. So give OpenReplay accounts only to
+support staff, and the `support_admin` role only to people allowed to help remotely.
 
 ## Local install (developer machine, 2026-11-18)
 

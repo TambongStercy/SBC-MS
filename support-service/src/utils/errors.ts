@@ -14,6 +14,8 @@ export const conflict = (message: string, code = 'CONFLICT') => new AppError(409
 export const tooMany = (message = 'Trop de tentatives. Réessayez plus tard.', retryAfterSec?: number) =>
     new AppError(429, message, 'RATE_LIMITED', retryAfterSec ? { retryAfterSeconds: retryAfterSec } : undefined);
 
+export const serviceUnavailable = (message: string, code = 'SERVICE_UNAVAILABLE') => new AppError(503, message, code);
+
 /** A service we depend on did not answer, or answered with a server error. */
 export class DependencyError extends AppError {
     constructor(public service: string, public upstreamStatus?: number) {

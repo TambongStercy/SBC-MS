@@ -7,6 +7,7 @@ import { hasPermission } from '../../../config/permissions';
 import { presentTickets } from '../../presenters';
 import { requestAuthenticatorReset, requestFreeze, requestRiskRelease } from '../../../services/risk.service';
 import { previewCommission, requestCommissionReversal } from '../../../services/commission.service';
+import { endAssist, memberSessions, openSession, startAssist } from '../../../services/assist.service';
 
 const router = Router();
 const ref = (req: any) => { const a = agentOf(req); return { id: a.id, name: a.name, roles: a.roles }; };
@@ -44,6 +45,24 @@ router.get('/:userId/withdrawals', requirePermission('members.read'), ah(async (
 
 router.get('/:userId/tickets', requirePermission('members.read', 'tickets.read'), ah(async (req, res) => {
     res.json({ success: true, data: await presentTickets(await members.memberTickets(req.params.userId, agentOf(req).countries)) });
+}));
+
+// Session replay (2026-11-23): the member's recordings and live sessions (OpenReplay); listing and each opening audited.
+router.get('/:userId/sessions', requirePermission('members.read', 'replay.read'), ah(async (req, res) => {
+    res.json({ success: true, data: await memberSessions(req.params.userId, agentOf(req), reqCtx(req)) });
+}));
+
+router.post('/:userId/sessions/:sessionId/open', requirePermission('members.read', 'replay.read'), ah(async (req, res) => {
+    res.json({ success: true, data: await openSession(req.params.userId, req.params.sessionId, req.body?.live === true, agentOf(req), reqCtx(req)) });
+}));
+
+// Live assistance with remote control (support administrators): opens a 30-min grant; the member must accept.
+router.post('/:userId/assist', requirePermission('members.read', 'assist.control'), ah(async (req, res) => {
+    res.status(201).json({ success: true, data: await startAssist(req.params.userId, req.body ?? {}, agentOf(req), reqCtx(req)) });
+}));
+
+router.post('/assist/:grantId/end', requirePermission('assist.control'), ah(async (req, res) => {
+    res.json({ success: true, data: await endAssist(req.params.grantId, agentOf(req), reqCtx(req)) });
 }));
 
 // Security plan Phase 4: the fraud engine's score, reasons and linked accounts (finance managers).

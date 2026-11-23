@@ -39,6 +39,9 @@ export const PERMISSIONS = [
   'approvals.override',
   // KYC level 3 (2026-11-22).
   'identity.review',
+  // Session replay and live assistance (2026-11-23).
+  'replay.read',
+  'assist.control',
   'agents.manage',
   'settings.manage',
   'audit.read',
@@ -66,29 +69,32 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   support_agent: [
     'members.read', 'members.contact.request', 'tickets.read', 'tickets.reply',
     'activation.check', 'activation.manual.request', 'kb.edit', 'activity.read', 'authenticator.reset.request', 'identity.review',
+    'replay.read',
   ],
   finance_agent: [
     'members.read', 'tickets.read', 'tickets.reply', 'activation.check', 'activation.manual.request',
     'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'reports.read', 'activity.read', 'identity.review',
+    'replay.read',
   ],
   finance_manager: [
     'members.read', 'members.read.full', 'members.contact.approve', 'tickets.read', 'tickets.reply', 'tickets.assign',
     'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'finance.regularize.request', 'finance.regularize.approve',
     'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read',
-    'risk.read', 'risk.decide', 'authenticator.reset.approve', 'identity.review',
+    'risk.read', 'risk.decide', 'authenticator.reset.approve', 'identity.review', 'replay.read',
   ],
   verifier: ['views.verify'],
   views_supervisor: [
     'members.read', 'tickets.read', 'tickets.reply', 'tickets.assign', 'views.verify', 'views.supervise',
     'kb.edit', 'kb.publish', 'templates.manage', 'reports.read', 'export', 'activity.read', 'identity.review',
+    'replay.read',
   ],
   support_admin: [
     'members.read', 'members.read.full', 'members.contact.request', 'members.contact.approve',
     'tickets.read', 'tickets.reply', 'tickets.assign', 'activation.check', 'activation.manual.request', 'activation.manual.approve',
     'finance.read', 'finance.recheck', 'cases.work', 'views.supervise', 'kb.edit', 'kb.publish', 'templates.manage',
     'reports.read', 'export', 'analytics.read', 'errors.manage', 'activity.read', 'agents.manage', 'settings.manage', 'audit.read',
-    'risk.read', 'authenticator.reset.request', 'identity.review',
+    'risk.read', 'authenticator.reset.request', 'identity.review', 'replay.read', 'assist.control',
   ],
   super_manager: [], // filled just below
 };

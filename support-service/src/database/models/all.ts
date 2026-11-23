@@ -13,3 +13,4 @@ export { AgentNotification } from './agent-notification.model';
 export { GuideTree } from './guide.model';
 export { ClientErrorType, ClientErrorDay, ClientErrorMember } from './client-error.model';
 export { IdentityVerification } from './identity-verification.model';
+export { AssistGrant } from './assist-grant.model';

@@ -154,6 +154,14 @@ function load() {
         /** Self-hosted OpenReplay dashboard (e.g. https://replay.sniperbuisnesscenter.com); replays on tickets are off without it. */
         openreplay: {
             dashboardUrl: ensureNoTrailingSlash(process.env.OPENREPLAY_DASHBOARD_URL || ''),
+            /** The OpenReplay project the member app records into (2 = « SBC preprod », 1 = « SBC membres »). */
+            projectId: intEnv('OPENREPLAY_PROJECT_ID', 0),
+            /** A dedicated OpenReplay member account (not an agent's): lists a member's recordings and live sessions. */
+            apiEmail: process.env.OPENREPLAY_API_EMAIL || '',
+            apiPassword: process.env.OPENREPLAY_API_PASSWORD || '',
+            timeoutMs: intEnv('OPENREPLAY_TIMEOUT_MS', 8000),
+            /** How long a desk « Assistance en direct » lets that agent ask the member for control. */
+            assistGrantMinutes: intEnv('ASSIST_GRANT_MINUTES', 30),
         },
         deepseek: {
             apiKey: process.env.DEEPSEEK_API_KEY || '',

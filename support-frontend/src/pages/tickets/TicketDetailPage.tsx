@@ -13,6 +13,7 @@ import { ReasonDialog } from '../../components/ReasonDialog';
 import { toast } from '../../components/toast';
 import { Badge, Button, Field, Panel, PanelBody, PanelHeader, Select, Skeleton } from '../../components/ui';
 import { formatDateTime, formatRelative } from '../../lib/format';
+import { AssistButton } from '../members/MemberSessionsPanel';
 import { Composer } from './Composer';
 import { Conversation } from './Conversation';
 import { categoryLabel, SlaText } from './shared';
@@ -242,6 +243,7 @@ function DetailsPanel({ ticket }: { ticket: Ticket }) {
           ))}
         </dl>
         {ticket.replay && <ReplayLink ticketId={ticket.id} at={ticket.replay.at} />}
+        {ticket.member.id && <AssistButton memberId={ticket.member.id} ticketId={ticket.id} className="mt-4 border-t border-line pt-4" />}
       </PanelBody>
     </Panel>
   );
