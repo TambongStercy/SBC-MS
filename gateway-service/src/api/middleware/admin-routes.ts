@@ -51,6 +51,9 @@ const RULES: Rule[] = [
     { pattern: /^\/api\/users\/admin\/activity(\/|$)/, module: 'dashboard' },
     // Security plan Phase 3 rollout: authenticator adoption among members above 5,000 F.
     { pattern: /^\/api\/users\/admin\/security\/authenticator-adoption$/, module: 'dashboard' },
+    // Phase 7 part 2: the réactivation text is written and approved by a super admin only;
+    // reading it, the preview, sending and cancelling are finance.
+    { pattern: /^\/api\/users\/admin\/dormant-accounts\/reactivation\/text\/(draft|approve)$/, module: 'staff' },
     // Security plan Phase 7: « Comptes dormants » (money held by accounts nobody uses).
     { pattern: /^\/api\/users\/admin\/dormant-accounts(\/|$)/, module: 'finance' },
 
@@ -101,6 +104,8 @@ const READ_ONLY_POSTS: RegExp[] = [
     /^\/api\/relance\/admin\/sms-templates\/preview$/,
     // Builds a CSV of what the list already shows.
     /^\/api\/users\/admin\/dormant-accounts\/export$/,
+    // Counts who a réactivation campaign would reach; sends nothing.
+    /^\/api\/users\/admin\/dormant-accounts\/reactivation\/preview$/,
 ];
 
 const ADMIN_PATH = /\/admin(\/|$)/i;

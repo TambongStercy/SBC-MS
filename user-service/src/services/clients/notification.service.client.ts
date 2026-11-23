@@ -80,6 +80,31 @@ class NotificationService {
     }
 
     /**
+     * Security plan Phase 7 part 2: one member of a « réactivation » campaign (email + push,
+     * paced by notification-service). Throws on a network/5xx failure, so the caller retries:
+     * notification-service records each member once per campaign and never sends twice.
+     */
+    async sendReactivation(payload: {
+        campaignId: string; userId: string; email?: string | null; name?: string | null;
+        subject: string; body: string; pushTitle: string; pushBody: string;
+    }): Promise<{ status: 'done' | 'deferred' | 'duplicate'; email?: string; push?: string; retryAt?: string }> {
+        const { data } = await this.apiClient.post('/notifications/internal/reactivation/send', payload, { timeout: 20000 });
+        if (!data?.success || !data.data) throw new Error(data?.message || 'reactivation send refused');
+        return data.data;
+    }
+
+    /** Phase 7 part 2 preview: suppressed addresses and members a push can reach. Null when unknown. */
+    async reactivationReach(emails: string[], userIds: string[]): Promise<{ suppressedEmails: string[]; pushReachable: string[] } | null> {
+        try {
+            const { data } = await this.apiClient.post('/notifications/internal/reactivation/reach', { emails, userIds }, { timeout: 15000 });
+            return data?.success ? data.data : null;
+        } catch (error: any) {
+            log.warn(`Reactivation reach lookup failed: ${error?.message ?? error}`);
+            return null;
+        }
+    }
+
+    /**
      * A plain account email (notification-service /notifications/internal/create,
      * which wraps the text in the branded template). Best-effort: never throws.
      */

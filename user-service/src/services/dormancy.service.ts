@@ -400,7 +400,7 @@ export function parseDormantFilters(q: Record<string, unknown>): DormantFilters 
     };
 }
 
-async function matchFor(f: DormantFilters, now: Date = new Date()): Promise<Record<string, any>> {
+export async function matchFor(f: DormantFilters, now: Date = new Date()): Promise<Record<string, any>> {
     const m: Record<string, any> = { 'dormancy.status': f.status ? f.status : { $in: DORMANT_SET } };
     if (f.country) m.country = f.country === 'XX' ? { $in: [null, ''] } : await countryCondition(f.country);
     if (f.minXaf) m['dormancy.heldXaf'] = { $gte: f.minXaf };
@@ -531,6 +531,9 @@ const hours = (n: number) => n * 3_600_000;
 export async function noteSignIn(userId: string, ctx: { country?: string | null; deviceId?: string | null } = {}, now: Date = new Date()): Promise<void> {
     try {
         if (!Types.ObjectId.isValid(userId)) return;
+        // Phase 7 part 2: a sign-in within 30 days of a réactivation counts for that campaign.
+        void import('./dormancy-campaign.service').then(m => m.noteCampaignReturn(userId, now))
+            .catch((err: any) => log.warn(`Campaign return for ${userId} not recorded: ${err?.message ?? err}`));
         const cfg = dormancyConfig();
         if (cfg.holdMode === 'off') {
             await UserModel.updateOne({ _id: userId }, { $set: { 'dormancy.lastSignInAt': now } });

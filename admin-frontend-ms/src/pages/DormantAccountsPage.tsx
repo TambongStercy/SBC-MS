@@ -7,6 +7,7 @@ import {
 import { formatDate, formatDateTime, formatMoney, formatMonthKey, formatNumber } from '../components/common/format';
 import { TimeSeriesChart } from '../components/charts/TimeSeriesChart';
 import { usePermission } from '../hooks/usePermission';
+import ReactivationPanel from '../components/finance/ReactivationPanel';
 import {
   BalanceField, DormancyStatus, DormantExport, DormantFilters, DormantRow, DormantSummary,
   downloadDormantExport, getDormantExport, getDormantList, getDormantSummary, markDormantChecked, requestDormantFreeze, startDormantExport,
@@ -16,7 +17,8 @@ import {
  * Comptes dormants (Security plan Phase 7): money held by accounts nobody
  * uses. The headline numbers come from the nightly snapshot; the list is live
  * on the stored statuses, biggest first. Actions: mark checked, ask support to
- * freeze (support decides through an approval), CSV export in the background.
+ * freeze (support decides through an approval), CSV export in the background,
+ * and the réactivation message to the filtered list (Phase 7 part 2, ReactivationPanel).
  */
 
 const STATUS_LABEL: Record<DormancyStatus, string> = { active: 'Actif', inactive: 'Inactif', dormant: 'Dormant', long_dormant: 'Dormant > 1 an' };
@@ -313,6 +315,8 @@ const DormantAccountsPage: React.FC = () => {
           {cursor && !loading && <div className="text-center"><Button size="sm" onClick={() => void load(cursor)}>Charger plus</Button></div>}
         </PanelBody>
       </Panel>
+
+      <ReactivationPanel filters={filters} />
 
       {summary?.ready && (
         <p className="text-xs text-fg-muted">

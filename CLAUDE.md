@@ -838,8 +838,19 @@ Design, limits, deploy: `docs/security-plan/phase7-dormant-accounts.md`. Admin �
   - A contact change during the hold opens one too.
 - **Actions:** « Vérifié » (note); « Geler… » files a `dormant_review` case in support's « Fraude » queue (the
   admin never freezes). CSV export is built in the background into GridFS `dormancy_exports`, deleted after 24 h.
-- **Not done:** the reactivation campaign (relance targets sponsors' filleuls only; needs an approved text from
-  Rufus), the four other balances in Blnk.
+- **Réactivation campaign (part 2, 2026-11-23):** « Message de réactivation » on the same page: email + push to
+  the filtered list, **once per member per 30 days** (`dormancy_contacts`, claimed by one conditional upsert, so
+  the database refuses a second claim). Only the **approved** text is sent (super admin edits + approves;
+  `{{nom}}` only, no link; the email adds one « Ouvrir SBC » button, the "never asks for codes" line and the
+  unsubscribe link). Left out: deleted/blocked, frozen, fraud flag, contacted < 30 days, unreachable, came back.
+  user-service `services/dormancy-campaign.service.ts` (outbox `dormancy_campaign_targets`, sender every minute)
+  → notification-service `POST /notifications/internal/reactivation/send` (daytime only, relance's mail
+  budget and daily total, never Cloudflare, suppression list incl. unsubscribes; push = announcements; one
+  delivery per member per campaign). Sending needs finance write + the admin's code. **`REACTIVATION_SEND_MODE=live`
+  is required to send to everyone; otherwise only `REACTIVATION_TEST_RECIPIENTS`** (preprod stays so: it holds
+  real members' addresses). A return within 30 days is counted; the return hold still applies.
+  Check: `src/scripts/check-dormancy-campaign.ts`; notification `src/tests/reactivation.test.ts`.
+- **Not done:** the four other balances in Blnk; Rufus's approval of the réactivation wording.
 - Checks: `user-service/src/scripts/check-dormancy.ts`, `check-dormancy-scale.ts`, admin `DormantAccountsPage.test.tsx`.
 
 ### Fraud engine: risk-service (Security plan Phase 4, part 1, 2026-11-21)

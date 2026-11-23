@@ -10,6 +10,8 @@ import { adminLimiter, strictLimiter } from '../middleware/rate-limit.middleware
 import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
 import {
     downloadDormantExport, getDormantExport, getDormantList, getDormantSummary, postDormantChecked, postDormantExport, postDormantFreezeRequest,
+    getReactivationCampaigns, getReactivationTextHandler, postApproveReactivationText, postCancelReactivationCampaign, postReactivationCampaign,
+    postReactivationPreview, putReactivationDraft,
 } from '../controllers/dormancy.controller';
 import { requireAdminStepUp } from '../middleware/admin-step-up.middleware';
 
@@ -61,6 +63,14 @@ router.get('/security/authenticator-adoption', (async (req: any, res: any) => {
 }) as any);
 
 // --- Dormant accounts (Security plan Phase 7; gateway module: finance) ---
+// Phase 7 part 2: réactivation campaign (before /dormant-accounts/:userId/…).
+router.get('/dormant-accounts/reactivation/text', getReactivationTextHandler as any);
+router.put('/dormant-accounts/reactivation/text/draft', superAdminOnly, putReactivationDraft as any);
+router.post('/dormant-accounts/reactivation/text/approve', superAdminOnly, postApproveReactivationText as any);
+router.post('/dormant-accounts/reactivation/preview', postReactivationPreview as any); // read-only POST at the gateway
+router.get('/dormant-accounts/reactivation/campaigns', getReactivationCampaigns as any);
+router.post('/dormant-accounts/reactivation/campaigns', requireAdminStepUp('reactivation_campaign'), postReactivationCampaign as any);
+router.post('/dormant-accounts/reactivation/campaigns/:campaignId/cancel', postCancelReactivationCampaign as any);
 router.get('/dormant-accounts/summary', getDormantSummary as any);
 router.get('/dormant-accounts', getDormantList as any);
 router.post('/dormant-accounts/export', postDormantExport as any); // read-only POST at the gateway

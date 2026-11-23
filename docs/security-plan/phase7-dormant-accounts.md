@@ -10,9 +10,9 @@ accounts when they come back. Branch `feature/dormant-accounts`.
 | 1. Nightly status (active / inactive / dormant / long_dormant), only for accounts holding at least 500 F (`DORMANCY_MIN_XAF`), thresholds as settings | `user-service/src/services/dormancy.service.ts` `runDormancyPass`, `jobs/dormancy.job.ts` (03:45 Douala), `config/dormancy.ts` | done |
 | 2. Commissions but no sign-in | same pass: a `commission` credit in the wallet ledger within 90 days, and the account not active | done |
 | 3. Reactivation: 72 h hold + `dormant_reactivation` case with a new device / country / contact change | `noteSignIn` (called from `verify-otp`), `watchHolds` (every 10 min), `utils/withdrawal-lock.ts` | done, **log mode** by default |
-| 4. Admin page « Comptes dormants » | `admin-frontend-ms/src/pages/DormantAccountsPage.tsx` (Finances → Comptes dormants, module finance) | done except the reactivation campaign |
+| 4. Admin page « Comptes dormants » | `admin-frontend-ms/src/pages/DormantAccountsPage.tsx` (Finances → Comptes dormants, module finance) | done |
 | 5. Endpoints `GET /api/users/admin/dormant-accounts` and `/summary`, finance read | `api/controllers/dormancy.controller.ts`, gateway `admin-routes.ts` | done |
-| Reactivation campaign through relance | — | **part 2** (see below) |
+| Reactivation campaign | user-service `services/dormancy-campaign.service.ts`, notification-service `services/reactivation.service.ts`, admin `components/finance/ReactivationPanel.tsx` | **part 2, done 2026-11-23** (see « Part 2: réactivation campaign ») |
 
 ### The status
 
@@ -114,11 +114,59 @@ Each row stores which date it used (`dormancy.basis`), and the list shows it.
 - The first pass runs 1 minute after the deploy when no snapshot exists for yesterday or today.
 - **Switching the hold on:** set `DORMANCY_REACTIVATION_HOLD=on` after 30+ days of sign-in dates (≥ 2026-12-21 on preprod). Look at `dormancy_returns` first: how many returns, and how many would have opened a case.
 
-## Part 2 / waiting for decisions
+## Part 2: réactivation campaign (2026-11-23)
+
+An email + a push to the dormant accounts of the page's list, with the same filters, at most once per
+member per 30 days. Admin « Comptes dormants » → « Message de réactivation ».
+
+- **The text.** A super admin edits a draft (objet, message, titre et texte de la notification) and
+  approves it; each approval is a new version (who, when). **Only the approved version is ever sent**,
+  and each campaign keeps a copy of the one it used. Plain text only: links and placeholders other than
+  `{{nom}}` (first name) are refused. The email always adds, outside the editable text, one button
+  « Ouvrir SBC » to the app's home, the line « SBC ne vous demandera jamais votre mot de passe ni vos
+  codes de connexion… » and the relance unsubscribe link. No amount is ever in the text.
+  The default wording is a proposal: **Rufus must read and approve it** before the first real send.
+- **Who.** The page's filters, then left out (counted by reason in the preview and the campaign):
+  deleted or blocked, frozen, fraud flag (`dormancy.fraudFlag`), contacted in the last 30 days,
+  unreachable (no usable email: none, bounced or unsubscribed, and no push device with « Annonces SBC »
+  on), and members who came back meanwhile. The same checks run again just before each send.
+- **Once per 30 days, in the database.** `dormancy_contacts` (`_id` = member) is claimed with one
+  conditional upsert (`lastAt` older than 30 days, or already this campaign's). A second campaign inside
+  the window hits the unique `_id` and is refused, however the calls interleave. A member claimed but
+  never sent anything (cancel, failure, unreachable) gets the claim back.
+- **Sending.** `dormancy_campaign_targets` (unique per campaign + member) is the outbox. The user-service
+  job (every minute) leases one member at a time and calls notification-service
+  `POST /api/notifications/internal/reactivation/send`, which:
+  - sends only 07:00–19:00 Douala (relance's hours, `RELANCE_SEND_FROM_HOUR`/`_TO_HOUR`);
+  - takes the email out of **relance's share** of the mail server (`reserveRelanceSend`: the minute's
+    leftovers after OTP, and relance's daily total `RELANCE_DAILY_EMAIL_CAP`, which the two now share),
+    never Cloudflare, never to an address on the suppression list (bounce, complaint or unsubscribe);
+  - sends the push as an announcement (held at night, not sent to members who turned announcements off);
+  - records each member once per campaign (`reactivation_deliveries`), so a retried call never sends twice.
+  No room → `deferred` with a retry time: the campaign waits (`waitUntil`), no attempt is spent.
+  notification-service down → retried with backoff, `failed` after 5 attempts.
+- **One campaign at a time**; it can be cancelled (the rest is skipped and gets its 30 days back).
+- **Return.** A sign-in within 30 days of the message counts as « revenu » for that campaign
+  (`noteSignIn` → `noteCampaignReturn`). The return still goes through the return hold
+  (`DORMANCY_REACTIVATION_HOLD`): the campaign changes nothing about withdrawals.
+- **Rights.** Reading the text, the preview and the history: finance read. Sending and cancelling:
+  finance write; sending also needs the admin's own authenticator code (`requireAdminStepUp`).
+  Editing and approving the text: super admin only (`…/reactivation/text/draft|approve`, gateway
+  module `staff`).
+- **Test mode (default).** `REACTIVATION_SEND_MODE=live` is required to send to everyone; otherwise only
+  `REACTIVATION_TEST_RECIPIENTS` (emails or user ids) are sent anything and the rest are skipped as
+  `test_mode`. Preprod stays in test mode: it holds copies of real members' addresses and push devices.
+- Routes (user-service, `/api/users/admin/dormant-accounts/reactivation/…`): `GET text`,
+  `PUT text/draft`, `POST text/approve`, `POST preview`, `GET campaigns`, `POST campaigns`,
+  `POST campaigns/:id/cancel`.
+- Checks: user-service `src/scripts/check-dormancy-campaign.ts`, notification-service
+  `src/tests/reactivation.test.ts`, admin `components/finance/ReactivationPanel.test.tsx`, gateway
+  `check-admin-permissions.ts`.
+
+## Waiting for decisions
 
 - **Rufus:**
   - Confirm the thresholds (90 / 180 / 365 proposed).
   - Decide what happens to money in long-dormant accounts. The plan says legal advice first; nothing touches balances today.
-  - Approve the reactivation message wording.
-- **Reactivation campaign:** relance today is sponsor → filleuls and cannot target arbitrary members. Part 2 adds an admin "reactivation" send, by email and push with a fixed approved text, at most once per member per 30 days, for the filtered list.
+  - Read and approve the réactivation wording (admin « Message de réactivation »), then set `REACTIVATION_SEND_MODE=live` on prod.
 - **The four other balances in Blnk** (Phase 2 leftover), so the amounts can be cross-checked with C.

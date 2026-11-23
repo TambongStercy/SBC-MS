@@ -4,6 +4,7 @@ import { authenticate, authenticateServiceRequest, requireAdmin } from '../middl
 import whatsappServiceFactory from '../../services/whatsapp-service-factory';
 import config from '../../config';
 import { otpDeliveryFor } from '../../services/otp-delivery.service';
+import { reactivationReach, sendReactivation } from '../../services/reactivation.service';
 
 const router = Router();
 
@@ -23,6 +24,35 @@ router.post('/internal/otp-delivery', authenticateServiceRequest, async (req: Re
         res.json({ success: true, data });
     } catch (error: any) {
         res.status(500).json({ success: false, message: error?.message || 'otp delivery lookup failed' });
+    }
+});
+
+// Security plan Phase 7 part 2: one member of a dormant-account « réactivation » campaign
+// (user-service owns the campaign, the approved text and the once-per-30-days rule).
+const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+router.post('/internal/reactivation/send', authenticateServiceRequest, async (req: Request, res: Response) => {
+    const b = req.body ?? {};
+    const input = {
+        campaignId: str(b.campaignId, 64), userId: str(b.userId, 64), email: str(b.email, 254) || null, name: str(b.name, 120) || null,
+        subject: str(b.subject, 160), body: str(b.body, 3000), pushTitle: str(b.pushTitle, 120), pushBody: str(b.pushBody, 400),
+    };
+    if (!input.campaignId || !/^[a-f0-9]{24}$/i.test(input.userId) || !input.subject || !input.body || !input.pushTitle || !input.pushBody) {
+        res.status(400).json({ success: false, message: 'campaignId, userId, subject, body, pushTitle and pushBody are required' });
+        return;
+    }
+    try {
+        res.json({ success: true, data: await sendReactivation(input) });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error?.message || 'reactivation send failed' });
+    }
+});
+router.post('/internal/reactivation/reach', authenticateServiceRequest, async (req: Request, res: Response) => {
+    try {
+        const emails = Array.isArray(req.body?.emails) ? req.body.emails.map(String) : [];
+        const userIds = Array.isArray(req.body?.userIds) ? req.body.userIds.map(String) : [];
+        res.json({ success: true, data: await reactivationReach(emails, userIds) });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error?.message || 'reach lookup failed' });
     }
 });
 

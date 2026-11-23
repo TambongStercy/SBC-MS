@@ -3,6 +3,9 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import {
     DormancyActionError, dormancySummary, exportStatus, listDormant, markChecked, openExportFile, parseDormantFilters, requestFreeze, startExport,
 } from '../../services/dormancy.service';
+import {
+    approveReactivationText, cancelCampaign, createCampaign, getReactivationText, listCampaigns, previewCampaign, saveReactivationDraft,
+} from '../../services/dormancy-campaign.service';
 import logger from '../../utils/logger';
 
 const log = logger.getLogger('DormancyController');
@@ -81,4 +84,43 @@ export async function postDormantFreezeRequest(req: AuthenticatedRequest, res: R
         const data = await requestFreeze(req.params.userId, adminId(req), reason);
         res.status(201).json({ success: true, data });
     } catch (err) { fail(res, err, 'Dormant freeze request'); }
+}
+
+// ---------------------------------------------------------------- Phase 7 part 2: réactivation campaign
+// Text read: finance read. Draft save and approval: super admin only (route + gateway).
+// Preview: finance read (a read-only POST). Send and cancel: finance write; send needs the admin's code.
+
+export async function getReactivationTextHandler(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    try { res.json({ success: true, data: await getReactivationText() }); }
+    catch (err) { fail(res, err, 'Reactivation text'); }
+}
+
+export async function putReactivationDraft(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try { res.json({ success: true, data: await saveReactivationDraft(req.body ?? {}, adminId(req)) }); }
+    catch (err) { fail(res, err, 'Reactivation draft'); }
+}
+
+export async function postApproveReactivationText(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try { res.json({ success: true, data: await approveReactivationText(adminId(req)) }); }
+    catch (err) { fail(res, err, 'Reactivation approval'); }
+}
+
+export async function postReactivationPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try { res.json({ success: true, data: await previewCampaign(parseDormantFilters({ ...(req.body?.filters ?? {}) })) }); }
+    catch (err) { fail(res, err, 'Reactivation preview'); }
+}
+
+export async function postReactivationCampaign(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try { res.status(202).json({ success: true, data: await createCampaign(parseDormantFilters({ ...(req.body?.filters ?? {}) }), adminId(req)) }); }
+    catch (err) { fail(res, err, 'Reactivation campaign'); }
+}
+
+export async function getReactivationCampaigns(_req: AuthenticatedRequest, res: Response): Promise<void> {
+    try { res.json({ success: true, data: await listCampaigns() }); }
+    catch (err) { fail(res, err, 'Reactivation campaigns'); }
+}
+
+export async function postCancelReactivationCampaign(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try { res.json({ success: true, data: await cancelCampaign(req.params.campaignId, adminId(req)) }); }
+    catch (err) { fail(res, err, 'Reactivation cancel'); }
 }
