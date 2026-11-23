@@ -11,7 +11,7 @@ contacts the member. Branch `feature/kyc-level1`.
 | 1. Second server, private link + shared secret | the **existing secondary server** (`ubuntu@169.58.159.177`, Blnk's: 8 cores, 23 GB, 282 GB free); HTTPS + main-server-IP allow-list + HMAC per request | done differently (below) |
 | 2. kyc-worker (Python, Docker), own database, results to risk-service as signals + score | `kyc-worker/` (FastAPI); SQLite for DNS answers only; risk-service `kycresults` | done |
 | 3. Level 1: phone, countries, operator, email domain, disposable, variants, random-looking | `kyc-worker/app/checks.py` | done, except Gravatar and the MoMo holder name (below) |
-| 4. Level 2 (Holehe / SEON) on risk triggers | — | waits for the decision (SEON test on 500 vs Holehe) |
+| 4. Level 2 (Holehe / SEON) on risk triggers | `kyc-worker/app/l2_*.py` (secondary, own container) + risk-service `kyc-l2.service.ts` | done 2026-11-23 with Holehe + Gravatar (no paid service), log mode (below) |
 | 5. Level 3 (ID + selfie) | `kyc-worker/app/l3_*.py` (secondary) + support « Identités » | done 2026-11-22, open source instead of Smile ID (below) |
 | 6. Throttled night backfill of level 1 | risk-service nightly refresh, 02:05–05:00 Douala, 50/s | done |
 
@@ -192,6 +192,88 @@ Decided 2026-11-22: no paid or keyed service, so not Smile ID.
   `KYC_MODELS_DIR` holds the models), support `src/tests/identity.test.ts`, support-frontend
   `IdentityPage.test.tsx`.
 
+## Level 2: where else the e-mail address is used (2026-11-23)
+
+User's call 2026-11-23: "build level 2 with the best tool". With no paid or keyed services
+(decision 2026-11-22), SEON is out: **Holehe 1.61** (GPL-3.0, open source, run as a separate
+process on our own server, not distributed) asks sites whether an address is registered, plus
+our own **Gravatar** check. It is a hint shown to support, never a decision.
+
+**Who is looked up** (risk-service `services/kyc-l2.service.ts`; never a backfill of everyone):
+
+| Trigger | When |
+|---|---|
+| `score_hold`, `score_require_code` | the fraud engine's score reaches require_code (40) or hold (70); a sweep every 10 min |
+| `auth_setup_review` | user-service's authenticator setup review found a reason (other country, recent contact change, flagged); the `authenticator_change` event now carries `review: true` and is sent once the review has answered |
+| `dormant_reactivated` | a dormant account comes back |
+| `contact_change_flagged` | an e-mail, phone or MoMo change by a member the engine already flags |
+
+A member is looked up at most once per `KYC_L2_RECHECK_DAYS` (90). An e-mail change first sends
+`forget` (the old result is dropped on the secondary), then a new lookup if the member is flagged.
+The address is read (read-only) only when the outbox row is sent; `kycl2queue` and
+`kycl2requests` on the main server hold ids, triggers and outcomes only.
+
+**On the secondary** (`kyc-worker`):
+- `POST /v1/l2/enqueue {items: [{ref, email, trigger}]}` (≤ 100) answers per member: `queued`,
+  `fresh` (looked up within 90 days, or the same address on another account: that result is
+  copied, no new lookup), `off`, `not_allowlisted`, `invalid`. Only `queued` keeps the address,
+  in `l2_queue`, until it is looked up (then deleted, `secure_delete`).
+- `POST /v1/l2/forget {refs}`; `/v1/results` adds `level2` to the member's result; `/v1/status`
+  has a `level2` block (mode, allowlist size, queue, results, lookups today).
+- **kyc-l2 container** (`python -m app.l2_runner`, 0.5 CPU / 256 MB): one address at a time, at
+  least `KYC_L2_MIN_GAP_S` (60) apart, at most `KYC_L2_PER_DAY` (500) per Douala day (then the
+  queue waits for midnight), each site at most `KYC_L2_MODULE_PER_HOUR` (30) times an hour, each
+  module with its own timeout (`KYC_L2_MODULE_TIMEOUT_S`, 15). A site that hangs cannot delay
+  levels 1 and 3: they run in other containers.
+
+**Which Holehe modules may run** (`app/l2_checks.py`):
+- only modules whose method is `register` (they ask the sign-up form, which sends nothing to the
+  address). Password-recovery and login modules, which could e-mail or alert the person, never
+  run, whatever `KYC_L2_MODULES` says;
+- never the porn, medical and osint (people-search broker) categories: being registered there is
+  sensitive data we must not learn;
+- default list: 20 mainstream services (Instagram, X, Discord, Pinterest, Spotify, Google,
+  GitHub, Imgur, Tumblr, Firefox, LastPass, Quora, Wattpad, Freelancer, SoundCloud, Strava,
+  Internet Archive, Codecademy, Envato, Nike). Holehe is from 2022: on 2026-11-23, 8 of the 20
+  still answered (`python -m app.l2_runner --selftest` asks them about a made-up address on our
+  own domain and prints which answer; run it after any change).
+- Gravatar: `https://gravatar.com/avatar/<sha256>?d=404` (the hash only, never the address).
+
+**What is kept** (`l2_results`, 12 months): the names of the services that said "registered",
+how many were asked and answered, Gravatar yes / no / no answer, the trigger, an HMAC of the
+address. Never a site's answer: some Holehe modules return a masked recovery address or phone,
+which is dropped. Logs never carry the address (httpx's request log is silenced).
+
+**Score** (informational, added to level 1's in `/v1/results`): `email_no_footprint` +15 (5 or
+more services answered, none knows the address, no Gravatar: a fresh or throwaway address);
+`email_established` −10 (3 or more services, or a Gravatar). Nothing reads it to decide.
+
+**Support:** the « Risque » panel shows « Présence de l’e-mail ailleurs (KYC niveau 2) »: the
+services found, answers out of asked, Gravatar, why it was looked up.
+
+**Switches** (secondary `.env`): `KYC_L2_MODE=off|log` (default off); `KYC_L2_ONLY_EMAILS` (comma
+list: when set, every other address is refused without being stored); `KYC_L2_MODULES`,
+`KYC_L2_PER_DAY`, `KYC_L2_MIN_GAP_S`, `KYC_L2_MODULE_PER_HOUR`, `KYC_L2_MODULE_TIMEOUT_S`,
+`KYC_L2_RECHECK_DAYS`, `KYC_L2_RETENTION_DAYS`, the two point values. risk-service:
+`KYC_L2_DISABLED=true` stops the feeder; `KYC_L2_RECHECK_DAYS`.
+
+**Preprod (2026-11-23):** `KYC_L2_MODE=log` with `KYC_L2_ONLY_EMAILS` set to test addresses only:
+preprod holds copies of real members, so their addresses are refused (`not_allowlisted`, asked
+again the next day) and never sent to any site.
+
+**Before lifting the allowlist (the plan's safety gate):** "no e-mail or SMS reaches a test
+member". Create 20 accounts you control on the default services (real mailboxes you can read,
+some with a phone), put those 20 addresses in `KYC_L2_ONLY_EMAILS`, trigger lookups (or insert
+them in the queue), and check for a week that no mailbox or phone received anything, and that
+each module that answers says "registered" for them (true positives). Drop any module that
+mails or misses from `KYC_L2_MODULES`. Then empty the allowlist (preprod first, prod with the
+release).
+
+Checks: kyc-worker `tests/test_l2.py` (module rules against the real Holehe package, lookup with
+fake sites, store, pacing, API), risk-service `src/scripts/check-kyc-l2.ts` (triggers, outbox,
+outcomes, forget, back-off, member view), support `risk-card.test.ts`, support-frontend
+`MemberRiskPanel.test.tsx`.
+
 ## Deploy (preprod)
 
 Each step needs Sterling's OK. The secrets are generated on the servers and never printed.
@@ -224,9 +306,8 @@ main-server result. Main-server load drops: no more checks or variant lookups th
 
 ## Waiting for decisions
 
-- **Level 2 (Sterling):** test SEON on 500 accounts first, otherwise Holehe. Holehe asks each
-  site's sign-up or reset page, so the plan's "no email or SMS reaches a test member" check
-  (20 controlled accounts) must pass first. Level 2 is capped at 500 lookups a day.
+- **Level 2:** built with Holehe (2026-11-23, SEON excluded: paid). Lifting the preprod
+  allowlist waits for the 20-controlled-account check described in « Level 2 ».
 - **MoMo holder name:** ask CinetPay and MoneyFusion.
-- **Gravatar:** add it to the privacy policy (it is a transfer), then switch it on.
+- **Gravatar:** checked in level 2 (hash only); the privacy policy paragraph covers it.
 - **Using the score in decisions:** with Phase 4 part 2 (live events, enforce mode).

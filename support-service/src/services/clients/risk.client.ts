@@ -15,7 +15,11 @@ export interface RiskMemberView {
     groupSize: number; linked: { userId: string; score: number; decision: string; country: string | null }[];
     identifiers: { kind: 'phone' | 'device'; uses: string[]; tail: string; count: number; hub: boolean }[];
     events?: { type: string; at: string; kind: string | null; amountXaf: number | null; numberTail: string | null }[];
-    kyc: { level: number; score: number; band: 'low' | 'medium' | 'high'; reasons: string[]; signals: any; variantAccounts: number; checkedAt: string } | null;
+    kyc: {
+        level: number; score: number; band: 'low' | 'medium' | 'high'; reasons: string[]; signals: any; variantAccounts: number; checkedAt: string;
+        /** KYC level 2 (flagged members only): services that know the address, Gravatar. */
+        level2?: { found: string[]; asked: number; answered: number; gravatar: boolean | null; trigger: string | null; checkedAt: string; reasons: string[]; points: number } | null;
+    } | null;
     scoredAt: string | null;
     release?: { at: string; by: { id: string; name: string } | null; reason: string | null; scoreAtRelease: number; endedAt: string | null; active: boolean } | null;
 }

@@ -178,3 +178,37 @@ KycResultSchema.index({ emailKey: 1 }, { sparse: true });
 KycResultSchema.index({ band: 1, score: -1 });
 KycResultSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 export const KycResultModel = model('KycResult', KycResultSchema);
+
+/**
+ * Security plan Phase 8: KYC level 2 (where else the e-mail address is used, run on the
+ * secondary server). Main-server side: an outbox and a record of what was asked.
+ *   kycl2queue     one row per member to send (_id = userId): `check` (the secondary looks the
+ *                  address up) or `forget` (the address changed: drop the old result). No address.
+ *   kycl2requests  the last request per member: trigger, the secondary's answer, and when the
+ *                  member may be asked about again (`retryAt`), so a flagged member is looked up
+ *                  once per KYC_L2_RECHECK_DAYS, not on every event.
+ */
+const KycL2QueueSchema = new Schema({
+    _id: { type: String },
+    action: { type: String, enum: ['check', 'forget'], required: true },
+    trigger: { type: String, required: true },
+    enqueuedAt: { type: Date, required: true },
+    nextAt: { type: Date, required: true },
+    attempts: { type: Number, default: 0 },
+    lastError: { type: String, default: null },
+    claimedUntil: { type: Date, default: null },
+    claimToken: { type: String, default: null },
+}, { collection: 'kycl2queue', versionKey: false });
+KycL2QueueSchema.index({ nextAt: 1 });
+KycL2QueueSchema.index({ claimToken: 1 }, { sparse: true });
+export const KycL2QueueModel = model('KycL2Queue', KycL2QueueSchema);
+
+const KycL2RequestSchema = new Schema({
+    _id: { type: String },
+    trigger: { type: String, required: true },
+    outcome: { type: String, required: true }, // queued | fresh | off | not_allowlisted | invalid | no_email | gone
+    at: { type: Date, required: true },
+    retryAt: { type: Date, required: true },
+}, { collection: 'kycl2requests', versionKey: false });
+KycL2RequestSchema.index({ retryAt: 1 });
+export const KycL2RequestModel = model('KycL2Request', KycL2RequestSchema);

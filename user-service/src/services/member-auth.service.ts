@@ -235,7 +235,6 @@ class MemberAuthService {
         );
         if (r.modifiedCount !== 1) throw new AppError('La configuration a déjà été terminée.', 409);
         log.info(`User ${user._id} set up an authenticator app.`);
-        riskEvent('authenticator_change', user._id, { kind: 'setup' }); // Phase 4: a withdrawal soon after scores
         // Plan item 1: withdrawals wait a while after setup (AUTHENTICATOR_SETUP_LOCK_HOURS, 0 = off).
         // Never shortens a longer lock already running.
         if (memberAuthConfig.setupLockHours > 0) {
@@ -246,7 +245,11 @@ class MemberAuthService {
             );
         }
         // Plan item 3: a risky setup goes to support (log mode: the setup stands).
-        void this.reviewSetup(user, now).catch(e => log.warn(`Setup review failed for user ${user._id}: ${e?.message ?? e}`));
+        // Phase 4: a withdrawal soon after the setup scores; `review` (a risky setup) also asks
+        // KYC level 2 to look the e-mail up (Phase 8). Sent once the review has answered.
+        void this.reviewSetup(user, now)
+            .catch((e): string[] => { log.warn(`Setup review failed for user ${user._id}: ${e?.message ?? e}`); return []; })
+            .then(reasons => riskEvent('authenticator_change', user._id, { kind: 'setup', ...(reasons.length ? { review: true } : {}) }));
         alert(user, 'Application d’authentification activée sur votre compte SBC',
             'L’application d’authentification vient d’être activée sur votre compte SBC. Elle vous sera demandée pour chaque retrait et pour changer votre numéro Mobile Money ou votre portefeuille crypto. Si ce n’était pas vous, changez votre mot de passe et contactez immédiatement le support.');
         return { backupCodes: codes, enrolledAt: now.toISOString() };

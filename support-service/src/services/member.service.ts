@@ -63,7 +63,7 @@ export const payins = (userId: string, limit: number) => memberPayins(userId, li
  * Security plan Phase 4: the fraud engine's view of the member, for finance
  * managers (risk.read): score and decision, why, the linked accounts (with
  * their names), the shared numbers/devices by their last 3 digits, recent
- * events, KYC level 1. `available: false` when risk-service is not connected.
+ * events, KYC levels 1 and 2. `available: false` when risk-service is not connected.
  */
 export async function riskCard(userId: string) {
     if (!/^[a-f0-9]{24}$/i.test(userId)) throw notFound('Membre introuvable.');
@@ -79,7 +79,10 @@ export async function riskCard(userId: string) {
         identifiers: v.identifiers,
         events: v.events ?? [],
         release: v.release ?? null,
-        kyc: v.kyc ? { score: v.kyc.score, band: v.kyc.band, reasons: v.kyc.reasons, emailDomain: v.kyc.signals?.email?.domain ?? null, checkedAt: v.kyc.checkedAt, variantAccounts: v.kyc.variantAccounts } : null,
+        kyc: v.kyc ? {
+            score: v.kyc.score, band: v.kyc.band, reasons: v.kyc.reasons, emailDomain: v.kyc.signals?.email?.domain ?? null, checkedAt: v.kyc.checkedAt, variantAccounts: v.kyc.variantAccounts,
+            level2: v.kyc.level2 ? { found: v.kyc.level2.found, asked: v.kyc.level2.asked, answered: v.kyc.level2.answered, gravatar: v.kyc.level2.gravatar, trigger: v.kyc.level2.trigger, checkedAt: v.kyc.level2.checkedAt } : null,
+        } : null,
     };
 }
 

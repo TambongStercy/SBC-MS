@@ -13,7 +13,10 @@ const VIEW = {
     linked: [{ userId: LINKED, score: 90, decision: 'hold', country: null }],
     identifiers: [{ kind: 'phone', uses: ['payout_number'], tail: '777', count: 2, hub: false }],
     events: [{ type: 'withdrawal_requested', at: '2026-11-22T07:00:00.000Z', kind: null, amountXaf: 40000, numberTail: '777' }],
-    kyc: { level: 1, score: 15, band: 'low', reasons: ['email_no_mx'], signals: { email: { domain: 'gmail.con' } }, variantAccounts: 0, checkedAt: '2026-11-22T02:10:00.000Z' },
+    kyc: {
+        level: 2, score: 15, band: 'low', reasons: ['email_no_mx'], signals: { email: { domain: 'gmail.con' } }, variantAccounts: 0, checkedAt: '2026-11-22T02:10:00.000Z',
+        level2: { found: ['github'], asked: 20, answered: 8, gravatar: false, trigger: 'score_hold', checkedAt: '2026-11-23T10:00:00.000Z', reasons: [], points: 0 },
+    },
 };
 
 let f: { calls: FetchCall[]; restore: () => void };
@@ -38,7 +41,7 @@ describe('member risk card', () => {
         expect(d).toMatchObject({ available: true, score: 120, decision: 'hold', groupSize: 2 });
         expect(d.reasons.map((x: any) => `${x.rule}:${x.live}`)).toEqual(['shared_payout_number:false', 'self_referral:false', 'contact_change_withdrawal:true']);
         expect(d.linked[0]).toMatchObject({ userId: LINKED, name: 'Membre 02', country: 'CM' });
-        expect(d.kyc).toMatchObject({ band: 'low', emailDomain: 'gmail.con' });
+        expect(d.kyc).toMatchObject({ band: 'low', emailDomain: 'gmail.con', level2: { found: ['github'], answered: 8, asked: 20, gravatar: false, trigger: 'score_hold' } });
         expect(JSON.stringify(d)).not.toContain('signals');
         const call = f.calls.find((c) => c.url.includes('/api/risk/internal/members/'))!;
         expect(call.headers.authorization).toBe('Bearer test-service-secret');

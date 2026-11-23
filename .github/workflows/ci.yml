@@ -103,11 +103,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Security plan Phase 8. Unit and API tests only: no DNS (the lookup is faked).
+      # Security plan Phase 8. Unit and API tests only: no DNS, no site asked (lookups are faked;
+      # Holehe is installed only to check which of its modules may run).
       - name: Install and test
         working-directory: kyc-worker
         run: |
-          pip install -r requirements-dev.txt
+          pip install -r requirements-dev.txt -r requirements-l2.txt
+          pip install --no-deps --no-build-isolation --require-hashes -r requirements-holehe.txt
           python -m pytest -q
 
   build-admin:

@@ -3,8 +3,9 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 KYC_DB_PATH=/data/kyc.sqlite
 RUN useradd --system --uid 10001 --home /app kyc && mkdir -p /data && chown kyc /data
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-l2.txt requirements-holehe.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-l2.txt \
+ && pip install --no-cache-dir --no-deps --no-build-isolation --require-hashes -r requirements-holehe.txt
 COPY app ./app
 USER kyc
 EXPOSE 5201
