@@ -7,7 +7,7 @@ import { TransactionStatus, TransactionType, Currency, ITransaction } from '../d
 import PaymentIntentModel from '../database/models/PaymentIntent';
 import TransactionModel from '../database/models/transaction.model';
 import pendingPayoutWebhookModel from '../database/models/pending-payout-webhook.model';
-import { LedgerCheck, userServiceClient, UserDetails, UserDetailsWithMomo } from './clients/user.service.client';
+import { LedgerCheck, userServiceClient, UserDetails, UserDetailsWithMomo, WithdrawalBanCheck } from './clients/user.service.client';
 import { productServiceClient } from './clients/product.service.client';
 import notificationService, { DeliveryChannel } from './clients/notification.service.client';
 import logger from '../utils/logger';
@@ -45,6 +45,36 @@ import { memberFailureText } from '../utils/member-failure-text';
 const host = 'https://sniperbuisnesscenter.com';
 
 const log = logger.getLogger('PaymentService');
+
+/** What a withdrawal attempt is about, for the no-referral rule's case (optional). */
+export interface WithdrawalAttempt { amount?: number; currency?: string; amountXaf?: number; transactionId?: string; dryRun?: boolean }
+
+/** NO_REFERRAL_BAN=off|log|enforce (default off), the same variable as user-service's. */
+export const noReferralBanMode = (): 'off' | 'log' | 'enforce' => {
+    const m = String(process.env.NO_REFERRAL_BAN || 'off').trim().toLowerCase();
+    return m === 'log' || m === 'enforce' ? m : 'off';
+};
+
+/** Member app contract: 403 `{ success:false, code:'ACCOUNT_BANNED', message }` (controllers pass `code` through). */
+export const ACCOUNT_BANNED_MEMBER_MESSAGE = 'Votre compte a été suspendu par mesure de sécurité : ce retrait ne peut pas être effectué. Pour en savoir plus, contactez le support SBC avec « Signaler un problème » depuis la page de connexion.';
+function accountBannedError(audience: 'member' | 'admin'): AppError {
+    return Object.assign(new AppError(audience === 'admin'
+        ? 'Compte suspendu (règle « retrait sans filleul ») : rien ne peut sortir de ce compte tant que le support n’a pas levé la suspension.'
+        : ACCOUNT_BANNED_MEMBER_MESSAGE, 403), { code: 'ACCOUNT_BANNED' });
+}
+function banReasonsText(r: WithdrawalBanCheck): string {
+    const parts: string[] = [];
+    const d = r.details;
+    if (r.reasons.includes('unexplained_balance') && d) {
+        const bad = (d.balances ?? []).filter((c) => c.unexplained);
+        const list = bad.length ? bad : [{ currency: d.currency, a: d.a, b: d.b }];
+        parts.push(`solde non justifié par les mouvements (${list.map((c) => `${c.currency} : solde ${c.a}, mouvements ${c.b ?? '—'}`).join(' ; ')})`);
+    }
+    if (r.reasons.includes('commission_without_referrals') && d) {
+        parts.push(`commissions de parrainage reçues sans filleul (${d.commissionCredits} XAF${d.commissionCreditsUsd ? `, ${d.commissionCreditsUsd} USD` : ''})`);
+    }
+    return parts.join(' et ') || 'compte déjà suspendu';
+}
 
 // Mapping of country codes to dialing codes
 const countryDialingCodes: { [key: string]: string } = {
@@ -694,7 +724,60 @@ class PaymentService {
         throw Object.assign(new AppError('Votre retrait est bloqué le temps d’une vérification de sécurité. Envoyez votre pièce d’identité et un selfie depuis « Aide » : le support SBC examinera votre compte.', 403), { code: 'RISK_HOLD' });
     }
 
-    public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member'): Promise<void> {
+    /**
+     * No-referral withdrawal rule (Sterling / Rufus 2026-11-23, user-service account-ban.service):
+     * a member with no filleul who asks for a withdrawal while holding money the ledger cannot
+     * explain (A > B, or referral commissions) is suspended on the spot and support is alerted.
+     * NO_REFERRAL_BAN (same variable as user-service): off = not asked; log = asked, a would-be ban
+     * opens a warning case, nothing refused, user-service down = go on; enforce = user-service bans,
+     * this refuses 403 ACCOUNT_BANNED and files a critical case, user-service down = 503 (never paid blind).
+     * `dryRun` (failure drills): asked, never bans, never files a case.
+     */
+    private async assertNoReferralRule(userId: string | Types.ObjectId, attempt: WithdrawalAttempt = {}): Promise<void> {
+        const mode = noReferralBanMode();
+        if (mode === 'off') return;
+        const uid = userId.toString();
+        let r: WithdrawalBanCheck;
+        try {
+            r = await userServiceClient.withdrawalBanCheck(uid, {
+                amount: attempt.amount, currency: attempt.currency, transactionId: attempt.transactionId, dryRun: attempt.dryRun === true,
+            });
+        } catch (error: any) {
+            log.error(`No-referral ban check unavailable for user ${uid} (${mode}): ${error.message}`);
+            if (mode === 'enforce') throw new AppError('Les retraits sont momentanément indisponibles (vérification de sécurité). Réessayez dans quelques minutes.', 503);
+            return;
+        }
+        if (attempt.dryRun) return;
+        const amountText = attempt.amount != null ? ` Retrait demandé : ${attempt.amount} ${attempt.currency ?? ''}`.trimEnd() + '.' : '';
+        if (r.banned) {
+            const banAt = r.ban?.at ?? 'unknown';
+            log.warn(`Withdrawal refused for user ${uid}: account banned by the no-referral rule (${r.reasons.join(', ') || 'already banned'})`);
+            void openSupportCase({
+                type: 'no_referral_withdrawal_ban', dedupKey: `noref-ban:${uid}:${banAt}`, severity: 'critical',
+                subject: { userId: uid, ...(attempt.transactionId ? { transactionId: attempt.transactionId } : {}) },
+                summary: `Compte suspendu automatiquement : retrait demandé sans aucun filleul, ${banReasonsText(r)}.${amountText} À examiner : lever la suspension depuis la fiche du membre si l’argent est légitime.`,
+                details: { reasons: r.reasons, evaluation: r.details, ban: r.ban, attempt: { amount: attempt.amount ?? null, currency: attempt.currency ?? null, transactionId: attempt.transactionId ?? null }, mode },
+                ...(attempt.amountXaf != null ? { amount: attempt.amountXaf } : {}),
+            });
+            if (r.reasons.includes('unexplained_balance') && r.details) {
+                riskEvent('balance_mismatch', uid, { currency: r.details.currency, key: `${uid}:${r.details.currency}:${r.details.a}:${r.details.b}:noref` });
+            }
+            throw accountBannedError('member');
+        }
+        if (r.suspicious) {
+            // log mode: what enforce would have done, for the shadow period (no alert to anyone's phone).
+            log.warn(`No-referral rule (log) user ${uid}: WOULD BAN (${r.reasons.join(', ')})`);
+            void openSupportCase({
+                type: 'no_referral_withdrawal_ban', dedupKey: `noref-ban:log:${uid}:${new Date().toISOString().slice(0, 10)}`, severity: 'warning',
+                subject: { userId: uid },
+                summary: `Mode observation : ce compte aurait été suspendu (retrait sans aucun filleul, ${banReasonsText(r)}).${amountText} Rien n’a été bloqué.`,
+                details: { reasons: r.reasons, evaluation: r.details, attempt: { amount: attempt.amount ?? null, currency: attempt.currency ?? null }, mode },
+                ...(attempt.amountXaf != null ? { amount: attempt.amountXaf } : {}),
+            });
+        }
+    }
+
+    public async assertWithdrawalsNotLocked(userId: string | Types.ObjectId, audience: 'member' | 'admin' = 'member', attempt: WithdrawalAttempt = {}): Promise<void> {
         let lock;
         try {
             lock = await userServiceClient.getWithdrawalLock(userId.toString());
@@ -702,7 +785,14 @@ class PaymentService {
             log.error(`Withdrawal lock check failed for user ${userId}: ${error.message}`);
             throw new AppError('Les retraits sont momentanément indisponibles. Veuillez réessayer dans quelques minutes.', 503);
         }
+        // Account suspended (user-service account-ban.service): nothing leaves, member or admin path.
+        if (lock.locked && lock.reason === 'account_banned') {
+            log.warn(`Withdrawal refused for user ${userId}: account banned (${audience})`);
+            throw accountBannedError(audience);
+        }
         if (!lock.locked || !lock.until) {
+            // Before the ledger and fraud checks: the money must not move, whatever they say.
+            if (audience === 'member') await this.assertNoReferralRule(userId, attempt);
             await this.assertLedgerAgrees(userId, audience);
             await this.logRiskDecision(userId, audience);
             return;
@@ -777,7 +867,7 @@ class PaymentService {
         }
         // --- End Global Withdrawal Control Check ---
 
-        await this.assertWithdrawalsNotLocked(userId);
+        await this.assertWithdrawalsNotLocked(userId, 'member', { amount: netAmountDesired, currency: 'net (devise Mobile Money)' });
         await this.assertMemberAuthenticator(userId);
 
         // --- Daily Withdrawal Limit Check ---
@@ -1112,7 +1202,7 @@ class PaymentService {
                 throw new AppError(`Withdrawal transaction is not awaiting OTP verification. Current status: ${transaction.status}.`, 400);
             }
 
-            await this.assertWithdrawalsNotLocked(transaction.userId);
+            await this.assertWithdrawalsNotLocked(transaction.userId, 'member', { amount: transaction.amount, currency: String(transaction.currency), transactionId: transaction.transactionId, ...(String(transaction.currency) === 'XAF' ? { amountXaf: transaction.amount } : {}) });
 
             // Check OTP and expiry
             if (!transaction.verificationCode || !transaction.verificationExpiry) {
@@ -1673,7 +1763,7 @@ class PaymentService {
             log.info(`Processing payment of ${amount} ${currency} from user ${fromUserId} to ${toUserId}`);
 
             // A transfer to another account is a withdrawal by another name.
-            await this.assertWithdrawalsNotLocked(fromUserId);
+            await this.assertWithdrawalsNotLocked(fromUserId, 'member', { amount, currency: String(currency) });
 
             // Take the money first, in one conditional write (balance - debt -
             // reserved must cover it): a check-then-debit let two transfers, or a
@@ -2459,7 +2549,7 @@ class PaymentService {
         try {
             log.info(`Creating crypto payout for user ${userId}: ${netAmountDesired} ${cryptoCurrency} to ${cryptoAddress}`);
 
-            await this.assertWithdrawalsNotLocked(userId);
+            await this.assertWithdrawalsNotLocked(userId, 'member', { amount: netAmountDesired, currency: String(cryptoCurrency) });
 
             // Validate withdrawal against user's balance and limits from the user-service
             const limitCheck = await userServiceClient.checkWithdrawalLimits(userId.toString(), netAmountDesired);
@@ -2577,7 +2667,7 @@ class PaymentService {
         }
         // --- End Global Withdrawal Control Check ---
 
-        await this.assertWithdrawalsNotLocked(userId);
+        await this.assertWithdrawalsNotLocked(userId, 'member', { amount: usdAmount, currency: 'USD' });
         await this.assertMemberAuthenticator(userId);
 
         // --- Daily Withdrawal Limit Check ---

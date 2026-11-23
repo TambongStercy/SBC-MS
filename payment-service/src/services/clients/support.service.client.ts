@@ -22,7 +22,9 @@ export type SupportCaseType =
     | 'activation' | 'withdrawal_divergence' | 'debit_missing' | 'paid_not_debited'
     | 'duplicate_callback' | 'unknown_status' | 'amount_mismatch' | 'ledger_mismatch'
     // Security plan Phase 5: fraud cases (the fraud engine, Phase 4, opens them).
-    | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation';
+    | 'self_referral' | 'shared_payout_number' | 'multi_account' | 'abnormal_behavior' | 'geo_anomaly' | 'dormant_reactivation'
+    // Account suspended on a withdrawal (no filleul + unexplained money, 2026-11-23).
+    | 'no_referral_withdrawal_ban';
 
 export interface SupportCaseInput {
     type: SupportCaseType;
