@@ -1,4 +1,5 @@
 import { bindAtSignIn, revokeSessionKey } from '../../services/session-keys.service';
+import { endCookieSession, openCookieSession, wantsCookieSession } from '../../services/member-session.service';
 import { Request, Response } from 'express';
 import { userService } from '../../services/user.service';
 import logger from '../../utils/logger';
@@ -912,8 +913,8 @@ export class UserController {
             const token = (result as any).token as string | undefined;
             if (token) {
                 // No code at sign-up (email verified after payment): the session opens now.
-                const user = await this.startSession(req, result.userId, token);
-                res.status(200).json({ success: true, data: { message: result.message, userId: result.userId, token, user } });
+                const { user, grant } = await this.startSession(req, res, result.userId, token);
+                res.status(200).json({ success: true, data: { message: result.message, userId: result.userId, ...grant, user } });
                 recordLogin(String(result.userId), req);
             } else {
                 res.status(200).json({ success: true, data: result }); // 200 OK, indicating next step is needed
@@ -987,8 +988,8 @@ export class UserController {
             const result = await this.userService.loginUser(email, normalizedPhone || '', password, req.ip);
             if (result.token) {
                 // Unpaid and unverified account: the password is enough (email verified after payment).
-                const user = await this.startSession(req, result.userId, result.token);
-                res.status(200).json({ success: true, data: { message: result.message, userId: result.userId, otpSent: false, token: result.token, user } });
+                const { user, grant } = await this.startSession(req, res, result.userId, result.token);
+                res.status(200).json({ success: true, data: { message: result.message, userId: result.userId, otpSent: false, ...grant, user } });
                 recordPasswordStep(signin, normalizedPhone || email || typed(), 'signed_in', result.userId);
                 recordLogin(String(result.userId), req);
                 return;
@@ -1063,10 +1064,32 @@ export class UserController {
     }
 
     /** What the code step does once a session is granted: device key, sign-in date, profile. */
-    private async startSession(req: Request, userId: string, token: string) {
-        await bindAtSignIn(token, String(userId), req.body?.devicePublicKey, req.header('x-sbc-device'));
+    private async startSession(req: Request, res: Response, userId: string, token: string) {
+        const grant = await this.grantSession(req, res, userId, token);
         await noteSignIn(String(userId), { country: req.header('x-sbc-geo'), deviceId: req.header('x-sbc-device') });
-        return this.userService.getUserProfile(String(userId));
+        return { user: await this.userService.getUserProfile(String(userId)), grant };
+    }
+
+    /**
+     * Security plan Phase 9: how a granted session reaches the browser. A web app that asks for
+     * it (`X-SBC-Session: cookie`, SESSION_COOKIES=on) gets HttpOnly cookies and no token in the
+     * body (`session: 'cookie'`); every other client gets the token as before. Either way the
+     * browser's signing key is bound to the token it will use.
+     */
+    private async grantSession(req: Request, res: Response, userId: string, token: string): Promise<{ token?: string; session?: 'cookie' }> {
+        if (wantsCookieSession(req)) {
+            try {
+                const u = await UserModel.findById(userId).select('email role').lean();
+                if (u) {
+                    await openCookieSession(req, res, u as any, { publicKey: req.body?.devicePublicKey });
+                    return { session: 'cookie' };
+                }
+            } catch (err: any) {
+                this.log.error(`Cookie session for ${userId} failed, token in the body instead: ${err?.message ?? err}`);
+            }
+        }
+        await bindAtSignIn(token, String(userId), req.body?.devicePublicKey, req.header('x-sbc-device'));
+        return { token };
     }
 
     /** @route POST /users/me/verify-email/request — the code to the account's email (after payment). */
@@ -1106,11 +1129,11 @@ export class UserController {
             if (result.isValid && result.newToken) {
                 // If valid and a new token was generated, return it
                 this.log.info(`OTP verification successful for userId: ${userId}`);
-                // Security plan Phase 9: the browser's signing key, bound to this token.
-                await bindAtSignIn(result.newToken, String(userId), req.body?.devicePublicKey, req.header('x-sbc-device'));
+                // Security plan Phase 9: the session (cookies or token), the browser's signing key bound to it.
+                const grant = await this.grantSession(req, res, String(userId), result.newToken);
                 // Security plan Phase 7: the sign-in date; a dormant account coming back is held before it gets its token.
                 await noteSignIn(String(userId), { country: req.header('x-sbc-geo'), deviceId: req.header('x-sbc-device') });
-                res.status(200).json({ success: true, message: 'Verification successful', data: { token: result.newToken, user: userProfile } });
+                res.status(200).json({ success: true, message: 'Verification successful', data: { ...grant, user: userProfile } });
                 // Security plan Phase 1: a sign-in counts in the day's signals (consenting members only).
                 recordLogin(String(userId), req);
                 // Phase 11: the first code entered completes a sign-up (matches nothing on later sign-ins).
@@ -1167,9 +1190,10 @@ export class UserController {
                 return;
             }
             await this.userService.logoutUser(req.user.userId);
-            // Security plan Phase 9: this token's browser key stops working.
+            // Security plan Phase 9: this token's browser key stops working; a cookie session ends.
             const auth = req.header('authorization') || '';
             if (auth.startsWith('Bearer ')) await revokeSessionKey(auth.slice(7));
+            await endCookieSession(req, res, (req.user as any)?.sid ?? null);
             res.status(200).json({ success: true, message: 'Logout successful' });
         } catch (error: any) {
             log.error("Error in logout", error);

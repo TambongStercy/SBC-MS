@@ -2,6 +2,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { isGatewayAccessRefusal } from '../lib/permissions';
 import { isAdminCodeError, requestAdminCode } from '../lib/adminCodePrompt';
+import { attachSigning } from '../lib/signAxios';
 
 declare module 'axios' {
     interface AxiosRequestConfig { __adminCodeTries?: number }
@@ -15,16 +16,16 @@ const apiClient = axios.create({
     },
 });
 
+// Security plan Phase 9: registered first so it runs after the token interceptor below.
+attachSigning(apiClient);
+
 // Add request interceptor for handling authentication
 apiClient.interceptors.request.use(
     (config) => {
         // Get the token from localStorage
         const token = localStorage.getItem('adminToken');
         if (token) {
-            console.log('Adding token to request:', config.url);
             config.headers.Authorization = `Bearer ${token}`;
-        } else {
-            console.log('No token available for request:', config.url);
         }
         return config;
     },
@@ -57,10 +58,7 @@ const sessionStillValid = async (): Promise<boolean> => {
 
 // Add response interceptor to handle global errors
 apiClient.interceptors.response.use(
-    response => {
-        console.log('API Response:', response.config.url, response.status, response.data);
-        return response;
-    },
+    response => response,
     async error => {
         if (error.response) {
             console.error('API Error Response:', error.config?.url, error.response.status, error.response.data);

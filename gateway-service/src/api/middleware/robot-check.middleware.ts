@@ -66,6 +66,8 @@ export const PROTECTED: { method: string; path: RegExp; action: string }[] = [
     { method: 'POST', path: /^\/api\/users\/me\/authenticator\/setup\/request$/, action: 'authenticator_setup' },
     { method: 'POST', path: /^\/api\/transactions\/withdrawal\/initiate$/, action: 'withdrawal' },
     { method: 'POST', path: /^\/api\/support\/desk\/auth\/login$/, action: 'desk_login' },
+    // Security plan Phase 9: the admin sign-in, like the desk's (2026-11-23).
+    { method: 'POST', path: /^\/api\/users\/admin\/login$/, action: 'admin_login' },
     { method: 'POST', path: /^\/api\/support\/public\/tickets$/, action: 'public_ticket' },
 ];
 

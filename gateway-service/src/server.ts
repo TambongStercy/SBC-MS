@@ -13,6 +13,7 @@ import { ipGeoStats, startIpGeo } from './services/ip-geo';
 import { browserChecks, startBrowserChecksFlush } from './api/middleware/browser-checks.middleware';
 import { altchaChallenge, robotCheck, startRobotChecksFlush, torSignal } from './api/middleware/robot-check.middleware';
 import { httpMetrics, metricsHandler } from './utils/metrics';
+import { cookieSession, startCookieSessionLog } from './api/middleware/cookie-session.middleware';
 import './utils/host-metrics';
 import './utils/backup-metrics';
 
@@ -41,6 +42,11 @@ morgan.token('client-ip', (req) => {
   return `cf=${typeof cf === 'string' ? cf : '-'} peer=${req.socket.remoteAddress ?? '-'}`;
 });
 app.use(morgan(':client-ip - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'));
+
+// Security plan Phase 9: a member session cookie becomes the Authorization header (and its
+// mutations need the CSRF header), before anything reads that header.
+app.use(cookieSession);
+startCookieSessionLog();
 
 // Before any proxy: admin paths need an allow-listed admin (see the middleware).
 app.use(adminAllowlist);

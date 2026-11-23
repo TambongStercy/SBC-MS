@@ -18,6 +18,25 @@ export interface AuthenticatedSocket extends Socket {
 
 let io: Server | null = null;
 
+/** The member access token from the `sbc_at` cookie (Security plan Phase 9), or null. */
+export function sessionCookieToken(raw: string | undefined): string | null {
+    if (!raw) return null;
+    for (const part of raw.split(';')) {
+        const i = part.indexOf('=');
+        if (i > 0 && part.slice(0, i).trim() === 'sbc_at') {
+            const v = part.slice(i + 1).trim();
+            return v && v.length < 4096 ? v : null;
+        }
+    }
+    return null;
+}
+
+/** A WebSocket handshake carries no CORS check: the Origin must be our own host. */
+export function sameSiteOrigin(origin: string | undefined, host: string | undefined): boolean {
+    if (!origin || !host) return false;
+    try { return new URL(origin).host.toLowerCase() === host.toLowerCase(); } catch { return false; }
+}
+
 export function getIO(): Server | null {
     return io;
 }
@@ -37,8 +56,14 @@ export function initializeSocketServer(httpServer: HttpServer): Server {
     // Authentication middleware
     io.use(async (socket: Socket, next) => {
         try {
-            const token = socket.handshake.auth.token ||
+            let token = socket.handshake.auth.token ||
                 socket.handshake.headers.authorization?.split(' ')[1];
+            // Security plan Phase 9: the web app holds no token any more, only the HttpOnly
+            // session cookie (SameSite=Strict). Accepted only from a page of our own site.
+            if (!token) {
+                const fromCookie = sessionCookieToken(socket.handshake.headers.cookie);
+                if (fromCookie && sameSiteOrigin(socket.handshake.headers.origin, socket.handshake.headers.host)) token = fromCookie;
+            }
 
             if (!token) {
                 log.warn('Socket connection rejected: No token provided');

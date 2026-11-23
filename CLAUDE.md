@@ -329,7 +329,9 @@ routes `/users/admin/login`, `/login/email-code`, `/login/enroll/{start,confirm}
   (Node 20/22), gateway `check-admin-permissions.ts`.
 - Still different from the desk: the admin token stays in localStorage (the admin
   calls the API cross-origin, so the desk's httpOnly cookie would need an `/api`
-  location on the admin vhosts first). Money actions do re-check the code (below).
+  location on the admin vhosts first). Since 2026-11-23 its requests are signed with a
+  browser key and the sign-in carries the robot check (Phase 9 part 4). Money actions do
+  re-check the code (below).
 - **Money actions need the admin's own code (2026-11-22, Security plan Phase 3 item 6).**
   - **Where:** payment-service `requireAdminStepUp` guards withdrawal from a member's balance
     (`/withdrawals/admin/user`), direct payouts (`/withdrawals/admin/direct`,
@@ -761,6 +763,26 @@ Design and outcomes: `docs/security-plan/phase9-browser-only.md`. **Log-only**: 
     answer while the page opens (about 1.4 s on a very slow phone) and send it. Turnstile is
     gone from support-service, both frontends and the desk CSP.
   - Check: `gateway-service/src/scripts/check-robot-check.ts`.
+- **Part 4 (2026-11-23): member sessions in HttpOnly cookies** (`SESSION_COOKIES=on` in user-service,
+  default off; details `docs/security-plan/phase9-browser-only.md` « Part 4 »).
+  - The web app sends `X-SBC-Session: cookie`; sign-in answers (`verify-otp`, password-only `login`,
+    code-free `register`) then set `sbc_at` (15-min member JWT + `sid`, HttpOnly, Path=/), `sbc_rt`
+    (rotating refresh, Path=/api/users/session) and `sbc_csrf` (readable), and answer
+    `session: 'cookie'` with no token. Clients that don't ask keep getting a token.
+  - `member_sessions` (`services/member-session.service.ts`): life = `JWT_EXPIRATION`; refresh
+    `POST /users/session/refresh` rotates; the replaced token is accepted 60 s (two tabs), later =
+    reuse → session revoked. The browser key is stored on the session and bound to every new access
+    token. `POST /users/session/adopt` moves an old localStorage token to cookies once.
+    `POST /users/session/logout` works with an expired access cookie.
+  - **Gateway** `cookie-session.middleware.ts` runs FIRST: no Authorization + `sbc_at` → injects
+    `Authorization: Bearer <cookie>` (services unchanged); cookie mutations need `X-CSRF-Token` =
+    `sbc_csrf` + own Origin (403 `CSRF_FAILED`; sign-in steps exempt). `WEB_BEARER=refuse` (later)
+    refuses our web app's member Bearer; the 10-min log line `webBearer=` says when.
+  - chat-service's socket reads `sbc_at` from the handshake cookie (own Origin only).
+  - **Admin:** robot check on `POST /users/admin/login` (`admin_login`) and signed requests (key bound at
+    `/login/totp` and `/login/enroll/confirm`), log-only. Admin cookie not done (cross-origin API).
+  - Checks: user-service `check-member-sessions.ts`, gateway `check-cookie-session.ts`, admin
+    `lib/signAxios.test.ts`.
 
 ### Daily activity board (Security plan Phase 11, 2026-11-21)
 
@@ -1394,9 +1416,11 @@ data leaves Benin and that transfer needs consent.
     delete as the admin one, plus `shareContactInfo:false`.
   - Objection: `shareContactInfo` (`PUT /me`). The cached contacts file
     (vcf-cache) now honours it too.
-- **Cookies:** the web app sets none and has no analytics; it uses
-  localStorage only. The cookie banner says so and is shown again after 60
-  days.
+- **Cookies:** no analytics or advertising cookies. Since Phase 9 part 4 (2026-11-23,
+  `SESSION_COOKIES=on`) the session itself is in three technical cookies (`sbc_at`,
+  `sbc_rt`, `sbc_csrf`, at most the session's day, cleared at logout), named in the
+  policy's « Cookies » section; everything else is localStorage. The cookie banner is
+  shown again after 60 days.
 - Assertions: `src/scripts/check-privacy.ts`.
 
 ### Phone formats: Congo-Brazzaville (+242) keeps its leading 0

@@ -15,6 +15,8 @@ import { ensureCanalLink } from '../../services/canal-de-vente.service';
 import { getExtraNumbers, initiateExtraNumberPurchase, addExtraNumber, removeExtraNumber, setFeaturedNumber, getSalesPage } from '../../services/products.service';
 import { recordConsents, exportUserData, deleteOwnAccount } from '../../services/privacy.service';
 import logger from '../../utils/logger'; // Import logger
+import { endCookieSession, openCookieSession, publicKeyOfToken, refreshCookieSession, sessionCookiesOn, setSessionPublicKey, wantsCookieSession } from '../../services/member-session.service';
+import UserModel from '../../database/models/user.model';
 import { uploadAvatar } from '../middleware/upload.middleware'; // Corrected import path
 import { strictLimiter, mediumLimiter, generalLimiter, uploadLimiter } from '../middleware/rate-limit.middleware'; // Import limiters
 import { getActivityBoard, getActivityList } from '../controllers/activity.controller';
@@ -213,6 +215,24 @@ router.post('/verify-password-reset-otp', strictLimiter, (req, res, next) => use
 // COMPLETE Password Reset (Public, rate limited)
 router.post('/reset-password', strictLimiter, (req, res, next) => userController.resetPassword(req, res, next));
 
+// Security plan Phase 9: cookie sessions (SESSION_COOKIES=on). Refresh and logout are read from
+// the refresh cookie, so they work after the short access token has expired.
+router.post('/session/refresh', generalLimiter, async (req: Request, res: Response) => {
+    if (!sessionCookiesOn()) { res.status(404).json({ success: false, message: 'Not found' }); return; }
+    try {
+        const outcome = await refreshCookieSession(req, res);
+        if (outcome === 'refreshed' || outcome === 'grace') { res.status(200).json({ success: true, data: { session: 'cookie' } }); return; }
+        res.status(401).json({ success: false, code: 'SESSION_ENDED', message: 'Session expirée. Reconnectez-vous.' });
+    } catch (err: any) {
+        log.error(`Session refresh failed: ${err?.message ?? err}`);
+        res.status(503).json({ success: false, message: 'Réessayez dans un instant.' });
+    }
+});
+router.post('/session/logout', generalLimiter, async (req: Request, res: Response) => {
+    try { await endCookieSession(req, res, null); } catch (err: any) { log.warn(`Session logout: ${err?.message ?? err}`); }
+    res.status(200).json({ success: true });
+});
+
 // Get user information by affiliation code
 router.get('/get-affiliation', (req, res) => userController.getAffiliation(req, res));
 
@@ -273,11 +293,35 @@ router.post('/me/session-key', async (req: Request, res: Response) => {
     const auth = req.header('authorization') || '';
     if (!userId || !auth.startsWith('Bearer ')) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
     try {
+        // A cookie session keeps the key for every later access token too.
+        const sid = ((req as AuthenticatedRequest).user as any)?.sid;
+        if (sid && !(await setSessionPublicKey(String(sid), userId, req.body?.publicKey))) {
+            res.status(409).json({ success: false, data: { status: 'exists' } });
+            return;
+        }
         const r = await bindSessionKey({ token: auth.slice(7), userId, publicKey: req.body?.publicKey, deviceId: req.header('x-sbc-device'), late: true });
         res.status(r === 'bound' ? 201 : r === 'exists' ? 409 : 400).json({ success: r === 'bound', data: { status: r } });
     } catch (err: any) {
         logger.getLogger('SessionKeys').error(`Late session key for ${userId} failed: ${err?.message ?? err}`);
         res.status(500).json({ success: false, message: 'Une erreur est survenue.' });
+    }
+});
+// Security plan Phase 9: an app still holding a Bearer token in localStorage swaps it for a cookie
+// session (once, at start-up). The browser key bound to that token moves to the session.
+router.post('/session/adopt', async (req: Request, res: Response) => {
+    const u = (req as AuthenticatedRequest).user as any;
+    const auth = req.header('authorization') || '';
+    if (!u?.userId || !auth.startsWith('Bearer ')) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+    if (!wantsCookieSession(req) || u.sid || u.asid) { res.status(200).json({ success: true, data: { session: 'bearer' } }); return; }
+    try {
+        const user = await UserModel.findById(u.userId).select('email role blocked deleted').lean();
+        if (!user || (user as any).blocked || (user as any).deleted) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+        const publicKey = await publicKeyOfToken(auth.slice(7));
+        await openCookieSession(req, res, user as any, { publicKey, origin: 'adopted' });
+        res.status(200).json({ success: true, data: { session: 'cookie', keyKept: !!publicKey } });
+    } catch (err: any) {
+        log.error(`Session adopt for ${u.userId} failed: ${err?.message ?? err}`);
+        res.status(200).json({ success: true, data: { session: 'bearer' } });
     }
 });
 router.post('/me/consents', extraNumbers((userId, req) => recordConsents(userId, req.body ?? {}, req.ip)));
