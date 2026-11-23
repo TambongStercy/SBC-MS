@@ -45,7 +45,7 @@ import { settingsService } from './clients/settings.service.client';
 import { AppError, AuthenticatorRequiredError, CryptoWalletChangeNeedsCodeError, MomoChangeNeedsCodeError, OtpThrottledError, PhoneChangeNeedsCodeError } from '../utils/errors';
 import { memberAuthService } from './member-auth.service';
 import { addressTail, isSameCryptoWallet, normalizeCryptoAddress, normalizeCryptoCurrency } from '../utils/crypto-wallet';
-import { isSameMomo, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
+import { isSameMomo, momoChangeLocks, MOMO_OPERATOR_PATTERN, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizePhoneNumber, determineUserCountryCode, normalizeCountryName, countryDialingCodes, isSamePhoneNumber } from '../utils/phone.utils';
 import { withdrawalLockFields, withdrawalLockStatus, WithdrawalLockReason, WithdrawalLockStatus } from '../utils/withdrawal-lock';
 import { countryCondition, countryMemberIn, isoOfCountryValue, memberObjectIdsForCountry } from '../utils/country-filter';
@@ -4575,8 +4575,8 @@ export class UserService {
         }
         await memberAuthService.verifyCode(user._id, input.code, 'momo_change');
 
-        const hadNumber = !!user.momoNumber;
-        const lock = hadNumber ? withdrawalLockFields('momo_change') : null;
+        // A first number, or the operator added to a number saved without it, locks nothing.
+        const lock = momoChangeLocks(user, number, country) ? withdrawalLockFields('momo_change') : null;
         await userRepository.updateById(user._id, {
             momoNumber: number,
             momoOperator: operator,

@@ -11,7 +11,7 @@ import { otpMatches, whatsappOtpEnabled } from '../utils/otp.utils';
 import logger from '../utils/logger';
 import { ledgerBalances } from '../jobs/ledger-check.job';
 import { memberAuthService } from './member-auth.service';
-import { MOMO_OPERATOR_PATTERN, isSameMomo, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
+import { MOMO_OPERATOR_PATTERN, isSameMomo, momoChangeLocks, normalizeMomoNumber, normalizeMomoOperator } from '../utils/momo';
 import { normalizeCountryName } from '../utils/phone.utils';
 
 const log = logger.getLogger('SupportService');
@@ -424,8 +424,7 @@ export async function supportMomoChange(input: { userId: string; momoNumber: str
     if (user.momoNumber && user.momoOperator && isSameMomo(user, { momoNumber: number, momoOperator: operator }, country)) {
         throw new SupportError(400, 'SAME_VALUE', 'C’est déjà le numéro Mobile Money du compte.');
     }
-    const hadNumber = !!user.momoNumber;
-    const lock = hadNumber ? withdrawalLockFields('momo_change') : null;
+    const lock = momoChangeLocks(user, number, country) ? withdrawalLockFields('momo_change') : null;
     const r = await UserModel.updateOne(
         { _id: user._id, momoNumber: user.momoNumber ?? null, momoOperator: user.momoOperator ?? null },
         { $set: { momoNumber: number, momoOperator: operator, ...(lock ?? {}) } },

@@ -111,6 +111,23 @@ const main = async () => {
         replay?.statusCode === 400 && /déjà servi/.test(replay?.message) && (await fresh(id)).momoNumber === '237699998877'
         && (await MemberAuthModel.findOne({ userId: u._id }).lean())!.failures === 0, replay?.message);
 
+    // --- a number saved without its operator: completing it locks nothing (2026-11-23) ---
+    await UserModel.updateOne({ _id: u._id }, { $set: { momoOperator: '' }, $unset: { withdrawalsLockedUntil: 1, withdrawalLockReason: 1 } });
+    await MemberAuthModel.updateOne({ userId: u._id }, { $set: { lastUsedStep: null } }); // a minute later
+    const alertsBefore = alerts.length;
+    const opOnly = await userService.changeMomo(id, { momoNumber: '699998877', momoOperator: 'ORANGE_CMR', password: 'Secret123!', code: appCode(start.secret) });
+    doc = await fresh(id);
+    check('adding the missing operator to the same number: saved, no lock, no alert',
+        doc.momoOperator === 'ORANGE_CMR' && doc.momoNumber === '237699998877' && opOnly.withdrawalsLockedUntil === null
+        && !doc.withdrawalLockReason && alerts.length === alertsBefore);
+    const { momoChangeLocks } = await import('../utils/momo');
+    check('lock rule: first number no, operator added no, new number yes, operator replaced yes',
+        !momoChangeLocks({ momoNumber: null, momoOperator: null }, '237699998877', 'CM')
+        && !momoChangeLocks({ momoNumber: '237699998877', momoOperator: '' }, '699998877', 'CM')
+        && !momoChangeLocks({ momoNumber: '237699998877', momoOperator: null }, '+237 6 99 99 88 77', 'CM')
+        && momoChangeLocks({ momoNumber: '237699998877', momoOperator: '' }, '237699990000', 'CM')
+        && momoChangeLocks({ momoNumber: '237699998877', momoOperator: 'MTN_MOMO_CMR' }, '237699998877', 'CM'));
+
     // --- crypto wallet, with a backup code ---
     const backup = confirmed.backupCodes[0];
     const crypto1 = await userService.changeCryptoWallet(id, { cryptoWalletAddress: TRX, cryptoWalletCurrency: 'trx', password: 'Secret123!', code: backup.toLowerCase().replace(/-/g, ' ') });
