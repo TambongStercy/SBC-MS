@@ -34,7 +34,7 @@ website, and news of the project. Code: event-service
 - `GET /public/showcase/:id` → `Page`: a `Card` plus `updates: Update[]`, the published news, newest
   first.
 - **`Card`** = `{ _id, editionId, candidateId, profile: { name, photoFileId, activity, category, country, city, presentation, projectName, projectDescription, sbcId }, result: { rank, score, winner, editionName, decidedAt }, videoFileId, podcast: { url, title, platform } | null, youtubeUrl, shopUrl, visibleFrom, visibleUntil, archived, updates (count), lastUpdateAt }`.
-- **`Update`** = `{ _id, kind, title, body, imageFileId, link, publishedAt }`.
+- **`Update`** = `{ _id, kind, title, body, imageFileId, link, publishedAt, byFinalist }`.
 - No member id anywhere.
 
 ### Finalist (signed in)
@@ -60,7 +60,7 @@ website, and news of the project. Code: event-service
 
 - `impact-showcase-live` (page online) opens `/impact`.
 - `impact-showcase-update-published` opens `/impact`.
-- `impact-showcase-update-rejected` opens `/impact-challenge/candidat`.
+- `impact-showcase-update-rejected` opens `/impact` (the finalist's « Ma page SBC Impact » is there).
 
 ## Checks
 

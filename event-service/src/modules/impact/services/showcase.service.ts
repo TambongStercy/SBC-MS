@@ -100,6 +100,8 @@ export const createForEdition = async (editionId: Types.ObjectId | string, actor
 const presentUpdate = (u: IImpactShowcaseUpdate | Record<string, any>, opts: { admin?: boolean } = {}) => ({
     _id: String(u._id), kind: u.kind, title: u.title, body: u.body, imageFileId: u.imageFileId ?? null, link: u.link ?? null,
     publishedAt: u.publishedAt ?? null,
+    // Who wrote it: « SBC » or the finalist (never the member's id).
+    byFinalist: u.authorRole === 'finalist',
     ...(opts.admin || u.status !== 'PUBLISHED'
         ? { status: u.status, authorRole: u.authorRole, review: u.review ? { reason: u.review.reason ?? null, at: u.review.at } : null, createdAt: u.createdAt }
         : {}),
