@@ -55,6 +55,7 @@ describe('moduleForPath', () => {
     ['/impact-challenges/42', 'impactChallenge'],
     ['/sbc-impact', 'impactChallenge'],
     ['/sbc-impact/6a0000000000000000000001', 'impactChallenge'],
+    ['/sbc-impact/tombola', 'impactChallenge'],
     ['/sbclove', 'sbclove'],
     ['/ads-network/manual-verifications', 'adsProofs'],
     ['/ads-network', 'ads'],

@@ -3,7 +3,7 @@ import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import apiClient from '../api/apiClient';
 import AdminCodePrompt from '../components/common/AdminCodePrompt';
-import { decideTop3, impactErrorMessage, refundPurchase } from './impactV2Api';
+import { decideTop3, drawTombola, impactErrorMessage, refundPurchase } from './impactV2Api';
 
 /**
  * The two SBC Impact actions guarded by the admin's own code (event-service
@@ -57,6 +57,20 @@ describe('SBC Impact actions that need the admin code', () => {
         await giveCode('111222');
         await act(async () => { await call; });
         expect(sent[1].data).toEqual({ expectedOrder: ['c3', 'c1', 'c2'], adminCode: '111222' });
+    });
+
+    it('tombola draw: asks for the code and resends the request with it', async () => {
+        answers = [
+            { status: 403, data: { success: false, code: 'ADMIN_CODE_REQUIRED' } },
+            { status: 200, data: { success: true, data: { _id: 'd1', status: 'DONE', seed: 'ab' } } },
+        ];
+        const call = drawTombola('e1');
+        await giveCode('333444');
+        let result: unknown;
+        await act(async () => { result = await call; });
+        expect(sent.map(s => s.url)).toEqual(['/tickets/impact/admin/editions/e1/tombola/draw', '/tickets/impact/admin/editions/e1/tombola/draw']);
+        expect(sent[1].data).toEqual({ adminCode: '333444' });
+        expect(result).toEqual({ _id: 'd1', status: 'DONE', seed: 'ab' });
     });
 
     it('a cancelled prompt leaves the server’s message to the page', async () => {

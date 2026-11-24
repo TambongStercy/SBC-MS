@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { ArrowRight01Icon, Award01Icon, PlusSignIcon, UserMultipleIcon } from '@hugeicons/core-free-icons';
+import { ArrowRight01Icon, Award01Icon, PlusSignIcon, Ticket01Icon, UserMultipleIcon } from '@hugeicons/core-free-icons';
 import { Can } from '../components/Can';
 import { Button, EmptyState, Metric, PageHeader, Panel, PanelHeader, ResponsiveList, Skeleton, type ListColumn } from '../components/ui';
 import {
@@ -96,12 +96,17 @@ export default function SbcImpactEditionsPage() {
                 title="SBC Impact Challenge"
                 description="Chaque édition : une qualification (10 invitations de filleuls qui paient leur pack donnent une place), puis la compétition, la finale et la tombola."
                 actions={(
+                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
+                        <Link to="/sbc-impact/tombola"><HugeiconsIcon icon={Ticket01Icon} size={18} aria-hidden="true" />Historique de la tombola</Link>
+                    </Button>
                     <Can module="impactChallenge" write>
                         <Button variant="primary" size="lg" className="w-full sm:w-auto" onClick={() => setCreating(true)}>
                             <HugeiconsIcon icon={PlusSignIcon} size={18} aria-hidden="true" />
                             Nouvelle édition
                         </Button>
                     </Can>
+                    </div>
                 )}
             />
 

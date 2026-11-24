@@ -1,6 +1,6 @@
 import type { StatusMap } from '../moduleKit';
 import {
-    CANDIDATE_STATUS_LABELS as C, EDITION_STATUS_LABELS as E, PURCHASE_STATUS_LABELS as P, REVIEW_LABELS as R,
+    CANDIDATE_STATUS_LABELS as C, EDITION_STATUS_LABELS as E, PRIZE_STATUS_LABELS as PZ, PURCHASE_STATUS_LABELS as P, REVIEW_LABELS as R,
     ROUND_STATUS_LABELS as RS, SUBMISSION_STATUS_LABELS as S,
 } from '../../services/impactV2Api';
 
@@ -62,4 +62,11 @@ export const PURCHASE_STATUS: StatusMap = {
     FAILED: [P.FAILED, 'danger'],
     CANCELLED: [P.CANCELLED, 'neutral'],
     REFUNDED: [P.REFUNDED, 'info'],
+};
+
+export const PRIZE_STATUS: StatusMap = {
+    PENDING: [PZ.PENDING, 'warning'],
+    DELIVERED: [PZ.DELIVERED, 'success'],
+    FORFEITED: [PZ.FORFEITED, 'danger'],
+    NOT_AWARDED: [PZ.NOT_AWARDED, 'neutral'],
 };

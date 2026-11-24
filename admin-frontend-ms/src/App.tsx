@@ -40,6 +40,7 @@ import ImpactChallengePage from './pages/ImpactChallengePage';
 import ChallengeDetailsPage from './pages/ChallengeDetailsPage';
 import SbcImpactEditionsPage from './pages/SbcImpactEditionsPage';
 import SbcImpactEditionPage from './pages/SbcImpactEditionPage';
+import SbcImpactTombolaHistoryPage from './pages/SbcImpactTombolaHistoryPage';
 import AdsNetworkDashboardPage from './pages/AdsNetworkDashboardPage';
 import AdsNetworkReviewPage from './pages/AdsNetworkReviewPage';
 import AdsNetworkManualVerifyPage from './pages/AdsNetworkManualVerifyPage';
@@ -110,6 +111,7 @@ function App() {
             <Route path="/impact-challenges" element={<ImpactChallengePage />} />
             <Route path="/impact-challenges/:challengeId" element={<ChallengeDetailsPage />} />
             <Route path="/sbc-impact" element={<SbcImpactEditionsPage />} />
+            <Route path="/sbc-impact/tombola" element={<SbcImpactTombolaHistoryPage />} />
             <Route path="/sbc-impact/:id" element={<SbcImpactEditionPage />} />
             <Route path="/ads-network" element={<AdsNetworkDashboardPage />} />
             <Route path="/ads-network/review" element={<AdsNetworkReviewPage />} />
