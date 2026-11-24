@@ -42,7 +42,8 @@ This is NOT the old monthly tombola of tombola-service (`/api/tombolas`), which 
    That is presentation only, since the result is already recorded. Each winner is notified when
    revealed, not before, so no phone buzzes ahead of the reveal.
 5. **Proof** (`/public/tombola/draws/:id/proof`):
-   - the seed and its commitment;
+   - the seed and its commitment. Encoding: the seed is 64 hex characters; the commitment is
+     sha256 of that hex TEXT, while the HMAC key is the decoded 32 bytes;
    - the ticket segments with pseudonymous holders (`sha256(userId:drawId)`) and their hash;
    - the exclusions per prize;
    - the method and the winners.
