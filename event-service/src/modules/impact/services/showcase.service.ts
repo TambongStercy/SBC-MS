@@ -49,6 +49,9 @@ const addMonths = (d: Date, months: number) => {
 };
 
 const isActive = (s: { visibleUntil: Date; hiddenAt?: Date | null }, now = new Date()) => !s.hiddenAt && s.visibleUntil > now;
+/** Past its end date (a hidden page is « hidden », not « archived »). */
+const isArchived = (s: { visibleUntil: Date }, now = new Date()) => s.visibleUntil <= now;
+const frDate = (d: Date) => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Douala' });
 
 /**
  * Creates the pages of an edition's finalists from its published result.
@@ -102,13 +105,16 @@ const presentUpdate = (u: IImpactShowcaseUpdate | Record<string, any>, opts: { a
         : {}),
 });
 
-const presentShowcase = (s: IImpactShowcase | Record<string, any>, opts: { admin?: boolean } = {}) => ({
+const presentShowcase = (s: IImpactShowcase | Record<string, any>, opts: { admin?: boolean; minVisibleUntil?: Date } = {}) => ({
     _id: String(s._id), editionId: String(s.editionId), candidateId: String(s.candidateId),
     profile: s.profile, result: s.result,
     videoFileId: s.videoFileId ?? null, podcast: s.podcast?.url ? s.podcast : null, youtubeUrl: s.youtubeUrl ?? null, shopUrl: s.shopUrl ?? null,
     visibleFrom: s.visibleFrom, visibleUntil: s.visibleUntil,
-    archived: !isActive(s as any),
-    ...(opts.admin ? { userId: String(s.userId), hiddenAt: s.hiddenAt ?? null, hiddenReason: s.hiddenReason ?? null } : {}),
+    archived: isArchived(s as any),
+    ...(opts.admin ? {
+        userId: String(s.userId), hidden: Boolean(s.hiddenAt), hiddenAt: s.hiddenAt ?? null, hiddenReason: s.hiddenReason ?? null,
+        minVisibleUntil: opts.minVisibleUntil ?? null,
+    } : {}),
 });
 
 // ---------- Public ----------
@@ -178,6 +184,10 @@ export const proposeUpdate = async (userId: string, showcaseId: string, body: Re
 
 // ---------- Administration ----------
 
+/** The earliest end date allowed: the result + the edition's showcaseMonths. */
+const minEnd = async (s: { visibleFrom: Date; editionId: Types.ObjectId }) =>
+    addMonths(s.visibleFrom, settingsOf((await ImpactEdition.findById(s.editionId).select('settings').lean())?.settings).showcaseMonths);
+
 export const adminList = async (q: Record<string, any>) => {
     const filter: Record<string, unknown> = {};
     if (q.editionId && Types.ObjectId.isValid(String(q.editionId))) filter.editionId = new Types.ObjectId(String(q.editionId));
@@ -194,7 +204,7 @@ export const adminOne = async (id: string) => {
     const s = await ImpactShowcase.findById(oid(id, 'Page')).lean();
     if (!s) throw new AppError('Page introuvable.', 404);
     const updates = await ImpactShowcaseUpdate.find({ showcaseId: s._id }).sort({ createdAt: -1 }).limit(200).lean();
-    return { ...presentShowcase(s, { admin: true }), updates: updates.map((u) => presentUpdate(u, { admin: true })) };
+    return { ...presentShowcase(s, { admin: true, minVisibleUntil: await minEnd(s) }), updates: updates.map((u) => presentUpdate(u, { admin: true })) };
 };
 
 /** Podcast, YouTube, shop link, extended end date, hidden or shown again. */
@@ -214,8 +224,8 @@ export const adminEdit = async (actor: Actor, id: string, b: Record<string, any>
         const d = new Date(String(b.visibleUntil));
         if (Number.isNaN(d.getTime())) throw new AppError('Date invalide.', 400, true, 'INVALID_DATE', { field: 'visibleUntil' });
         // « 12 mois minimum » (§14): the end date only moves later than the minimum.
-        const min = addMonths(s.visibleFrom, settingsOf((await ImpactEdition.findById(s.editionId).select('settings').lean())?.settings).showcaseMonths);
-        if (d < min) throw new AppError(`La page reste visible au moins jusqu’au ${min.toISOString().slice(0, 10)}.`, 400, true, 'TOO_EARLY', { field: 'visibleUntil' });
+        const min = await minEnd(s);
+        if (d < min) throw new AppError(`La page reste visible au moins jusqu’au ${frDate(min)}.`, 400, true, 'TOO_EARLY', { field: 'visibleUntil', minVisibleUntil: min });
         set.visibleUntil = d;
     }
     if (b.hidden === true) {
@@ -227,13 +237,15 @@ export const adminEdit = async (actor: Actor, id: string, b: Record<string, any>
     }
     const done = await ImpactShowcase.findByIdAndUpdate(s._id, { ...(Object.keys(set).length ? { $set: set } : {}), ...(Object.keys(unset).length ? { $unset: unset } : {}) }, { new: true });
     await audit({ actor, action: 'showcase.edited', editionId: s.editionId, candidateId: s.candidateId, before, after: presentShowcase(done!.toObject(), { admin: true }) });
-    return presentShowcase(done!.toObject(), { admin: true });
+    return presentShowcase(done!.toObject(), { admin: true, minVisibleUntil: await minEnd(s) });
 };
 
 /** The administration publishes news at once. */
 export const adminPostUpdate = async (actor: Actor, id: string, body: Record<string, any>) => {
     const s = await ImpactShowcase.findById(oid(id, 'Page'));
     if (!s) throw new AppError('Page introuvable.', 404);
+    if (s.hiddenAt) throw new AppError('Cette page est masquée : affichez-la d’abord.', 409, true, 'HIDDEN');
+    if (isArchived(s)) throw new AppError('Cette page est archivée.', 409, true, 'ARCHIVED');
     const u = await ImpactShowcaseUpdate.create({
         showcaseId: s._id, authorRole: 'admin', authorUserId: oid(actor.userId), ...parseUpdate(body), status: 'PUBLISHED', publishedAt: new Date(),
     });

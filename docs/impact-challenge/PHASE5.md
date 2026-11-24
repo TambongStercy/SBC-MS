@@ -17,7 +17,7 @@ website, and news of the project. Code: event-service
   deleted.
 - **Admin links:** podcast (`{ url, title?, platform? }`, https), YouTube (https on youtube.com or
   youtu.be), shop or website (https).
-- **Hiding:** the admin can hide a page with a reason (≥ 10); it then appears nowhere publicly.
+- **Hiding:** the admin can hide a page with a reason (≥ 10); it then appears nowhere publicly. `archived` means past the end date only; a hidden page has `hidden: true` (admin answers).
 - **News (§14.3), kinds `STEP | PRODUCT | ACHIEVEMENT | NEWS | RESULT`:**
   - The admin publishes at once.
   - A finalist proposes from their space (at most 5 pending), and the admin approves, or rejects with
@@ -49,9 +49,9 @@ website, and news of the project. Code: event-service
 | Route | Body | Answer |
 |---|---|---|
 | `GET /admin/showcase?editionId=` | — | pages with `userId`, `hiddenAt`, `hiddenReason`, `pendingUpdates` |
-| `GET /admin/showcase/:id` | — | a page with every news (status, author, review) |
+| `GET /admin/showcase/:id` | — | a page with every news (status, author, review), `hidden` and `minVisibleUntil` (the earliest end date allowed) |
 | `PATCH /admin/showcase/:id` | `{ podcast?: { url, title?, platform? } \| null, youtubeUrl?, shopUrl?, visibleUntil?, hidden?, hiddenReason? }` (`''`/`null` removes a link) | the page. 400 `INVALID_URL`, `TOO_EARLY`, `REASON_REQUIRED` |
-| `POST /admin/showcase/:id/updates` | as the finalist's | the news, published at once |
+| `POST /admin/showcase/:id/updates` | as the finalist's | the news, published at once. 409 `HIDDEN`, `ARCHIVED` |
 | `GET /admin/showcase/updates/pending` | — | finalists' pending news, oldest first, with the finalist's name and project |
 | `POST /admin/showcase/updates/:uid/review` | `{ decision: 'approve' \| 'reject' \| 'remove', reason? }` | the news. 409 `ALREADY_REVIEWED` |
 | `POST /admin/editions/:id/showcase/create` | — | `{ created }`. 409 `NO_RESULT` |
@@ -64,7 +64,7 @@ website, and news of the project. Code: event-service
 
 ## Checks
 
-event-service `src/scripts/check-impact-showcase.ts`: 27 checks. They cover:
+event-service `src/scripts/check-impact-showcase.ts`: 32 checks. They cover:
 - the pages created at the result (idempotent), the snapshot and the 12-month window;
 - the archive and the public view without member ids;
 - link validation, the minimum duration, hiding;

@@ -84,10 +84,15 @@ const main = async () => {
     check('podcast and YouTube set', ed.youtubeUrl!.includes('youtube.com') && ed.podcast?.title === 'Épisode 1');
     check('the end date cannot go under 12 months', (await refusal(() => showcase.adminEdit(ADMIN, pid, { visibleUntil: new Date(Date.now() + 30 * 86_400_000).toISOString() })))?.code === 'TOO_EARLY');
     const longer = new Date(page.visibleUntil.getTime() + 180 * 86_400_000);
+    const one: any = await showcase.adminOne(pid);
+    check('admin read gives the minimum end date', one.minVisibleUntil?.getTime?.() === page.visibleUntil.getTime());
+    check('TOO_EARLY says the date in words', /au moins jusqu’au \d{1,2} \S+ \d{4}/.test((await refusal(() => showcase.adminEdit(ADMIN, pid, { visibleUntil: new Date(Date.now() + 30 * 86_400_000).toISOString() })))?.message ?? ''));
     check('the end date can be extended', (await showcase.adminEdit(ADMIN, pid, { visibleUntil: longer.toISOString() })).visibleUntil.getTime() === longer.getTime());
     const thirdId = String((await ImpactShowcase.findOne({ candidateId: cands[2]._id }))!._id);
     check('hiding needs a reason', (await refusal(() => showcase.adminEdit(ADMIN, thirdId, { hidden: true })))?.code === 'REASON_REQUIRED');
     await showcase.adminEdit(ADMIN, thirdId, { hidden: true, hiddenReason: 'Demande du finaliste' });
+    check('a hidden page is « hidden », not « archived »', ((await showcase.adminOne(thirdId)) as any).hidden === true && (await showcase.adminOne(thirdId)).archived === false);
+    check('no admin news on a hidden page', (await refusal(() => showcase.adminPostUpdate(ADMIN, thirdId, { title: 'Titre', body: 'x'.repeat(30) })))?.code === 'HIDDEN');
     check('a hidden page appears nowhere publicly', (await showcase.publicList()).active.length === 2 && (await refusal(() => showcase.publicOne(thirdId)))?.statusCode === 404);
 
     // ---------- News ----------
@@ -107,6 +112,7 @@ const main = async () => {
     const mine = await showcase.mine(String(users[0]));
     check('the finalist sees their pages and their news with its state', mine.length === 1 && mine[0].updates.length === 1);
     const oldPageId = String((await ImpactShowcase.findOne({ candidateId: old.cands[0]._id }))!._id);
+    check('no admin news on an archived page', (await refusal(() => showcase.adminPostUpdate(ADMIN, oldPageId, { title: 'Titre', body: 'x'.repeat(30) })))?.code === 'ARCHIVED');
     check('no news on an archived page', (await refusal(() => showcase.proposeUpdate(String(old.users[0]), oldPageId, { title: 'Nouvelles', body: 'z'.repeat(30) })))?.code === 'ARCHIVED');
     const queue = await showcase.pendingUpdates();
     check('admin queue: pending finalist news only', queue.length === 0);
