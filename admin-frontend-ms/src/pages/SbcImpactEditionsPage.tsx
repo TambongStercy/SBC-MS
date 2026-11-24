@@ -11,7 +11,7 @@ import {
 import NewEditionSheet from '../components/sbcImpact/NewEditionSheet';
 import { EditionStatusBadge } from '../components/sbcImpact/shared';
 import {
-    EDITION_STATUS_LABELS, impactErrorMessage, listEditions, type Edition, type EditionStatus,
+    EDITION_STATUS_LABELS, impactErrorMessage, listEditions, listPendingShowcaseUpdates, type Edition, type EditionStatus,
 } from '../services/impactV2Api';
 
 const KEY = ['sbc-impact'] as const;
@@ -33,12 +33,22 @@ export default function SbcImpactEditionsPage() {
     const list = useQuery({ queryKey: [...KEY, 'editions'], queryFn: listEditions });
     const editions = useMemo(() => list.data ?? [], [list.data]);
     const live = editions.find(e => LIVE.includes(e.status));
+    // The finalists' news waiting for validation (all editions).
+    const news = useQuery({ queryKey: [...KEY, 'showcase-pending'], queryFn: listPendingShowcaseUpdates });
 
     const rows = statusFilter ? editions.filter(e => e.status === statusFilter) : editions;
     const open = (e: Edition) => navigate(`/sbc-impact/${e._id}`);
 
     // Profiles to review and seats below the requirement are on each edition's page.
     const todo: TodoItem[] = [];
+    if (news.data?.length) {
+        todo.push({
+            key: 'news', count: news.data.length,
+            label: `${plural(news.data.length, 'Nouvelle')} des finalistes à valider`,
+            hint: 'Pages SBC Impact',
+            action: <TodoAction href="/sbc-impact/vitrine">Valider</TodoAction>,
+        });
+    }
     const drafts = editions.filter(e => e.status === 'DRAFT');
     if (drafts.length) {
         todo.push({

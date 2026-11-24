@@ -28,7 +28,7 @@ import VotesTab from '../components/sbcImpact/VotesTab';
 import { EditionStatusBadge, RoundStatusBadge } from '../components/sbcImpact/shared';
 import {
     CLOSED_REASON_LABELS, ROUND_LABELS, ROUND_STAGE, RULES_MIN_LENGTH, STAGE_LABELS, cancelEdition, closeQualification, getEdition,
-    getJury, getResult, getTombola, getTop3, impactErrorMessage, isEditionClosed, listCandidates, listPurchases, listSubmissions, openQualification, recountEdition,
+    getJury, getResult, getTombola, getTop3, listShowcase, impactErrorMessage, isEditionClosed, listCandidates, listPurchases, listSubmissions, openQualification, recountEdition,
     type CandidateRow, type CandidateStatus, type Edition, type RoundKey,
 } from '../services/impactV2Api';
 
@@ -59,7 +59,8 @@ async function loadWork(e: Edition) {
     const juryDue = e.status === 'FINAL';
     const resultDue = e.status === 'FINAL' && stage === 'LIVE' && !!e.jury?.lockedAt;
     const tombolaDue = !!stage && e.status !== 'CANCELLED';
-    const [all, pending, contents, purchases, top3, jury, result, tombola] = await Promise.all([
+    const showcaseDue = stage === 'RESULT' || !!e.result?.publishedAt;
+    const [all, pending, contents, purchases, top3, jury, result, tombola, showcase] = await Promise.all([
         listCandidates(e._id, { limit: 1 }),
         listCandidates(e._id, { review: 'PENDING', limit: 1 }),
         stage ? orNull(listSubmissions(e._id, { status: 'PENDING' })) : null,
@@ -68,6 +69,7 @@ async function loadWork(e: Edition) {
         juryDue ? orNull(getJury(e._id)) : null,
         resultDue ? orNull(getResult(e._id)) : null,
         tombolaDue ? orNull(getTombola(e._id)) : null,
+        showcaseDue ? orNull(listShowcase({ editionId: e._id })) : null,
     ]);
     const draw = tombola?.draw ?? null;
     const below: CandidateRow[] = all.belowRequirementCount > 0
@@ -88,6 +90,8 @@ async function loadWork(e: Edition) {
         tombolaDrawn: draw?.status === 'DONE',
         unrevealed: draw?.status === 'DONE' ? Math.max(0, draw.winnersCount - draw.revealedCount) : 0,
         undelivered: draw?.status === 'DONE' ? draw.winners.filter(x => x.userId && x.status === 'PENDING').length : 0,
+        // The SBC Impact pages
+        pendingNews: (showcase ?? []).reduce((n, p) => n + (p.pendingUpdates ?? 0), 0),
     };
 }
 
@@ -368,6 +372,15 @@ export default function SbcImpactEditionPage() {
             label: `${plural(w.undelivered, 'Lot')} de la tombola à remettre`,
             hint: 'Marquez chaque lot « Remis », ou « Non remis » avec la raison.',
             action: <TodoAction onClick={() => setTab('tombola')}>Voir</TodoAction>,
+        });
+    }
+    // The showcase (Phase 5)
+    if (w && w.pendingNews > 0) {
+        todo.push({
+            key: 'news', count: w.pendingNews,
+            label: `${plural(w.pendingNews, 'Nouvelle')} des finalistes à valider`,
+            hint: 'Proposées depuis leur page SBC Impact : publiez-les, ou refusez-les avec une raison qu’ils liront.',
+            action: <TodoAction href="/sbc-impact/vitrine">Valider</TodoAction>,
         });
     }
     if (w?.top3Ready) {

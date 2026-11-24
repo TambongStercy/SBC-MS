@@ -1,6 +1,6 @@
 import axios from 'axios';
 import apiClient from '../api/apiClient';
-import { fileProxyUrl } from './impactChallengeApi';
+import { fileProxyUrl, uploadChallengeVideo } from './impactChallengeApi';
 
 /**
  * SBC Impact Challenge v2 admin API (event-service, gateway `/api/tickets/impact/admin/*`,
@@ -405,6 +405,14 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
     'tombola.drawn': 'Tirage de la tombola effectué',
     'tombola.revealed': 'Gagnant de la tombola affiché',
     'tombola.prize_status': 'Statut d’un lot de la tombola',
+    // Phase 5
+    'showcase.created': 'Pages SBC Impact créées',
+    'showcase.edited': 'Page SBC Impact modifiée',
+    'showcase.update_proposed': 'Nouvelle proposée par un finaliste',
+    'showcase.update_published': 'Nouvelle publiée par l’administration',
+    'showcase.update_approve': 'Nouvelle d’un finaliste publiée',
+    'showcase.update_reject': 'Nouvelle d’un finaliste refusée',
+    'showcase.update_remove': 'Nouvelle retirée',
 };
 
 export const auditActionLabel = (action: string) => AUDIT_ACTION_LABELS[action] ?? action;
@@ -1089,12 +1097,144 @@ const PUBLIC = '/tickets/impact/public';
 export const getTombolaProof = async (drawId: string): Promise<{ seed?: string | null; seedCommitment: string; segmentsHash?: string }> =>
     unwrap(await apiClient.get(`${PUBLIC}/tombola/draws/${drawId}/proof`), 'Impossible de charger la preuve du tirage.');
 
-/** Absolute address of the public proof (JSON anyone can recompute the winners from). */
-export function tombolaProofUrl(drawId: string): string {
-    const base = (apiClient.defaults.baseURL || '/api').replace(/\/+$/, '');
-    const abs = /^https?:\/\//i.test(base) ? base : `${window.location.origin}${base.startsWith('/') ? '' : '/'}${base}`;
-    return `${abs}${PUBLIC}/tombola/draws/${encodeURIComponent(drawId)}/proof`;
-}
+/** The member app's readable proof of a draw (it shows the public proof, from which anyone can recompute the winners). */
+export const tombolaProofUrl = (drawId: string) => `${MEMBER_APP_URL}/impact-challenge/tombola/preuve/${encodeURIComponent(drawId)}`;
 
 /** The member app's tombola page (the live screen of the draw). */
 export const tombolaScreenUrl = () => `${MEMBER_APP_URL}/impact-challenge/tombola`;
+
+// =====================================================================
+// Phase 5: the « SBC Impact » showcase (docs/impact-challenge/PHASE5.md)
+// =====================================================================
+
+export type ShowcaseUpdateKind = 'STEP' | 'PRODUCT' | 'ACHIEVEMENT' | 'NEWS' | 'RESULT';
+export type ShowcaseUpdateStatus = 'PENDING' | 'PUBLISHED' | 'REJECTED' | 'REMOVED';
+
+export interface ShowcasePage {
+    _id: string;
+    editionId: string;
+    candidateId: string;
+    profile: {
+        name: string; photoFileId: string; activity?: string; category?: string; country?: string; city?: string;
+        presentation?: string; projectName: string; projectDescription?: string; sbcId?: string | null;
+    };
+    result: { rank: number; score: number; winner: boolean; editionName: string; decidedAt: string };
+    videoFileId: string | null;
+    podcast: { url: string; title?: string; platform?: string } | null;
+    youtubeUrl: string | null;
+    shopUrl: string | null;
+    visibleFrom: string;
+    visibleUntil: string;
+    /** Past its end date (a hidden page is `hidden`, not archived). */
+    archived: boolean;
+    // administration
+    userId?: string;
+    hidden?: boolean;
+    hiddenAt?: string | null;
+    hiddenReason?: string | null;
+    /** In the list only. */
+    pendingUpdates?: number;
+    /** The end date can't go under it (page detail and edit answers). */
+    minVisibleUntil?: string | null;
+}
+
+export interface ShowcaseUpdate {
+    _id: string;
+    kind: ShowcaseUpdateKind;
+    title: string;
+    body: string;
+    imageFileId: string | null;
+    link: string | null;
+    publishedAt: string | null;
+    status: ShowcaseUpdateStatus;
+    authorRole: 'admin' | 'finalist';
+    review: { reason: string | null; at: string } | null;
+    createdAt: string;
+}
+
+export type ShowcaseDetail = ShowcasePage & { updates: ShowcaseUpdate[] };
+export type PendingShowcaseUpdate = ShowcaseUpdate & { showcaseId: string; finalist: { name: string; projectName: string } | null };
+
+export interface ShowcaseEdit {
+    podcast?: { url: string; title?: string; platform?: string } | null;
+    youtubeUrl?: string;
+    shopUrl?: string;
+    visibleUntil?: string;
+    hidden?: boolean;
+    hiddenReason?: string;
+}
+
+export interface ShowcaseUpdateInput { kind: ShowcaseUpdateKind; title: string; body: string; imageFileId?: string; link?: string }
+
+export const SHOWCASE_KIND_LABELS: Record<ShowcaseUpdateKind, string> = {
+    STEP: 'Étape franchie',
+    PRODUCT: 'Nouveau produit',
+    ACHIEVEMENT: 'Réussite',
+    NEWS: 'Actualité',
+    RESULT: 'Résultat',
+};
+
+export const SHOWCASE_UPDATE_STATUS_LABELS: Record<ShowcaseUpdateStatus, string> = {
+    PENDING: 'À valider',
+    PUBLISHED: 'Publiée',
+    REJECTED: 'Refusée',
+    REMOVED: 'Retirée',
+};
+
+export const listShowcase = async (q: { editionId?: string } = {}): Promise<ShowcasePage[]> =>
+    unwrap(await apiClient.get(`${BASE}/showcase`, { params: q.editionId ? { editionId: q.editionId } : undefined }), 'Impossible de charger les pages SBC Impact.') ?? [];
+
+export const getShowcase = async (id: string): Promise<ShowcaseDetail> =>
+    unwrap(await apiClient.get(`${BASE}/showcase/${id}`), 'Impossible de charger la page SBC Impact.');
+
+export const editShowcase = async (id: string, body: ShowcaseEdit): Promise<ShowcasePage> =>
+    unwrap(await apiClient.patch(`${BASE}/showcase/${id}`, body), 'La page n’a pas pu être modifiée.');
+
+export const postShowcaseUpdate = async (id: string, body: ShowcaseUpdateInput): Promise<ShowcaseUpdate> =>
+    unwrap(await apiClient.post(`${BASE}/showcase/${id}/updates`, body), 'La nouvelle n’a pas pu être publiée.');
+
+export const listPendingShowcaseUpdates = async (): Promise<PendingShowcaseUpdate[]> =>
+    unwrap(await apiClient.get(`${BASE}/showcase/updates/pending`), 'Impossible de charger les nouvelles à valider.') ?? [];
+
+/** approve; reject (reason ≥ 10, the finalist reads it); remove a published one (reason ≥ 5). */
+export const reviewShowcaseUpdate = async (updateId: string, decision: 'approve' | 'reject' | 'remove', reason?: string): Promise<ShowcaseUpdate> =>
+    unwrap(await apiClient.post(`${BASE}/showcase/updates/${updateId}/review`, { decision, ...(reason ? { reason } : {}) }), 'La décision n’a pas pu être enregistrée.');
+
+export const createShowcasePages = async (editionId: string): Promise<{ created: number }> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${editionId}/showcase/create`), 'Les pages n’ont pas pu être créées.');
+
+/** The admin's existing upload (settings-service `/settings/files/upload`), for a news image. */
+export const uploadShowcaseImage = async (file: File): Promise<string> => (await uploadChallengeVideo(file)).fileId;
+
+/** The page in the member app. */
+export const showcasePublicUrl = (id: string) => `${MEMBER_APP_URL}/impact/${encodeURIComponent(id)}`;
+
+/** Same rule as the server: https on youtube.com / youtu.be (any subdomain). '' = no link. */
+export function youtubeUrlError(v: string): string | null {
+    const raw = v.trim();
+    if (!raw) return null;
+    const base = httpsUrlError(raw);
+    if (base) return base;
+    return /(^|\.)youtube\.com$|(^|\.)youtu\.be$/i.test(new URL(raw).hostname) ? null : 'Ce lien n’est pas une adresse YouTube.';
+}
+
+/** https only, 400 characters at most (the server's rule). '' = no link. */
+export function httpsUrlError(v: string): string | null {
+    const raw = v.trim();
+    if (!raw) return null;
+    let u: URL;
+    try { u = new URL(raw); } catch { return 'Adresse web invalide.'; }
+    if (u.protocol !== 'https:') return 'L’adresse doit commencer par https://.';
+    if (raw.length > 400) return 'Adresse trop longue.';
+    return null;
+}
+
+/**
+ * The end date can't go under visibleFrom + `showcaseMonths`. The server sends
+ * it (`minVisibleUntil`); this is only the fallback (12 months).
+ */
+export function showcaseMinEnd(visibleFrom: string, months = 12): Date {
+    const d = new Date(visibleFrom);
+    d.setMonth(d.getMonth() + months);
+    return d;
+}

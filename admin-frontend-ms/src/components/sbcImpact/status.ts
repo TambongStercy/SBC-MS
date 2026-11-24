@@ -1,7 +1,7 @@
 import type { StatusMap } from '../moduleKit';
 import {
     CANDIDATE_STATUS_LABELS as C, EDITION_STATUS_LABELS as E, PRIZE_STATUS_LABELS as PZ, PURCHASE_STATUS_LABELS as P, REVIEW_LABELS as R,
-    ROUND_STATUS_LABELS as RS, SUBMISSION_STATUS_LABELS as S,
+    ROUND_STATUS_LABELS as RS, SHOWCASE_UPDATE_STATUS_LABELS as SU, SUBMISSION_STATUS_LABELS as S,
 } from '../../services/impactV2Api';
 
 /** Edition status in words, coloured by what it means. */
@@ -69,4 +69,11 @@ export const PRIZE_STATUS: StatusMap = {
     DELIVERED: [PZ.DELIVERED, 'success'],
     FORFEITED: [PZ.FORFEITED, 'danger'],
     NOT_AWARDED: [PZ.NOT_AWARDED, 'neutral'],
+};
+
+export const SHOWCASE_UPDATE_STATUS: StatusMap = {
+    PENDING: [SU.PENDING, 'warning'],
+    PUBLISHED: [SU.PUBLISHED, 'success'],
+    REJECTED: [SU.REJECTED, 'danger'],
+    REMOVED: [SU.REMOVED, 'neutral'],
 };

@@ -108,7 +108,8 @@ describe('TombolaTab · 2. draw', () => {
         expect(within(screen.getByTestId('winner-1')).getByText('Awa N.')).toBeTruthy();
         expect(within(screen.getByTestId('winner-2')).getByText(/2 essais/)).toBeTruthy();
         expect(within(screen.getByTestId('winner-3')).getByText(/Plus aucun participant éligible/)).toBeTruthy();
-        expect(screen.getByRole('link', { name: /Preuve publique du tirage/ }).getAttribute('href')).toMatch(/\/tickets\/impact\/public\/tombola\/draws\/d1\/proof$/);
+        // the member app's readable proof page
+        expect(screen.getByRole('link', { name: /Preuve publique du tirage/ }).getAttribute('href')).toMatch(/^https?:\/\/[^/]+\/impact-challenge\/tombola\/preuve\/d1$/);
         expect(screen.getByRole('link', { name: /Écran du tirage/ }).getAttribute('href')).toMatch(/\/impact-challenge\/tombola$/);
     });
 

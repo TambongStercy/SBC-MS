@@ -3,6 +3,7 @@ import { render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AxiosError, type AxiosResponse } from 'axios';
 import { TooltipProvider } from '../ui';
+import { AuthContext, type AuthContextType } from '../../context/AuthContext';
 import type { Edition, JuryOverview } from '../../services/impactV2Api';
 
 /** Test helpers for the « Finale » tab (not shipped: imported by *.test.tsx only). */
@@ -50,5 +51,12 @@ export function renderWithClient(node: ReactNode) {
         <QueryClientProvider client={client}>
             <TooltipProvider>{node}</TooltipProvider>
         </QueryClientProvider>,
+    );
+}
+
+/** As renderWithClient, signed in with write access to the Impact Challenge (pages that read permissions). */
+export function renderAsWriter(node: ReactNode, access: 'read' | 'write' = 'write') {
+    return renderWithClient(
+        <AuthContext.Provider value={{ permissions: { impactChallenge: access } } as unknown as AuthContextType}>{node}</AuthContext.Provider>,
     );
 }

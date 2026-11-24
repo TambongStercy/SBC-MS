@@ -619,3 +619,93 @@ DrawSchema.index({ editionId: 1 }, { unique: true });
 DrawSchema.index({ 'winners.userId': 1, 'winners.category': 1, drawnAt: -1 });
 
 export const ImpactTombolaDraw = mongoose.model<IImpactTombolaDraw>('ImpactTombolaDraw', DrawSchema);
+
+// ---------- Phase 5: SBC Impact showcase (§14) ----------
+
+export interface IImpactShowcase extends Document {
+    _id: Types.ObjectId;
+    editionId: Types.ObjectId;
+    candidateId: Types.ObjectId;
+    userId: Types.ObjectId;
+    /** Snapshot of the candidate at the result (the page does not move if the profile changes). */
+    profile: {
+        name: string; photoFileId: string; activity: string; category: string; country: string; city: string;
+        presentation: string; projectName: string; projectDescription: string; sbcId?: string;
+    };
+    /** « Gagnant » or « Finaliste — 2e »…, with the final rank and score. */
+    result: { rank: number; score: number; winner: boolean; editionName: string; decidedAt: Date };
+    /** The presentation video (week-2 video, else the project's). */
+    videoFileId?: string;
+    podcast?: { title?: string; url: string; platform?: string };
+    youtubeUrl?: string;
+    /** SBC Shop or own website (§14.1). */
+    shopUrl?: string;
+    /** Shown from, and until at least (published + showcaseMonths). Archived after, never deleted. */
+    visibleFrom: Date;
+    visibleUntil: Date;
+    /** Hidden by the administration (kept). */
+    hiddenAt?: Date;
+    hiddenReason?: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const ShowcaseSchema = new Schema<IImpactShowcase>({
+    editionId: { type: S.ObjectId, required: true },
+    candidateId: { type: S.ObjectId, required: true },
+    userId: { type: S.ObjectId, required: true },
+    profile: {
+        name: String, photoFileId: String, activity: String, category: String, country: String, city: String,
+        presentation: String, projectName: String, projectDescription: String, sbcId: String,
+    },
+    result: { rank: Number, score: Number, winner: Boolean, editionName: String, decidedAt: Date },
+    videoFileId: String,
+    podcast: { title: String, url: String, platform: String },
+    youtubeUrl: String,
+    shopUrl: String,
+    visibleFrom: { type: Date, required: true },
+    visibleUntil: { type: Date, required: true },
+    hiddenAt: Date,
+    hiddenReason: String,
+}, { timestamps: true });
+ShowcaseSchema.index({ candidateId: 1 }, { unique: true });
+ShowcaseSchema.index({ visibleUntil: -1 });
+ShowcaseSchema.index({ userId: 1 });
+
+export const ImpactShowcase = mongoose.model<IImpactShowcase>('ImpactShowcase', ShowcaseSchema);
+
+export interface IImpactShowcaseUpdate extends Document {
+    _id: Types.ObjectId;
+    showcaseId: Types.ObjectId;
+    /** Who wrote it: the administration (published at once) or the finalist (reviewed first). */
+    authorRole: 'admin' | 'finalist';
+    authorUserId: Types.ObjectId;
+    kind: 'STEP' | 'PRODUCT' | 'ACHIEVEMENT' | 'NEWS' | 'RESULT';
+    title: string;
+    body: string;
+    imageFileId?: string;
+    link?: string;
+    status: 'PENDING' | 'PUBLISHED' | 'REJECTED' | 'REMOVED';
+    review?: { reason?: string; at: Date; by: Types.ObjectId };
+    publishedAt?: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const ShowcaseUpdateSchema = new Schema<IImpactShowcaseUpdate>({
+    showcaseId: { type: S.ObjectId, required: true },
+    authorRole: { type: String, enum: ['admin', 'finalist'], required: true },
+    authorUserId: { type: S.ObjectId, required: true },
+    kind: { type: String, enum: ['STEP', 'PRODUCT', 'ACHIEVEMENT', 'NEWS', 'RESULT'], default: 'NEWS' },
+    title: { type: String, required: true },
+    body: { type: String, required: true },
+    imageFileId: String,
+    link: String,
+    status: { type: String, enum: ['PENDING', 'PUBLISHED', 'REJECTED', 'REMOVED'], default: 'PENDING' },
+    review: { reason: String, at: Date, by: S.ObjectId },
+    publishedAt: Date,
+}, { timestamps: true });
+ShowcaseUpdateSchema.index({ showcaseId: 1, status: 1, publishedAt: -1 });
+ShowcaseUpdateSchema.index({ status: 1, createdAt: 1 });
+
+export const ImpactShowcaseUpdate = mongoose.model<IImpactShowcaseUpdate>('ImpactShowcaseUpdate', ShowcaseUpdateSchema);
