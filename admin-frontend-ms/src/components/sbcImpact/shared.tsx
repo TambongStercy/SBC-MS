@@ -4,9 +4,12 @@ import { Alert02Icon } from '@hugeicons/core-free-icons';
 import { Avatar, Badge } from '../ui';
 import { StatusBadge } from '../moduleKit';
 import {
-    photoUrl, type CandidateStatus, type EditionStatus, type PrizeStatus, type PurchaseStatus, type ReviewStatus, type RoundStatus, type SubmissionStatus,
+    photoUrl, type CandidateStatus, type EditionStatus, type PrizeStatus, type PurchaseStatus, type ReviewStatus, type RoundStatus,
+    type ShowcaseUpdateStatus, type SubmissionStatus,
 } from '../../services/impactV2Api';
-import { CANDIDATE_STATUS, EDITION_STATUS, PRIZE_STATUS, PURCHASE_STATUS, REVIEW_STATUS, ROUND_STATUS, SUBMISSION_STATUS } from './status';
+import {
+    CANDIDATE_STATUS, EDITION_STATUS, PRIZE_STATUS, PURCHASE_STATUS, REVIEW_STATUS, ROUND_STATUS, SHOWCASE_UPDATE_STATUS, SUBMISSION_STATUS,
+} from './status';
 
 export function EditionStatusBadge({ status }: { status: EditionStatus }) {
     return <StatusBadge status={status} map={EDITION_STATUS} />;
@@ -34,6 +37,10 @@ export function PurchaseStatusBadge({ status }: { status: PurchaseStatus }) {
 
 export function PrizeStatusBadge({ status }: { status: PrizeStatus }) {
     return <StatusBadge status={status} map={PRIZE_STATUS} />;
+}
+
+export function ShowcaseUpdateStatusBadge({ status }: { status: ShowcaseUpdateStatus }) {
+    return <StatusBadge status={status} map={SHOWCASE_UPDATE_STATUS} />;
 }
 
 /** A seat holder whose count fell back below the requirement (a reversed activation). */
