@@ -17,31 +17,56 @@ import {
 import AuditTab from '../components/sbcImpact/AuditTab';
 import CandidateSheet from '../components/sbcImpact/CandidateSheet';
 import CandidatesTab from '../components/sbcImpact/CandidatesTab';
+import CompetitionPanel from '../components/sbcImpact/CompetitionPanel';
+import ContentsTab from '../components/sbcImpact/ContentsTab';
 import SettingsTab from '../components/sbcImpact/SettingsTab';
-import { EditionStatusBadge } from '../components/sbcImpact/shared';
+import Top3Tab from '../components/sbcImpact/Top3Tab';
+import VotesTab from '../components/sbcImpact/VotesTab';
+import { EditionStatusBadge, RoundStatusBadge } from '../components/sbcImpact/shared';
 import {
-    CLOSED_REASON_LABELS, RULES_MIN_LENGTH, cancelEdition, closeQualification, getEdition, impactErrorMessage, isEditionClosed,
-    listCandidates, openQualification, recountEdition, type CandidateRow, type CandidateStatus, type Edition,
+    CLOSED_REASON_LABELS, ROUND_LABELS, ROUND_STAGE, RULES_MIN_LENGTH, STAGE_LABELS, cancelEdition, closeQualification, getEdition,
+    getTop3, impactErrorMessage, isEditionClosed, listCandidates, listPurchases, listSubmissions, openQualification, recountEdition,
+    type CandidateRow, type CandidateStatus, type Edition, type RoundKey,
 } from '../services/impactV2Api';
 
-type Tab = 'candidats' | 'regles' | 'journal';
-const TABS: Tab[] = ['candidats', 'regles', 'journal'];
+type Tab = 'candidats' | 'contenus' | 'votes' | 'top3' | 'regles' | 'journal';
+const TABS: Tab[] = ['candidats', 'contenus', 'votes', 'top3', 'regles', 'journal'];
+/** Tabs that exist once the competition has started. */
+const COMPETITION_TABS: Tab[] = ['contenus', 'votes', 'top3'];
+/** Candidates still in the running, for the competition metric. */
+const RUNNING: CandidateStatus[] = ['OFFICIAL', 'STAGE_2', 'STAGE_3', 'FINALIST', 'SUSPENDED'];
+
+/** A side read failed: the to-do list goes on without it. */
+const orNull = <T,>(p: Promise<T>) => p.catch(() => null);
 
 /**
  * Counts for the metrics and the to-do list. Every list answer carries the
  * counts per status, the seats and `belowRequirementCount` (whole edition);
  * profiles to review need their own count, and the first few seat holders
- * below the requirement are read for their names.
+ * below the requirement are read for their names. During the competition:
+ * contents to review, uncertain refunds (week 3 on, a count on any purchases
+ * answer), and whether the TOP 3 can be designated (once the paid round is closed).
  */
-async function loadWork(editionId: string) {
-    const [all, pending] = await Promise.all([
-        listCandidates(editionId, { limit: 1 }),
-        listCandidates(editionId, { review: 'PENDING', limit: 1 }),
+async function loadWork(e: Edition) {
+    const stage = e.stage;
+    const week3On = stage === 'WEEK3' || stage === 'TOP3';
+    const top3Due = e.status === 'COMPETITION' && stage === 'WEEK3' && e.rounds?.PAID?.status === 'CLOSED' && !e.top3?.decidedAt;
+    const [all, pending, contents, purchases, top3] = await Promise.all([
+        listCandidates(e._id, { limit: 1 }),
+        listCandidates(e._id, { review: 'PENDING', limit: 1 }),
+        stage ? orNull(listSubmissions(e._id, { status: 'PENDING' })) : null,
+        week3On ? orNull(listPurchases(e._id, { limit: 1 })) : null,
+        top3Due ? orNull(getTop3(e._id)) : null,
     ]);
     const below: CandidateRow[] = all.belowRequirementCount > 0
-        ? (await listCandidates(editionId, { below: true, limit: 5 })).items
+        ? (await listCandidates(e._id, { below: true, limit: 5 })).items
         : [];
-    return { byStatus: all.byStatus, seats: all.seats, pending: pending.total, belowCount: all.belowRequirementCount, below };
+    return {
+        byStatus: all.byStatus, seats: all.seats, pending: pending.total, belowCount: all.belowRequirementCount, below,
+        pendingContents: contents?.length ?? 0,
+        uncertainRefunds: purchases?.totals.uncertainRefunds ?? 0,
+        top3Ready: !!top3 && top3.blockers.length === 0 && top3.ranking.length > 0 && !top3.decided,
+    };
 }
 
 /** One SBC Impact Challenge edition: qualification, candidates, rules, journal. */
@@ -57,7 +82,6 @@ export default function SbcImpactEditionPage() {
     const [recounting, setRecounting] = useState(false);
 
     const tabParam = params.get('tab') as Tab | null;
-    const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'candidats';
     const setTab = (t: string, extra: Record<string, string> = {}) => setParams(prev => {
         const next = new URLSearchParams(prev);
         if (t === 'candidats') next.delete('tab'); else next.set('tab', t);
@@ -77,9 +101,11 @@ export default function SbcImpactEditionPage() {
         },
     });
     const edition = editionQ.data;
+    const competitionStarted = !!edition?.stage;
+    const tab: Tab = tabParam && TABS.includes(tabParam) && (competitionStarted || !COMPETITION_TABS.includes(tabParam)) ? tabParam : 'candidats';
     const work = useQuery({
-        queryKey: ['sbc-impact', 'work', id, edition?.status],
-        queryFn: () => loadWork(id),
+        queryKey: ['sbc-impact', 'work', id, edition?.status, edition?.stage, edition?.rounds?.PAID?.status],
+        queryFn: () => loadWork(edition!),
         enabled: !!edition && edition.status !== 'DRAFT',
     });
 
@@ -93,6 +119,11 @@ export default function SbcImpactEditionPage() {
     }, [location.state, location.pathname, location.search, navigate]);
 
     const refresh = () => { void queryClient.invalidateQueries({ queryKey: ['sbc-impact'] }); };
+    /** An action answered with the edition: show it at once, reload the rest. */
+    const editionChanged = (next?: Edition) => {
+        if (next) queryClient.setQueryData(['sbc-impact', 'edition', id], next);
+        refresh();
+    };
 
     const back = (
         <Link to="/sbc-impact" className="inline-flex h-11 items-center gap-1 text-sm text-fg-muted hover:text-fg sm:h-auto">
@@ -221,6 +252,42 @@ export default function SbcImpactEditionPage() {
         });
     }
 
+    // Competition (Phase 2)
+    if (w && w.pendingContents > 0) {
+        todo.push({
+            key: 'contents', count: w.pendingContents,
+            label: `${plural(w.pendingContents, 'Contenu')} à valider`,
+            hint: 'Vidéos et projets des candidats : validez-les pour qu’ils soient publiés et soumis au vote.',
+            action: <TodoAction onClick={() => setTab('contenus')}>Examiner</TodoAction>,
+        });
+    }
+    const currentRound = (Object.keys(ROUND_STAGE) as RoundKey[]).find(k => ROUND_STAGE[k] === e.stage);
+    const roundNow = currentRound ? e.rounds?.[currentRound] : undefined;
+    if (e.status === 'COMPETITION' && currentRound && (roundNow?.status ?? 'SCHEDULED') === 'SCHEDULED' && !roundNow?.closesAt) {
+        todo.push({
+            key: 'round-dates', count: 1, tone: 'info',
+            label: `Dates du ${ROUND_LABELS[currentRound].toLowerCase()} à programmer`,
+            hint: 'Sans dates, le vote de cette semaine ne s’ouvre pas.',
+            action: <TodoAction onClick={() => document.getElementById('competition')?.scrollIntoView({ behavior: 'smooth' })}>Programmer</TodoAction>,
+        });
+    }
+    if (w && w.uncertainRefunds > 0) {
+        todo.push({
+            key: 'refunds', count: w.uncertainRefunds, tone: 'danger',
+            label: `${plural(w.uncertainRefunds, 'Remboursement incertain', 'Remboursements incertains')}`,
+            hint: 'L’argent n’a pas pu être confirmé sur le solde de l’acheteur ; le système réessaie chaque minute. Prévenez la technique s’il reste.',
+            action: <TodoAction onClick={() => setTab('votes', { achats: 'incertains' })}>Voir</TodoAction>,
+        });
+    }
+    if (w?.top3Ready) {
+        todo.push({
+            key: 'top3', count: 1, tone: 'info',
+            label: 'TOP 3 prêt à être désigné',
+            hint: 'Les votes payants sont clos et rien ne bloque la décision.',
+            action: <TodoAction onClick={() => setTab('top3')}>Désigner</TodoAction>,
+        });
+    }
+
     const count = (s: CandidateStatus) => w?.byStatus[s] ?? 0;
     const metric = (v: ReactNode) => (work.isLoading ? <Skeleton className="h-7 w-16" /> : v);
     const seatsMax = w?.seats.max ?? e.settings.maxCandidates;
@@ -232,7 +299,9 @@ export default function SbcImpactEditionPage() {
                 <PageHeader
                     className="mb-0 mt-2"
                     title={<span className="flex flex-wrap items-center gap-3">{e.name}<EditionStatusBadge status={e.status} /></span>}
-                    description={`Qualification du ${formatDateTime(e.schedule.qualificationOpensAt)} au ${formatDateTime(e.schedule.qualificationClosesAt)}`}
+                    description={e.stage
+                        ? `Compétition · ${STAGE_LABELS[e.stage]}`
+                        : `Qualification du ${formatDateTime(e.schedule.qualificationOpensAt)} au ${formatDateTime(e.schedule.qualificationClosesAt)}`}
                     actions={(
                         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                             {primary && <Can module="impactChallenge" write>{primary}</Can>}
@@ -276,6 +345,51 @@ export default function SbcImpactEditionPage() {
 
             {!closed && (e.status === 'DRAFT' || !work.isError) && <TodoPanel items={todo} loading={work.isLoading && e.status !== 'DRAFT'} />}
 
+            {(e.stage || e.status === 'QUALIFICATION_CLOSED') && (
+                <div id="competition" className="scroll-mt-4">
+                    <CompetitionPanel
+                        edition={e}
+                        canWrite={canWrite}
+                        onChanged={editionChanged}
+                        onOpenCandidate={setOpenCandidate}
+                        onShowCandidates={filter => setTab('candidats', filter)}
+                        onShowTop3={() => setTab('top3')}
+                    />
+                </div>
+            )}
+
+            {e.stage ? (
+                <div className={`grid grid-cols-2 gap-3 lg:grid-cols-4 ${work.isFetching && !work.isLoading ? 'opacity-60' : ''}`}>
+                    <Metric
+                        label="Candidats en course"
+                        icon={UserMultipleIcon}
+                        tone="primary"
+                        value={metric(formatNumber(RUNNING.reduce((n, st) => n + count(st), 0)))}
+                        hint={e.top3?.decidedAt ? `${formatNumber(count('FINALIST'))} ${plural(count('FINALIST'), 'finaliste')}` : STAGE_LABELS[e.stage]}
+                        onClick={() => setTab('candidats')}
+                    />
+                    <Metric
+                        label="Contenus à valider"
+                        tone={(w?.pendingContents ?? 0) > 0 ? 'warning' : 'neutral'}
+                        value={metric(formatNumber(w?.pendingContents ?? 0))}
+                        onClick={() => setTab('contenus')}
+                    />
+                    {(['FREE', 'PAID'] as RoundKey[]).map(k => {
+                        const r = e.rounds?.[k];
+                        return (
+                            <Metric
+                                key={k}
+                                label={ROUND_LABELS[k]}
+                                value={<RoundStatusBadge status={r?.status ?? 'SCHEDULED'} />}
+                                hint={r?.status === 'CLOSED'
+                                    ? `Clos le ${formatDateTime(r.closedAt ?? r.closesAt)}`
+                                    : r?.closesAt ? <>Fin <DateText value={r.closesAt} /></> : 'Dates à programmer'}
+                                onClick={() => setTab('votes')}
+                            />
+                        );
+                    })}
+                </div>
+            ) : (
             <div className={`grid grid-cols-2 gap-3 lg:grid-cols-5 ${work.isFetching && !work.isLoading ? 'opacity-60' : ''}`}>
                 <Metric
                     label="Places prises"
@@ -310,6 +424,7 @@ export default function SbcImpactEditionPage() {
                     hint={<DateText value={e.schedule.qualificationClosesAt} />}
                 />
             </div>
+            )}
             {work.isError && e.status !== 'DRAFT' && (
                 <Notice tone="warning">Les compteurs n’ont pas pu être chargés : {impactErrorMessage(work.error, 'erreur inconnue')}.</Notice>
             )}
@@ -317,14 +432,34 @@ export default function SbcImpactEditionPage() {
             <Tabs value={tab} onValueChange={t => setTab(t)}>
                 <TabsList>
                     <TabsTrigger value="candidats" className="h-11">Candidats{w ? ` (${formatNumber(Object.values(w.byStatus).reduce((s, n) => s + (n ?? 0), 0))})` : ''}</TabsTrigger>
+                    {competitionStarted && (
+                        <>
+                            <TabsTrigger value="contenus" className="h-11">Contenus{w?.pendingContents ? ` (${formatNumber(w.pendingContents)})` : ''}</TabsTrigger>
+                            <TabsTrigger value="votes" className="h-11">Votes</TabsTrigger>
+                            <TabsTrigger value="top3" className="h-11">TOP 3</TabsTrigger>
+                        </>
+                    )}
                     <TabsTrigger value="regles" className="h-11">Règles et paramètres</TabsTrigger>
                     <TabsTrigger value="journal" className="h-11">Journal</TabsTrigger>
                 </TabsList>
                 <TabsContent value="candidats" className="mt-4">
                     <CandidatesTab edition={e} onOpen={setOpenCandidate} />
                 </TabsContent>
+                {competitionStarted && (
+                    <>
+                        <TabsContent value="contenus" className="mt-4">
+                            <ContentsTab editionId={e._id} canWrite={canWrite} onChanged={refresh} />
+                        </TabsContent>
+                        <TabsContent value="votes" className="mt-4">
+                            <VotesTab edition={e} canWrite={canWrite} onChanged={refresh} />
+                        </TabsContent>
+                        <TabsContent value="top3" className="mt-4">
+                            <Top3Tab edition={e} canWrite={canWrite} onChanged={editionChanged} onOpenCandidate={setOpenCandidate} />
+                        </TabsContent>
+                    </>
+                )}
                 <TabsContent value="regles" className="mt-4">
-                    <SettingsTab edition={e} canWrite={canWrite} onSaved={saved => { queryClient.setQueryData(['sbc-impact', 'edition', id], saved); refresh(); }} />
+                    <SettingsTab edition={e} canWrite={canWrite} onSaved={editionChanged} />
                 </TabsContent>
                 <TabsContent value="journal" className="mt-4">
                     <AuditTab editionId={e._id} onOpenCandidate={setOpenCandidate} />

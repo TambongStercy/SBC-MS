@@ -3,8 +3,10 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import { Alert02Icon } from '@hugeicons/core-free-icons';
 import { Avatar, Badge } from '../ui';
 import { StatusBadge } from '../moduleKit';
-import { photoUrl, type CandidateStatus, type EditionStatus, type ReviewStatus } from '../../services/impactV2Api';
-import { CANDIDATE_STATUS, EDITION_STATUS, REVIEW_STATUS } from './status';
+import {
+    photoUrl, type CandidateStatus, type EditionStatus, type PurchaseStatus, type ReviewStatus, type RoundStatus, type SubmissionStatus,
+} from '../../services/impactV2Api';
+import { CANDIDATE_STATUS, EDITION_STATUS, PURCHASE_STATUS, REVIEW_STATUS, ROUND_STATUS, SUBMISSION_STATUS } from './status';
 
 export function EditionStatusBadge({ status }: { status: EditionStatus }) {
     return <StatusBadge status={status} map={EDITION_STATUS} />;
@@ -16,6 +18,18 @@ export function CandidateStatusBadge({ status }: { status: CandidateStatus }) {
 
 export function ReviewBadge({ status }: { status: ReviewStatus }) {
     return <StatusBadge status={status} map={REVIEW_STATUS} />;
+}
+
+export function RoundStatusBadge({ status }: { status: RoundStatus }) {
+    return <StatusBadge status={status} map={ROUND_STATUS} />;
+}
+
+export function SubmissionStatusBadge({ status }: { status: SubmissionStatus }) {
+    return <StatusBadge status={status} map={SUBMISSION_STATUS} />;
+}
+
+export function PurchaseStatusBadge({ status }: { status: PurchaseStatus }) {
+    return <StatusBadge status={status} map={PURCHASE_STATUS} />;
 }
 
 /** A seat holder whose count fell back below the requirement (a reversed activation). */

@@ -2120,6 +2120,25 @@ Impact Challenge (tombola-service `/api/challenges`) is untouched until v2 repla
   filleuls since 2026-06-01) got exactly the counts and reach times computed directly in Mongo,
   seats in payment order though they applied in reverse.
 
+**Phase 2 (weeks 1–3, votes, TOP 3), 2026-11-23:** `docs/impact-challenge/PHASE2.md`.
+- Built in `modules/impact`, not on the Animation engine (its paid votes always split money with
+  an organizer; Impact vote money is all SBC's). **No payment-service change:** Mobile Money =
+  intent `paymentType: IMPACT_VOTE`, routed back by `metadata.impactVoteTxId` in
+  event-service's webhook controller; SBC balance = `internal/balance-spend` (ref
+  `impact-vote:<tx>`); refunds = `internal/deposit` (ref `impact-vote-refund:<tx>`) or
+  `balance-refund`. All exactly once per reference, so retries never move money twice.
+- Votes count only on payment-service's verified confirmation, once (lease + the write that
+  sets `votesCreditedAt`); late ones (round closed + 15 min grace, TOP 3 set, candidate out)
+  are refunded to the SBC balance. Jobs: reconciler (10 min), balance sweeper (unknown outcome,
+  30 min then give back), refund retries, ledger recount (5 min).
+- Admin refund and TOP 3 confirmation need the admin's own code (`modules/impact/stepup.ts`, same
+  contract as payment-service's `requireAdminStepUp`; `ADMIN_STEPUP_REQUIRED=false` turns it off).
+- Free vote: unique `(editionId, voterUserId)`; members only + accounts older than the round +
+  no self-vote by default (settings, locked at the competition start).
+- Verified 2026-11-23 through the real payment-service in sandbox: Mobile Money purchase → its
+  callback → 5 votes once; admin refund → +1 000 F deposit; balance purchase and balance refund,
+  each one wallet movement under its own reference.
+
 ### SBC Support (support-service, 2026-11-17)
 
 Agent desk + member « Aide » + internal case/view-task intake. Contract:

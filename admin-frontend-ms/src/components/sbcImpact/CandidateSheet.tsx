@@ -6,7 +6,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import { Cancel01Icon, CheckmarkCircle02Icon, Edit02Icon, PauseIcon, PlayIcon } from '@hugeicons/core-free-icons';
 import { Button, Dialog, MenuItem, SheetContent, Skeleton } from '../ui';
 import {
-    ConfirmDialog, DateText, DetailList, ErrorState, Notice, RowMenu, SheetSection, formatDateTime, formatNumber,
+    ConfirmDialog, DateText, DetailList, ErrorState, Notice, RowMenu, SheetSection, formatDateTime, formatMoney, formatNumber,
     type ConfirmOptions,
 } from '../moduleKit';
 import { getCountryName } from '../../utils/countryUtils';
@@ -221,6 +221,17 @@ export default function CandidateSheet({ candidateId, edition, canWrite, onClose
                                 ['Profil modifié', formatDateTime(c.profileUpdatedAt)],
                             ]} />
                         </SheetSection>
+
+                        {edition.stage && (
+                            <SheetSection title="Compétition">
+                                <DetailList items={[
+                                    ['Votes payants', <>{formatNumber(c.votes?.paid ?? 0)} · {formatMoney(c.votes?.paidAmount ?? 0)}</>],
+                                    ['Votes gratuits', formatNumber(c.votes?.free ?? 0)],
+                                    c.rank ? ['Rang au TOP 3', c.rank === 1 ? '1er' : `${c.rank}e`] : null,
+                                    ['Profil publié', c.publishedAt ? formatDateTime(c.publishedAt) : 'Non publié'],
+                                ]} />
+                            </SheetSection>
+                        )}
 
                         <SheetSection title="Profil">
                             <DetailList items={[

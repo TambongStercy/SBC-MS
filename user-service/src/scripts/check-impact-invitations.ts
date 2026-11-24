@@ -118,6 +118,7 @@ const main = async () => {
     check('unpaid filleul is not a member', byId.get(String(p1))?.isMember === false);
     check('blocked account is unavailable', byId.get(String(blk))?.unavailable === true);
     check('profile carries city and country', byId.get(String(cand))?.city === 'Douala' && byId.get(String(cand))?.country === 'CM');
+    check('profile carries the account creation date', byId.get(String(cand))?.createdAt instanceof Date);
 
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

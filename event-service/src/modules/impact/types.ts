@@ -69,6 +69,37 @@ export enum ProfileReview {
     CHANGES_REQUESTED = 'CHANGES_REQUESTED',
 }
 
+// ---------- Phase 2: weeks 1–3, votes, TOP 3 ----------
+
+/** Where the competition is (edition status COMPETITION, then FINAL once the TOP 3 is set). */
+export enum CompetitionStage {
+    WEEK1 = 'WEEK1',   // Présentation des candidats (§5)
+    WEEK2 = 'WEEK2',   // Vidéo « Ma vision de SBC » + vote gratuit (§6)
+    WEEK3 = 'WEEK3',   // Présentation des projets + votes payants (§7–§8)
+    TOP3 = 'TOP3',     // Finalistes désignés (§9)
+}
+
+/** The two vote rounds: the free vote of week 2, the paid votes of week 3. */
+export enum RoundKey { FREE = 'FREE', PAID = 'PAID' }
+export enum RoundStatus { SCHEDULED = 'SCHEDULED', OPEN = 'OPEN', CLOSED = 'CLOSED' }
+
+export enum SubmissionKind { VIDEO = 'VIDEO', PROJECT = 'PROJECT' }
+export enum SubmissionStatus {
+    PENDING = 'PENDING',                     // En attente de validation
+    ACCEPTED = 'ACCEPTED',                   // Validée et publiée
+    REJECTED = 'REJECTED',                   // Refusée (définitif pour ce contenu)
+    RESUBMIT_REQUESTED = 'RESUBMIT_REQUESTED', // Nouvelle soumission demandée
+}
+
+export enum VoteTxStatus {
+    PENDING = 'PENDING',
+    SUCCESS = 'SUCCESS',
+    FAILED = 'FAILED',
+    CANCELLED = 'CANCELLED',
+    REFUNDED = 'REFUNDED',
+}
+export enum PayMethod { MOBILE_MONEY = 'MOBILE_MONEY', BALANCE = 'BALANCE' }
+
 export interface TicketTier { upTo: number | null; weight: number }
 export interface Prize { key: string; label: string; category: string }
 export interface JuryCriterion { key: string; label: string; max: number }
@@ -96,6 +127,21 @@ export interface EditionSettings {
     categories: string[];
     /** Extra profile questions configured by the administration (§3.1). */
     profileFields: ProfileField[];
+    /** Week-2 free vote (§6.3): « 1 compte SBC = 1 vote ». */
+    freeVote: {
+        /** Only members with an active pack vote (free accounts are too easy to create). */
+        membersOnly: boolean;
+        /** Only accounts that existed before the vote opened. */
+        accountsOlderThanRound: boolean;
+        /** A candidate may vote for themselves. */
+        selfVote: boolean;
+    };
+    /** A candidate may buy votes for themselves (the money goes to SBC). */
+    paidSelfVote: boolean;
+    /** Votes can also be paid from the SBC balance. */
+    balancePayment: boolean;
+    /** Minutes after the paid round closes during which a payment started in time still counts. */
+    settlementGraceMin: number;
 }
 
 /** Spec §19 values + Rufus's answers (2026-11-23). */
@@ -122,6 +168,10 @@ export const DEFAULT_SETTINGS: EditionSettings = {
     ],
     prizeCooldownDays: 365,
     showcaseMonths: 12,
+    freeVote: { membersOnly: true, accountsOlderThanRound: true, selfVote: false },
+    paidSelfVote: true,
+    balancePayment: true,
+    settlementGraceMin: 15,
     categories: [
         'Commerce', 'Agriculture & agroalimentaire', 'Mode & beauté', 'Services', 'Technologie & numérique',
         'Éducation & formation', 'Santé & bien-être', 'Artisanat', 'Transport & logistique', 'Autre',
@@ -140,7 +190,15 @@ export const QUALIFICATION_LOCKED: (keyof EditionSettings)[] = [
 ];
 export const COMPETITION_LOCKED: (keyof EditionSettings)[] = [
     'finalistsCount', 'votePrice', 'votePacks', 'weights', 'juryCriteria', 'ticketTiers', 'prizeCooldownDays', 'showcaseMonths',
+    'freeVote', 'paidSelfVote', 'balancePayment', 'settlementGraceMin',
 ];
+
+/** An edition's settings with defaults for fields added after it was created. */
+export const settingsOf = (s: Partial<EditionSettings> | undefined): EditionSettings =>
+    ({ ...DEFAULT_SETTINGS, ...(s ?? {}), freeVote: { ...DEFAULT_SETTINGS.freeVote, ...(s?.freeVote ?? {}) } });
+
+/** Candidate statuses still in the running during the competition. */
+export const COMPETING_STATUSES = [CandidateStatus.OFFICIAL, CandidateStatus.STAGE_2, CandidateStatus.STAGE_3];
 
 export const editionRank = (s: EditionStatus) =>
     [EditionStatus.DRAFT, EditionStatus.QUALIFICATION, EditionStatus.QUALIFICATION_CLOSED,

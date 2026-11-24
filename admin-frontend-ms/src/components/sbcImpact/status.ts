@@ -1,6 +1,7 @@
 import type { StatusMap } from '../moduleKit';
 import {
-    CANDIDATE_STATUS_LABELS as C, EDITION_STATUS_LABELS as E, REVIEW_LABELS as R,
+    CANDIDATE_STATUS_LABELS as C, EDITION_STATUS_LABELS as E, PURCHASE_STATUS_LABELS as P, REVIEW_LABELS as R,
+    ROUND_STATUS_LABELS as RS, SUBMISSION_STATUS_LABELS as S,
 } from '../../services/impactV2Api';
 
 /** Edition status in words, coloured by what it means. */
@@ -41,3 +42,24 @@ export const REVIEW_STATUS: StatusMap = {
  * the page's metrics and to-do links). `sous=1`: seat holders below the requirement.
  */
 export const CANDIDATE_FILTER_KEYS = ['statut', 'avis', 'sous', 'q'] as const;
+
+export const ROUND_STATUS: StatusMap = {
+    SCHEDULED: [RS.SCHEDULED, 'neutral'],
+    OPEN: [RS.OPEN, 'success'],
+    CLOSED: [RS.CLOSED, 'info'],
+};
+
+export const SUBMISSION_STATUS: StatusMap = {
+    PENDING: [S.PENDING, 'warning'],
+    ACCEPTED: [S.ACCEPTED, 'success'],
+    REJECTED: [S.REJECTED, 'danger'],
+    RESUBMIT_REQUESTED: [S.RESUBMIT_REQUESTED, 'info'],
+};
+
+export const PURCHASE_STATUS: StatusMap = {
+    PENDING: [P.PENDING, 'neutral'],
+    SUCCESS: [P.SUCCESS, 'success'],
+    FAILED: [P.FAILED, 'danger'],
+    CANCELLED: [P.CANCELLED, 'neutral'],
+    REFUNDED: [P.REFUNDED, 'info'],
+};

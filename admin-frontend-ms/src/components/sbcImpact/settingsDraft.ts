@@ -32,7 +32,17 @@ export interface Draft {
     prizes: Prize[];
     categories: string;
     profileFields: { key: string; label: string; required: boolean; maxLength: string }[];
+    // Vote rules (Phase 2)
+    freeVoteMembersOnly: boolean;
+    freeVoteAccountsOlderThanRound: boolean;
+    freeVoteSelfVote: boolean;
+    paidSelfVote: boolean;
+    balancePayment: boolean;
+    settlementGraceMin: string;
 }
+
+/** The server's defaults for the vote rules (editions created before they existed). */
+const VOTE_DEFAULTS = { membersOnly: true, accountsOlderThanRound: true, selfVote: false, paidSelfVote: true, balancePayment: true, settlementGraceMin: 15 };
 
 const s = (n: number | null | undefined) => (n == null ? '' : String(n));
 export const num = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.')));
@@ -63,6 +73,12 @@ export function toDraft(e: Edition): Draft {
         prizes: (st.prizes ?? []).map(p => ({ key: p.key, label: p.label, category: p.category })),
         categories: (st.categories ?? []).join('\n'),
         profileFields: (st.profileFields ?? []).map(f => ({ key: f.key, label: f.label, required: !!f.required, maxLength: s(f.maxLength) })),
+        freeVoteMembersOnly: st.freeVote?.membersOnly ?? VOTE_DEFAULTS.membersOnly,
+        freeVoteAccountsOlderThanRound: st.freeVote?.accountsOlderThanRound ?? VOTE_DEFAULTS.accountsOlderThanRound,
+        freeVoteSelfVote: st.freeVote?.selfVote ?? VOTE_DEFAULTS.selfVote,
+        paidSelfVote: st.paidSelfVote ?? VOTE_DEFAULTS.paidSelfVote,
+        balancePayment: st.balancePayment ?? VOTE_DEFAULTS.balancePayment,
+        settlementGraceMin: s(st.settlementGraceMin ?? VOTE_DEFAULTS.settlementGraceMin),
     };
 }
 
@@ -84,6 +100,10 @@ export function fromDraft(d: Draft) {
         showcaseMonths: num(d.showcaseMonths),
         categories: d.categories.split('\n').map(c => c.trim()).filter(Boolean),
         profileFields: d.profileFields.map(f => ({ key: f.key.trim(), label: f.label.trim(), required: f.required, maxLength: num(f.maxLength) })),
+        freeVote: { membersOnly: d.freeVoteMembersOnly, accountsOlderThanRound: d.freeVoteAccountsOlderThanRound, selfVote: d.freeVoteSelfVote },
+        paidSelfVote: d.paidSelfVote,
+        balancePayment: d.balancePayment,
+        settlementGraceMin: num(d.settlementGraceMin),
     };
     return {
         name: d.name.trim(),

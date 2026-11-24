@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Delete02Icon, LockIcon, PlusSignIcon } from '@hugeicons/core-free-icons';
-import { Badge, Button, Checkbox, Field, Input, Panel, PanelBody, PanelHeader, Textarea } from '../ui';
+import { Badge, Button, Checkbox, Field, Input, Panel, PanelBody, PanelHeader, Switch, Textarea } from '../ui';
 import { Notice, formatNumber } from '../moduleKit';
 import { cn } from '../../lib/cn';
 import {
@@ -71,6 +71,19 @@ function ListEditor<T>({ label, help, rows, onChange, render, blank, max, min = 
             )}
             {error ? <p className="text-xs text-danger">{error}</p> : help ? <p className="text-xs text-fg-muted">{help}</p> : null}
         </div>
+    );
+}
+
+/** One yes/no vote rule, with what it means. */
+function Rule({ label, help, checked, onChange, disabled }: { label: string; help: string; checked: boolean; onChange: (v: boolean) => void; disabled: boolean }) {
+    return (
+        <label className="flex items-start justify-between gap-4 rounded-panel border border-line px-4 py-3">
+            <span className="min-w-0">
+                <span className="block text-sm font-medium text-fg">{label}</span>
+                <span className="block text-xs text-fg-muted">{help}</span>
+            </span>
+            <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} className="mt-0.5" />
+        </label>
     );
 }
 
@@ -285,6 +298,25 @@ export default function SettingsTab({ edition, canWrite, onSaved }: { edition: E
                         </>
                     )}
                 />
+            </Section>
+
+            <Section title="Règles des votes" description="Vote gratuit de la semaine 2 et votes payants de la semaine 3. Verrouillé au début de la compétition." lock={lock('freeVote')}>
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                    <Rule label="Vote gratuit : membres seulement" help="Seuls les comptes avec un pack actif votent (un compte gratuit se crée trop facilement)."
+                        checked={draft.freeVoteMembersOnly} onChange={v => set({ freeVoteMembersOnly: v })} disabled={off('freeVote')} />
+                    <Rule label="Vote gratuit : comptes déjà inscrits" help="Seuls les comptes créés avant l’ouverture du vote votent."
+                        checked={draft.freeVoteAccountsOlderThanRound} onChange={v => set({ freeVoteAccountsOlderThanRound: v })} disabled={off('freeVote')} />
+                    <Rule label="Vote gratuit pour soi-même" help="Un candidat peut voter pour lui-même."
+                        checked={draft.freeVoteSelfVote} onChange={v => set({ freeVoteSelfVote: v })} disabled={off('freeVote')} />
+                    <Rule label="Votes payants pour soi-même" help="Un candidat peut acheter des votes pour lui-même (l’argent revient à SBC)."
+                        checked={draft.paidSelfVote} onChange={v => set({ paidSelfVote: v })} disabled={off('paidSelfVote')} />
+                    <Rule label="Paiement par le solde SBC" help="Les votes payants peuvent aussi se payer avec le solde SBC, en plus du Mobile Money."
+                        checked={draft.balancePayment} onChange={v => set({ balancePayment: v })} disabled={off('balancePayment')} />
+                </div>
+                <Field label="Délai de confirmation des paiements (minutes)" required error={err('settlementGraceMin')}
+                    help={lock('settlementGraceMin') ?? 'Un paiement lancé avant la clôture des votes payants compte s’il est confirmé dans ce délai (0 à 120). Au-delà, il est remboursé sur le solde SBC.'}>
+                    <Input type="number" inputMode="numeric" className={cn(ctl, 'sm:max-w-48')} value={draft.settlementGraceMin} onChange={e => set({ settlementGraceMin: e.target.value })} disabled={off('settlementGraceMin')} />
+                </Field>
             </Section>
 
             <Section title="Tombola et lots" description="Les lots restent modifiables ; les paliers et le délai se verrouillent au début de la compétition.">

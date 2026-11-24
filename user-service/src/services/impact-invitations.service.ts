@@ -153,6 +153,8 @@ export interface ImpactMember {
     isMember: boolean;
     /** Blocked or banned. Deleted accounts are simply absent from the answer. */
     unavailable: boolean;
+    /** Account creation (free votes can be limited to accounts older than the round). */
+    createdAt?: Date;
 }
 
 /** Profile subset for candidacies (name, photo, place, SBC id, membership). */
@@ -162,7 +164,7 @@ export const impactMembers = async (userIds: string[]): Promise<ImpactMember[]> 
     if (ids.length === 0) return [];
     const [users, subs] = await Promise.all([
         UserModel.find({ _id: { $in: ids } })
-            .select('name avatar country city referralCode deleted blocked ban').lean(),
+            .select('name avatar country city referralCode deleted blocked ban createdAt').lean(),
         SubscriptionModel.distinct('user', {
             user: { $in: ids },
             subscriptionType: { $in: MEMBERSHIP_TYPES },
@@ -180,5 +182,6 @@ export const impactMembers = async (userIds: string[]): Promise<ImpactMember[]> 
         referralCode: u.referralCode,
         isMember: members.has(String(u._id)),
         unavailable: Boolean(u.deleted || u.blocked || u.ban?.at),
+        createdAt: u.createdAt,
     }));
 };
