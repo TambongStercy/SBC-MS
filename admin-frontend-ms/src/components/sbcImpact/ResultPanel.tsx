@@ -157,7 +157,7 @@ export default function ResultPanel({ edition, canWrite, onChanged }: { edition:
                         <p>{b.message}</p>
                         {b.code === 'MISSING_SCORES' && Array.isArray(missing) && (
                             <ul className="mt-1 space-y-0.5">
-                                {missing.filter(m => m.scoredBy === 0).map(m => (
+                                {missing.filter(m => m.scoredBy === 0 || m.notScoredBy.length > 0).map(m => (
                                     <li key={m.candidateId}>{m.name} : pas encore noté par {m.notScoredBy.join(', ') || 'aucun juré actif'}</li>
                                 ))}
                             </ul>

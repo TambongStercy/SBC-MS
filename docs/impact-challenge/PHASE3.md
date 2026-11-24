@@ -11,7 +11,7 @@ action `impact_jury`.
 |---|---|---|
 | TOP 3 decided (Phase 2) | `FINAL` / stage `TOP3` | The admin builds the jury: SBC accounts, never a finalist, at most 15. |
 | « Démarrer la finale » | `FINAL` / `LIVE` | Needs at least one juror. Jurors can score. The FINAL round (final public vote) can open. The admin says who is on stage. |
-| « Verrouiller les notes » | `jury.lockedAt` | Every finalist needs at least one mark from an active juror. After this, no score or jury change. |
+| « Verrouiller les notes » | `jury.lockedAt` | Every active juror must have marked every finalist. After this, no score or jury change. |
 | Close the final vote | `rounds.FINAL` `CLOSED` | Same round controls as weeks 2–3 (`/rounds/FINAL`). It opens only during `LIVE`. |
 | « Publier le résultat » (admin code) | `FINISHED` / stage `RESULT` | Winner → `WINNER`. The other finalists stay `FINALIST`, with their final `rank`. |
 
@@ -23,9 +23,9 @@ After the result, the finished edition stays the « current » one for 60 days (
 - **Jurors:** SBC accounts added by the admin. `GET /admin/members/lookup?contact=` finds one by e-mail
   or phone; it returns the name and a masked contact hint.
   - A juror who is removed then added again gets their row back, and their earlier marks count again.
-  - The lock needs at least one mark per finalist, not a mark from every juror: a finalist marked by
-    fewer jurors is judged on the average of the marks they got. The admin page warns about missing
-    marks before the lock.
+  - The lock needs a mark from every active juror on every finalist (Rufus, 2026-11-24). A juror who
+    cannot score (no authenticator app, absent) must be removed first. The admin page lists who has
+    not marked whom before the lock.
   - A removed juror keeps their row, but their marks no longer count.
   - Every juror is told by push and e-mail; the notice opens `/impact-challenge/jury`.
 - **Scoring:**

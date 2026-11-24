@@ -297,14 +297,17 @@ export const saveScore = async (userId: string, editionId: string, candidateId: 
     return { candidateId: String(cid), scores: saved!.scores, total: saved!.total, comment: saved!.comment ?? null, updatedAt: saved!.updatedAt, edits: saved!.history?.length ?? 0 };
 };
 
-/** « Verrouiller les notations » (§15): every finalist needs a score from at least one juror. */
+/**
+ * « Verrouiller les notations » (§15): every active juror must have scored every
+ * finalist (Rufus, 2026-11-24). A juror who cannot score is removed first.
+ */
 export const lockJury = async (actor: Actor, editionId: string) => {
     const e = await getEdition(editionId);
     assertFinal(e, [CompetitionStage.LIVE]);
     if (e.jury?.lockedAt) throw new AppError('Les notes sont déjà verrouillées.', 409, true, 'JURY_LOCKED');
     const missing = await missingScores(e);
-    if (missing.some((m) => m.scoredBy === 0)) {
-        throw new AppError('Chaque finaliste doit avoir au moins une note avant le verrouillage.', 409, true, 'MISSING_SCORES', { missing });
+    if (missing.some(incomplete)) {
+        throw new AppError('Chaque juré doit noter chaque finaliste avant le verrouillage.', 409, true, 'MISSING_SCORES', { missing });
     }
     const done = await ImpactEdition.findOneAndUpdate(
         { _id: e._id, 'jury.lockedAt': { $exists: false } },
@@ -315,6 +318,9 @@ export const lockJury = async (actor: Actor, editionId: string) => {
     await audit({ actor, action: 'jury.locked', editionId: e._id, after: { missing } });
     return done;
 };
+
+/** A finalist still missing a mark: no active juror at all, or one who has not scored them. */
+const incomplete = (m: { scoredBy: number; notScoredBy: string[] }) => m.scoredBy === 0 || m.notScoredBy.length > 0;
 
 /** For each finalist: how many active jurors scored them, and who did not. */
 const missingScores = async (e: IImpactEdition) => {
@@ -385,7 +391,7 @@ export const resultPreview = async (editionId: string) => {
     if (!e.jury?.lockedAt) blockers.push({ code: 'JURY_NOT_LOCKED', message: 'Verrouillez d’abord les notes du jury.' });
     if (e.rounds?.FINAL?.status === RoundStatus.OPEN) blockers.push({ code: 'ROUND_OPEN', message: 'Clôturez d’abord le vote public de la finale.' });
     const missing = await missingScores(e);
-    if (missing.some((m) => m.scoredBy === 0)) blockers.push({ code: 'MISSING_SCORES', message: 'Un finaliste n’a aucune note du jury.', details: { missing } });
+    if (missing.some(incomplete)) blockers.push({ code: 'MISSING_SCORES', message: 'Un juré n’a pas encore noté tous les finalistes.', details: { missing } });
     if (rows.length < 1) blockers.push({ code: 'NO_FINALISTS', message: 'Aucun finaliste.' });
     const warnings: string[] = [];
     if (e.rounds?.FINAL?.status !== RoundStatus.CLOSED) warnings.push('Le vote public de la finale n’a pas eu lieu : sa part vaut 0 pour tous.');

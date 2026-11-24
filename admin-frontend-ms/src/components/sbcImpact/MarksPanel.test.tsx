@@ -23,7 +23,7 @@ describe('MarksPanel', () => {
         // Chloé was marked only by the removed juror: no active average, and she is flagged
         const footer = screen.getByRole('rowheader', { name: 'Moyenne (jurés actifs)' }).closest('tr')!;
         expect(within(footer).getAllByRole('cell').map(c => c.textContent)).toEqual(['16,5/20', '12/20', '—']);
-        expect(screen.getByText(/Sans note pour l’instant : Chloé/)).toBeTruthy();
+        expect(screen.getByText(/Pas encore noté par tout le jury : .*Chloé/)).toBeTruthy();
     });
 
     it('opens a mark with its criteria, comment and corrections', async () => {

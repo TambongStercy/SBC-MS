@@ -22,6 +22,7 @@ export function useResult(edition: Edition, enabled = true) {
 
 /** Finalists with no mark from any active juror (the lock needs one each). */
 export function unmarkedFinalists(jury: { finalists: { _id: string; name: string }[]; jurors: { removedAt: string | null; scores: { candidateId: string }[] }[] }) {
-    const marked = new Set(jury.jurors.filter(j => !j.removedAt).flatMap(j => j.scores.map(s => s.candidateId)));
-    return jury.finalists.filter(f => !marked.has(f._id));
+    // Rufus (2026-11-24): every active juror must mark every finalist before the lock.
+    const active = jury.jurors.filter(j => !j.removedAt);
+    return jury.finalists.filter(f => active.length === 0 || active.some(j => !j.scores.some(s => s.candidateId === f._id)));
 }
