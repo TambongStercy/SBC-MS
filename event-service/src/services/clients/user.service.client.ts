@@ -164,3 +164,55 @@ export const getUserIdsByCountry = async (country: string): Promise<string[]> =>
     }
     return (data.data as unknown[]).map(String);
 };
+
+// ---------- SBC Impact Challenge ----------
+
+export interface ImpactInvitationStats {
+    referrerId: string;
+    valid: number;
+    pending: number;
+    reachedAt: string | null;
+}
+
+/**
+ * Qualification counter (user-service owns referrals and subscriptions). Throws
+ * on failure: the caller keeps the previous counts rather than writing zeros.
+ * At most 200 referrers per call (user-service's cap).
+ */
+export const getImpactInvitations = async (args: {
+    referrerIds: string[];
+    from: Date;
+    to: Date;
+    need: number;
+    changedSince?: Date;
+}): Promise<ImpactInvitationStats[]> => {
+    if (args.referrerIds.length === 0) return [];
+    const { data } = await client.post('/users/internal/impact/invitations', {
+        referrerIds: args.referrerIds,
+        from: args.from.toISOString(),
+        to: args.to.toISOString(),
+        need: args.need,
+        changedSince: args.changedSince?.toISOString(),
+    }, { timeout: 30000 });
+    if (!data?.success) throw new AppError(data?.message || 'user-service refused impact/invitations', 502);
+    return data.data as ImpactInvitationStats[];
+};
+
+export interface ImpactMember {
+    _id: string;
+    name: string;
+    avatar?: string;
+    country?: string;
+    city?: string;
+    referralCode?: string;
+    isMember: boolean;
+    unavailable: boolean;
+}
+
+/** Profile subset for candidacies. Throws on failure (eligibility must not be guessed). */
+export const getImpactMembers = async (userIds: string[]): Promise<ImpactMember[]> => {
+    if (userIds.length === 0) return [];
+    const { data } = await client.post('/users/internal/impact/members', { userIds });
+    if (!data?.success) throw new AppError(data?.message || 'user-service refused impact/members', 502);
+    return data.data as ImpactMember[];
+};

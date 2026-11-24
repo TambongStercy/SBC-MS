@@ -53,6 +53,8 @@ describe('moduleForPath', () => {
     ['/tombola', 'tombola'],
     ['/tombola/draw/2026-11', 'tombola'],
     ['/impact-challenges/42', 'impactChallenge'],
+    ['/sbc-impact', 'impactChallenge'],
+    ['/sbc-impact/6a0000000000000000000001', 'impactChallenge'],
     ['/sbclove', 'sbclove'],
     ['/ads-network/manual-verifications', 'adsProofs'],
     ['/ads-network', 'ads'],
