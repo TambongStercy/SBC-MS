@@ -357,7 +357,7 @@ export const settleImpactVote = async (p: { sessionId?: string; txId?: Types.Obj
         invalidateBoard();
         const c = await ImpactCandidate.findById(claimed.candidateId).select('profile.name').lean();
         await pushMember(claimed.userId, 'impact-votes-bought', 'SBC Impact Challenge : votes comptés',
-            `Merci ! Tes ${claimed.votes} vote${claimed.votes > 1 ? 's' : ''} pour ${c?.profile?.name ?? 'ton candidat'} sont comptés.`, `impact-votes-bought-${claimed._id}`);
+            `Merci ! Tes ${claimed.votes} vote${claimed.votes > 1 ? 's' : ''} pour ${c?.profile?.name ?? 'ton candidat'} sont comptés, et ${claimed.votes > 1 ? `${claimed.votes} tickets` : '1 ticket'} pour la tombola.`, `impact-votes-bought-${claimed._id}`);
     } else {
         await ImpactVoteTx.updateOne({ _id: claimed._id }, { $set: { status: VoteTxStatus.SUCCESS } });
     }

@@ -13,6 +13,7 @@ import * as submissions from './services/submission.service';
 import * as votes from './services/vote.service';
 import * as board from './services/board.service';
 import * as final from './services/final.service';
+import * as tombola from './services/tombola.service';
 import { lookupEventMember } from '../../services/clients/user.service.client';
 
 /**
@@ -68,6 +69,19 @@ publicRouter.get('/final', h(async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=5');
     return final.liveScreen();
 }));
+// SBC Tombola: the live draw screen, its history, and the proof of each draw.
+publicRouter.get('/tombola', h(async (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=5');
+    return tombola.publicTombola();
+}));
+publicRouter.get('/tombola/history', h(async (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=60');
+    return tombola.history({ admin: false });
+}));
+publicRouter.get('/tombola/draws/:id/proof', h(async (req, res) => {
+    res.set('Cache-Control', 'public, max-age=60');
+    return tombola.proof(req.params.id);
+}));
 publicRouter.get('/candidates/:id', h(async (req, res) => {
     res.set('Cache-Control', 'public, max-age=10');
     return board.publicCandidate(req.params.id);
@@ -85,6 +99,7 @@ memberRouter.post('/me/submissions/:kind', throttle('submit', 10, 60), h(async (
 memberRouter.post('/free-votes', throttle('free-vote', 10, 60), h(async (req) => votes.castFreeVote(uid(req), req.body ?? {}, signals(req))));
 memberRouter.post('/vote-purchases', throttle('purchase', 10, 60), h(async (req) => votes.startPurchase(uid(req), req.body ?? {}, signals(req))));
 memberRouter.get('/me/votes', h(async (req) => votes.myVotes(uid(req))));
+memberRouter.get('/me/tombola', h(async (req) => tombola.myTickets(uid(req))));
 memberRouter.post('/final-votes', throttle('final-vote', 10, 60), h(async (req) => votes.castFinalVote(uid(req), req.body ?? {}, signals(req))));
 // Jury space (a juror is an SBC account added by the administration).
 memberRouter.get('/jury/me', h(async (req) => final.myJury(uid(req))));
@@ -145,6 +160,13 @@ adminRouter.post('/editions/:id/final/start', h(async (req) => editions.adminEdi
 adminRouter.post('/editions/:id/final/on-stage', h(async (req) => editions.adminEdition(await final.setOnStage(admin(req), req.params.id, req.body ?? {}))));
 adminRouter.get('/editions/:id/result', h(async (req) => final.resultPreview(req.params.id)));
 adminRouter.post('/editions/:id/result', requireAdminStepUp('impact_result'), h(async (req) => editions.adminEdition(await final.publishResult(admin(req), req.params.id, req.body ?? {}))));
+// ----- Phase 4: tombola -----
+adminRouter.get('/editions/:id/tombola', h(async (req) => tombola.overview(req.params.id)));
+adminRouter.post('/editions/:id/tombola/commit', h(async (req) => tombola.commitDraw(admin(req), req.params.id)));
+adminRouter.post('/editions/:id/tombola/draw', requireAdminStepUp('impact_tombola'), h(async (req) => tombola.runDraw(admin(req), req.params.id)));
+adminRouter.post('/editions/:id/tombola/reveal', h(async (req) => tombola.reveal(admin(req), req.params.id)));
+adminRouter.post('/editions/:id/tombola/winners/:order/status', h(async (req) => tombola.setWinnerStatus(admin(req), req.params.id, Number(req.params.order), req.body ?? {})));
+adminRouter.get('/tombola/history', h(async () => tombola.history({ admin: true })));
 adminRouter.get('/editions/:id/candidates.csv', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const csv = await candidates.exportCandidatesCsv(req.params.id);

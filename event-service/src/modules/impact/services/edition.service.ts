@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { AppError } from '../../../utils/errors';
-import { IImpactEdition, ImpactCandidate, ImpactEdition } from '../models';
+import { IImpactEdition, ImpactCandidate, ImpactEdition, ImpactTombolaDraw } from '../models';
 import {
     CandidateStatus, COMPETITION_LOCKED, DEFAULT_SETTINGS, EditionSettings, EditionStatus, editionRank,
     LIVE_EDITION_STATUSES, QUALIFICATION_LOCKED, SEAT_LOST_STATUSES, settingsOf,
@@ -172,6 +172,8 @@ export const updateEdition = async (actor: Actor, id: string, body: Record<strin
         const merged = validateSettings({ ...cur, ...body.settings, freeVote: { ...cur.freeVote, ...(body.settings.freeVote ?? {}) } } as EditionSettings);
         if (rank >= 1) for (const k of QUALIFICATION_LOCKED) if (!same(merged[k], cur[k])) locked.push(`settings.${k}`);
         if (rank >= 3) for (const k of COMPETITION_LOCKED) if (!same(merged[k], cur[k])) locked.push(`settings.${k}`);
+        // The prizes stay editable (Rufus) until the tombola is drawn.
+        if (!same(merged.prizes, cur.prizes) && await ImpactTombolaDraw.exists({ editionId: e._id, status: 'DONE' })) locked.push('settings.prizes');
         e.settings = merged;
         e.markModified('settings');
     }

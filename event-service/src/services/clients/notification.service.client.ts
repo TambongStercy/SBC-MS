@@ -34,7 +34,7 @@ const client = axios.create({
  */
 // cta: the notification's button; without one notification-service uses the
 // category's ("Voir mes billets" for events), which is wrong for animation notices.
-const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money'; cta?: string }> = {
+const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money' | 'tombola'; cta?: string }> = {
     'event-ticket-purchased': { url: '/events/mes-billets', category: 'events' },
     // SBC Impact Challenge: every candidate notice opens the candidate space.
     'impact-unlocked': { url: '/impact-challenge/candidat', category: 'events', cta: 'Mon espace candidat' },
@@ -61,6 +61,7 @@ const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money'; c
     'impact-project-resubmit': { url: '/impact-challenge/candidat', category: 'events' },
     'impact-finalist': { url: '/impact-challenge/candidat', category: 'events' },
     'impact-not-finalist': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-tombola-won': { url: '/impact-challenge/tombola', category: 'tombola', cta: 'Voir le tirage' },
     'impact-jury-invited': { url: '/impact-challenge/jury', category: 'events', cta: 'Mon espace jury' },
     'impact-final-started': { url: '/impact-challenge/candidat', category: 'events' },
     'impact-winner': { url: '/impact-challenge/finale', category: 'events' },
