@@ -133,7 +133,7 @@ const oid = (v: unknown, what = 'Ressource') => {
 /** The tombola of an edition: the draw (seed hidden until drawn), the live ticket count, what can be done. */
 export const overview = async (editionId: string) => {
     const e = await getEdition(editionId);
-    const draw = await ImpactTombolaDraw.findOne({ editionId: e._id }).lean();
+    const draw = await ImpactTombolaDraw.findOne({ editionId: e._id }).select('+seed').lean();
     const t = draw?.status === 'DONE' && draw.snapshot
         ? { totalTickets: draw.snapshot.totalTickets, participants: draw.snapshot.participants, totalWeight: draw.snapshot.totalWeight, segments: draw.snapshot.segments }
         : await buildTickets(e, 'preview');
@@ -153,7 +153,8 @@ export const overview = async (editionId: string) => {
     if (!e.top3?.decidedAt) blockers.push({ code: 'TICKETS_NOT_FINAL', message: 'Les tickets sont définitifs une fois le TOP 3 désigné.' });
     if (t.totalTickets === 0) blockers.push({ code: 'NO_TICKETS', message: 'Aucun ticket : aucun vote payant compté.' });
     return {
-        draw: draw ? publicDraw(draw, { admin: true }) : null,
+        // The seed is shown once drawn (it is public then, in the proof).
+        draw: draw ? publicDraw(draw, { admin: true, withSeed: draw.status === 'DONE' }) : null,
         tickets: {
             totalTickets: t.totalTickets, participants: t.participants, totalWeight: t.totalWeight, weightScale: WEIGHT_SCALE,
             topHolders: top.map(([k, v]) => ({ userId: k, name: names.get(k) ?? null, tickets: v.tickets, sharePct: t.totalWeight ? Math.round((v.weight / t.totalWeight) * 10000) / 100 : 0 })),
@@ -260,6 +261,8 @@ export const runDraw = async (actor: Actor, editionId: string) => {
         { new: true },
     ).select('+seed');
     if (!done) throw new AppError('Le tirage a déjà eu lieu.', 409, true, 'ALREADY_DRAWN');
+    // On the edition too: the prizes are locked from now on (the admin page reads it).
+    await ImpactEdition.updateOne({ _id: e._id }, { $set: { tombolaDrawnAt: now } }, { timestamps: false });
     await audit({ actor, action: 'tombola.drawn', editionId: e._id, after: { drawId, segmentsHash, winners: winners.map((w) => ({ order: w.order, ticket: w.ticketNumber, user: w.userId ? String(w.userId) : null })) } });
     // Winners are told when the live screen reveals them (reveal), not now: a phone
     // buzzing before the reveal would spoil the live.

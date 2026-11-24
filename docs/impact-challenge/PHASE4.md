@@ -87,6 +87,8 @@ only lists revealed wins.
 
 **Blockers:** `NOT_COMMITTED`, `TICKETS_NOT_FINAL` (no TOP 3 yet), `NO_TICKETS`.
 
+Once drawn, the admin read's `draw.seed` is filled, and the admin `Edition` carries `tombolaDrawnAt` (the prizes are locked from then on).
+
 ## Notifications
 
 - **Winner** (push + e-mail, sent when revealed): `impact-tombola-won` opens `/impact-challenge/tombola`,

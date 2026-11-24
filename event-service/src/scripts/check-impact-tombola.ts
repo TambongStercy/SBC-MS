@@ -149,6 +149,9 @@ const main = async () => {
     const xHash = tombola.holderHashOf(X, String(d!._id));
     check('the exclusion is published (proof)', d!.snapshot!.exclusions[0].holderHashes.includes(xHash) && !d!.snapshot!.exclusions[1].holderHashes.includes(xHash));
     check('the draw is final', (await refusal(() => tombola.runDraw(ADMIN, id)))?.code === 'ALREADY_DRAWN');
+    const ovAfter: any = await tombola.overview(id);
+    check('admin read after the draw carries the seed', ovAfter.draw.seed === drawn.seed);
+    check('the edition says when the tombola was drawn', Boolean((await ImpactEdition.findById(e._id))!.tombolaDrawnAt));
     check('prizes lock once drawn', (await refusal(() => editions.updateEdition(ADMIN, id, { settings: { prizes: [{ key: 'velo', label: 'Un vélo', category: 'velo' }] } })))?.details?.fields?.includes('settings.prizes'));
     check('no winner told before the reveal', !pushes.some((p) => p.kind === 'impact-tombola-won'));
 

@@ -41,6 +41,8 @@ export interface IImpactEdition extends Document {
     jury?: { lockedAt?: Date; lockedBy?: Types.ObjectId };
     live?: { onStageCandidateId?: Types.ObjectId | null; phase?: LivePhase | null; startedAt?: Date; updatedAt?: Date };
     result?: IFinalResult;
+    /** When the SBC Tombola was drawn (the prizes lock then). */
+    tombolaDrawnAt?: Date;
     /** The TOP 3 as decided (frozen): ranking by paid votes, ties to the earliest to reach the total. */
     top3?: {
         decidedAt: Date;
@@ -127,6 +129,7 @@ const EditionSchema = new Schema<IImpactEdition>({
         FINAL: { type: RoundSchema, default: () => ({}) },
     },
     jury: { lockedAt: Date, lockedBy: S.ObjectId },
+    tombolaDrawnAt: Date,
     live: { onStageCandidateId: S.ObjectId, phase: String, startedAt: Date, updatedAt: Date },
     result: {
         publishedAt: Date,
