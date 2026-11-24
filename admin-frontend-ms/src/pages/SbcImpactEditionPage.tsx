@@ -22,21 +22,22 @@ import ContentsTab from '../components/sbcImpact/ContentsTab';
 import SettingsTab from '../components/sbcImpact/SettingsTab';
 import Top3Tab from '../components/sbcImpact/Top3Tab';
 import FinaleTab from '../components/sbcImpact/FinaleTab';
+import TombolaTab from '../components/sbcImpact/TombolaTab';
 import { unmarkedFinalists } from '../components/sbcImpact/finaleQueries';
 import VotesTab from '../components/sbcImpact/VotesTab';
 import { EditionStatusBadge, RoundStatusBadge } from '../components/sbcImpact/shared';
 import {
     CLOSED_REASON_LABELS, ROUND_LABELS, ROUND_STAGE, RULES_MIN_LENGTH, STAGE_LABELS, cancelEdition, closeQualification, getEdition,
-    getJury, getResult, getTop3, impactErrorMessage, isEditionClosed, listCandidates, listPurchases, listSubmissions, openQualification, recountEdition,
+    getJury, getResult, getTombola, getTop3, impactErrorMessage, isEditionClosed, listCandidates, listPurchases, listSubmissions, openQualification, recountEdition,
     type CandidateRow, type CandidateStatus, type Edition, type RoundKey,
 } from '../services/impactV2Api';
 
-type Tab = 'candidats' | 'contenus' | 'votes' | 'top3' | 'finale' | 'regles' | 'journal';
-const TABS: Tab[] = ['candidats', 'contenus', 'votes', 'top3', 'finale', 'regles', 'journal'];
+type Tab = 'candidats' | 'contenus' | 'votes' | 'top3' | 'finale' | 'tombola' | 'regles' | 'journal';
+const TABS: Tab[] = ['candidats', 'contenus', 'votes', 'top3', 'finale', 'tombola', 'regles', 'journal'];
 /** Stages of the final (the « Finale » tab exists from the TOP 3 on). */
 const FINAL_STAGES = ['TOP3', 'LIVE', 'RESULT'];
 /** Tabs that exist once the competition has started. */
-const COMPETITION_TABS: Tab[] = ['contenus', 'votes', 'top3'];
+const COMPETITION_TABS: Tab[] = ['contenus', 'votes', 'top3', 'tombola'];
 /** Candidates still in the running, for the competition metric. */
 const RUNNING: CandidateStatus[] = ['OFFICIAL', 'STAGE_2', 'STAGE_3', 'FINALIST', 'WINNER', 'SUSPENDED'];
 
@@ -57,7 +58,8 @@ async function loadWork(e: Edition) {
     const top3Due = e.status === 'COMPETITION' && stage === 'WEEK3' && e.rounds?.PAID?.status === 'CLOSED' && !e.top3?.decidedAt;
     const juryDue = e.status === 'FINAL';
     const resultDue = e.status === 'FINAL' && stage === 'LIVE' && !!e.jury?.lockedAt;
-    const [all, pending, contents, purchases, top3, jury, result] = await Promise.all([
+    const tombolaDue = !!stage && e.status !== 'CANCELLED';
+    const [all, pending, contents, purchases, top3, jury, result, tombola] = await Promise.all([
         listCandidates(e._id, { limit: 1 }),
         listCandidates(e._id, { review: 'PENDING', limit: 1 }),
         stage ? orNull(listSubmissions(e._id, { status: 'PENDING' })) : null,
@@ -65,7 +67,9 @@ async function loadWork(e: Edition) {
         top3Due ? orNull(getTop3(e._id)) : null,
         juryDue ? orNull(getJury(e._id)) : null,
         resultDue ? orNull(getResult(e._id)) : null,
+        tombolaDue ? orNull(getTombola(e._id)) : null,
     ]);
+    const draw = tombola?.draw ?? null;
     const below: CandidateRow[] = all.belowRequirementCount > 0
         ? (await listCandidates(e._id, { below: true, limit: 5 })).items
         : [];
@@ -78,6 +82,12 @@ async function loadWork(e: Edition) {
         activeJurors: jury ? jury.jurors.filter(j => !j.removedAt).length : null,
         unmarked: jury ? unmarkedFinalists(jury) : [],
         resultReady: !!result && !result.published && result.blockers.length === 0 && result.rows.length > 0,
+        // The tombola
+        seedDue: !!tombola && !draw && tombola.canCommit && e.rounds?.PAID?.status === 'OPEN',
+        drawReady: draw?.status === 'COMMITTED' && !!tombola?.canDraw,
+        tombolaDrawn: draw?.status === 'DONE',
+        unrevealed: draw?.status === 'DONE' ? Math.max(0, draw.winnersCount - draw.revealedCount) : 0,
+        undelivered: draw?.status === 'DONE' ? draw.winners.filter(x => x.userId && x.status === 'PENDING').length : 0,
     };
 }
 
@@ -327,6 +337,39 @@ export default function SbcImpactEditionPage() {
             action: <TodoAction onClick={() => setTab('finale')}>Publier</TodoAction>,
         });
     }
+    // The tombola (Phase 4)
+    if (w?.seedDue) {
+        todo.push({
+            key: 'seed', count: 1, tone: 'danger',
+            label: 'Graine de la tombola à fixer',
+            hint: 'Les votes payants sont ouverts : fixez la graine maintenant, avant la clôture des tickets. C’est ce qui garantit que le tirage n’a pas pu être arrangé.',
+            action: <TodoAction onClick={() => setTab('tombola')}>Fixer</TodoAction>,
+        });
+    }
+    if (w?.drawReady) {
+        todo.push({
+            key: 'draw', count: 1, tone: 'info',
+            label: 'Tirage de la tombola prêt',
+            hint: 'Le TOP 3 est désigné et la graine est fixée : le tirage peut avoir lieu (en général à la fin de la finale).',
+            action: <TodoAction onClick={() => setTab('tombola')}>Tirer</TodoAction>,
+        });
+    }
+    if (w && w.unrevealed > 0) {
+        todo.push({
+            key: 'reveal', count: w.unrevealed, tone: 'info',
+            label: `${plural(w.unrevealed, 'Gagnant')} de la tombola pas encore ${plural(w.unrevealed, 'affiché')}`,
+            hint: 'Chaque gagnant est prévenu au moment où il s’affiche sur l’écran du tirage.',
+            action: <TodoAction onClick={() => setTab('tombola')}>Afficher</TodoAction>,
+        });
+    }
+    if (w && w.undelivered > 0) {
+        todo.push({
+            key: 'prizes', count: w.undelivered,
+            label: `${plural(w.undelivered, 'Lot')} de la tombola à remettre`,
+            hint: 'Marquez chaque lot « Remis », ou « Non remis » avec la raison.',
+            action: <TodoAction onClick={() => setTab('tombola')}>Voir</TodoAction>,
+        });
+    }
     if (w?.top3Ready) {
         todo.push({
             key: 'top3', count: 1, tone: 'info',
@@ -487,6 +530,7 @@ export default function SbcImpactEditionPage() {
                             <TabsTrigger value="votes" className="h-11">Votes</TabsTrigger>
                             <TabsTrigger value="top3" className="h-11">TOP 3</TabsTrigger>
                             {finaleVisible && <TabsTrigger value="finale" className="h-11">Finale</TabsTrigger>}
+                            <TabsTrigger value="tombola" className="h-11">Tombola</TabsTrigger>
                         </>
                     )}
                     <TabsTrigger value="regles" className="h-11">Règles et paramètres</TabsTrigger>
@@ -506,6 +550,9 @@ export default function SbcImpactEditionPage() {
                         <TabsContent value="top3" className="mt-4">
                             <Top3Tab edition={e} canWrite={canWrite} onChanged={editionChanged} onOpenCandidate={setOpenCandidate} />
                         </TabsContent>
+                        <TabsContent value="tombola" className="mt-4">
+                            <TombolaTab edition={e} canWrite={canWrite} onChanged={refresh} />
+                        </TabsContent>
                         {finaleVisible && (
                             <TabsContent value="finale" className="mt-4">
                                 <FinaleTab
@@ -519,7 +566,7 @@ export default function SbcImpactEditionPage() {
                     </>
                 )}
                 <TabsContent value="regles" className="mt-4">
-                    <SettingsTab edition={e} canWrite={canWrite} onSaved={editionChanged} />
+                    <SettingsTab edition={e} canWrite={canWrite} onSaved={editionChanged} prizesLocked={!!w?.tombolaDrawn} />
                 </TabsContent>
                 <TabsContent value="journal" className="mt-4">
                     <AuditTab editionId={e._id} onOpenCandidate={setOpenCandidate} />

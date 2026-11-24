@@ -106,7 +106,13 @@ const ctl = 'h-11 sm:h-9';
  * the edition's status are disabled with the reason (PHASE1.md « Locks »);
  * the save sends only what changed. Read-only without write access.
  */
-export default function SettingsTab({ edition, canWrite, onSaved }: { edition: Edition; canWrite: boolean; onSaved: (e: Edition) => void }) {
+export default function SettingsTab({ edition, canWrite, onSaved, prizesLocked = false }: {
+    edition: Edition;
+    canWrite: boolean;
+    onSaved: (e: Edition) => void;
+    /** The tombola has been drawn: the prizes no longer change (server: RULES_LOCKED on settings.prizes). */
+    prizesLocked?: boolean;
+}) {
     // Keyed on the editable content only: during qualification the job writes the
     // edition every 10 s (its cursor is no longer sent, but `updatedAt` still moves),
     // so a refetch gives a new object, and it must not wipe what the admin is typing.
@@ -319,7 +325,7 @@ export default function SettingsTab({ edition, canWrite, onSaved }: { edition: E
                 </Field>
             </Section>
 
-            <Section title="Tombola et lots" description="Les lots restent modifiables ; les paliers et le délai se verrouillent au début de la compétition.">
+            <Section title="Tombola et lots" description="Les lots restent modifiables jusqu’au tirage ; les paliers et le délai se verrouillent au début de la compétition.">
                 <ListEditor
                     label="Paliers de tickets"
                     help={lock('ticketTiers') ?? 'Poids de chaque ticket d’un membre selon son rang (ex. 1 jusqu’au 10e, 0,5 jusqu’au 50e, 0,25 au-delà). Le dernier palier est sans limite.'}
@@ -343,19 +349,21 @@ export default function SettingsTab({ edition, canWrite, onSaved }: { edition: E
                 />
                 <ListEditor
                     label="Lots"
-                    help="1 à 10 lots. Un membre ne gagne pas deux fois la même catégorie de lot pendant le délai ci-dessous."
+                    help={prizesLocked
+                        ? 'Verrouillé depuis le tirage de la tombola.'
+                        : '1 à 10 lots, tirés dans cet ordre, modifiables jusqu’au tirage. Un membre ne gagne pas deux fois la même catégorie de lot pendant le délai ci-dessous.'}
                     error={err('prizes')}
                     rows={draft.prizes}
                     onChange={rows => set({ prizes: rows })}
                     blank={() => ({ key: '', label: '', category: '' })}
                     max={10}
                     min={1}
-                    disabled={readOnly}
+                    disabled={readOnly || prizesLocked}
                     render={(p, patch) => (
                         <>
-                            <Cell label="Clé"><Input className={ctl} value={p.key} onChange={e => patch({ key: e.target.value })} disabled={readOnly} /></Cell>
-                            <Cell label="Lot"><Input className={ctl} value={p.label} onChange={e => patch({ label: e.target.value })} disabled={readOnly} /></Cell>
-                            <Cell label="Catégorie"><Input className={ctl} value={p.category} onChange={e => patch({ category: e.target.value })} disabled={readOnly} /></Cell>
+                            <Cell label="Clé"><Input className={ctl} value={p.key} onChange={e => patch({ key: e.target.value })} disabled={readOnly || prizesLocked} /></Cell>
+                            <Cell label="Lot"><Input className={ctl} value={p.label} onChange={e => patch({ label: e.target.value })} disabled={readOnly || prizesLocked} /></Cell>
+                            <Cell label="Catégorie"><Input className={ctl} value={p.category} onChange={e => patch({ category: e.target.value })} disabled={readOnly || prizesLocked} /></Cell>
                         </>
                     )}
                 />

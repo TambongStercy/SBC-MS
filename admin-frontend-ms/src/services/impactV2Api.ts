@@ -400,6 +400,11 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
     'final.started': 'Finale démarrée',
     'final.on_stage': 'Passage sur scène',
     'final.result_published': 'Résultat publié',
+    // Phase 4
+    'tombola.committed': 'Graine de la tombola fixée',
+    'tombola.drawn': 'Tirage de la tombola effectué',
+    'tombola.revealed': 'Gagnant de la tombola affiché',
+    'tombola.prize_status': 'Statut d’un lot de la tombola',
 };
 
 export const auditActionLabel = (action: string) => AUDIT_ACTION_LABELS[action] ?? action;
@@ -975,3 +980,121 @@ export const publishResult = async (id: string, expectedOrder: string[]): Promis
  */
 export const MEMBER_APP_URL = String(import.meta.env.VITE_MEMBER_APP_URL || 'https://sniperbuisnesscenter.com').replace(/\/+$/, '');
 export const liveScreenUrl = () => `${MEMBER_APP_URL}/impact-challenge/finale`;
+
+// =====================================================================
+// Phase 4: SBC Tombola (docs/impact-challenge/PHASE4.md)
+// Not the monthly tombola of tombola-service (/tombola in this admin).
+// =====================================================================
+
+export type PrizeStatus = 'PENDING' | 'DELIVERED' | 'FORFEITED' | 'NOT_AWARDED';
+
+export interface TombolaWinner {
+    order: number;
+    prizeKey: string;
+    prizeLabel: string;
+    category: string;
+    /** null when no holder was left for this prize (NOT_AWARDED). */
+    ticketNumber: number | null;
+    /** « Awa N. » */
+    displayName: string | null;
+    status: PrizeStatus;
+    // administration only
+    userId?: string | null;
+    holderHash?: string | null;
+    /** Draws needed for this prize (bias-free rejection sampling). */
+    attempts?: number;
+    statusNote?: string | null;
+    statusAt?: string | null;
+}
+
+export interface TombolaDraw {
+    _id: string;
+    editionId: string;
+    status: 'COMMITTED' | 'DONE';
+    /** sha256(seed), public from the commitment on. */
+    seedCommitment: string;
+    committedAt: string;
+    /** The seed was fixed while the paid votes were open (the guarantee). */
+    committedBeforeTicketsClosed: boolean;
+    /** Revealed once drawn (null in the admin overview: read it from the proof). */
+    seed: string | null;
+    drawnAt: string | null;
+    prizes: { key: string; label: string; category: string }[];
+    totalTickets: number | null;
+    participants: number | null;
+    segmentsHash: string | null;
+    revealedCount: number;
+    winnersCount: number;
+    winners: TombolaWinner[];
+}
+
+export interface TombolaOverview {
+    draw: TombolaDraw | null;
+    tickets: {
+        totalTickets: number;
+        participants: number;
+        totalWeight: number;
+        weightScale: number;
+        topHolders: { userId: string; name: string | null; tickets: number; sharePct: number }[];
+    };
+    prizes: { key: string; label: string; category: string }[];
+    tiers: TicketTier[];
+    cooldownDays: number;
+    paidRoundClosed: boolean;
+    canCommit: boolean;
+    canDraw: boolean;
+    blockers: { code: string; message: string }[];
+}
+
+export interface TombolaHistoryRow {
+    drawId: string;
+    editionId: string;
+    editionName: string | null;
+    drawnAt: string;
+    totalTickets: number;
+    participants: number;
+    winners: { order: number; prize: string; category: string; ticketNumber: number | null; displayName: string | null; status: PrizeStatus; userId?: string | null; statusNote?: string | null; statusAt?: string | null }[];
+}
+
+export const PRIZE_STATUS_LABELS: Record<PrizeStatus, string> = {
+    PENDING: 'En attente',
+    DELIVERED: 'Remis',
+    FORFEITED: 'Non remis',
+    NOT_AWARDED: 'Non attribué',
+};
+
+export const getTombola = async (id: string): Promise<TombolaOverview> =>
+    unwrap(await apiClient.get(`${BASE}/editions/${id}/tombola`), 'Impossible de charger la tombola.');
+
+export const commitTombola = async (id: string): Promise<TombolaDraw> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/tombola/commit`), 'La graine n’a pas pu être fixée.');
+
+/** Needs the admin's code (the apiClient interceptor asks for it). */
+export const drawTombola = async (id: string): Promise<TombolaDraw> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/tombola/draw`), 'Le tirage n’a pas pu avoir lieu.');
+
+export const revealNextWinner = async (id: string): Promise<TombolaDraw> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/tombola/reveal`), 'Le gagnant suivant n’a pas pu être affiché.');
+
+/** FORFEITED needs a note of 5 characters at least. */
+export const setPrizeStatus = async (id: string, order: number, status: 'DELIVERED' | 'FORFEITED' | 'PENDING', note?: string): Promise<TombolaDraw> =>
+    unwrap(await apiClient.post(`${BASE}/editions/${id}/tombola/winners/${order}/status`, { status, ...(note ? { note } : {}) }), 'Le statut du lot n’a pas pu être enregistré.');
+
+export const getTombolaHistory = async (): Promise<TombolaHistoryRow[]> =>
+    unwrap(await apiClient.get(`${BASE}/tombola/history`), 'Impossible de charger l’historique des tirages.') ?? [];
+
+const PUBLIC = '/tickets/impact/public';
+
+/** The public proof of a draw (seed, commitment, segments, method, winners). */
+export const getTombolaProof = async (drawId: string): Promise<{ seed?: string | null; seedCommitment: string; segmentsHash?: string }> =>
+    unwrap(await apiClient.get(`${PUBLIC}/tombola/draws/${drawId}/proof`), 'Impossible de charger la preuve du tirage.');
+
+/** Absolute address of the public proof (JSON anyone can recompute the winners from). */
+export function tombolaProofUrl(drawId: string): string {
+    const base = (apiClient.defaults.baseURL || '/api').replace(/\/+$/, '');
+    const abs = /^https?:\/\//i.test(base) ? base : `${window.location.origin}${base.startsWith('/') ? '' : '/'}${base}`;
+    return `${abs}${PUBLIC}/tombola/draws/${encodeURIComponent(drawId)}/proof`;
+}
+
+/** The member app's tombola page (the live screen of the draw). */
+export const tombolaScreenUrl = () => `${MEMBER_APP_URL}/impact-challenge/tombola`;

@@ -93,6 +93,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Tombola', path: '/tombola', icon: Ticket01Icon },
       { label: 'Impact Challenge', path: '/impact-challenges', icon: ChampionIcon },
       { label: 'SBC Impact Challenge', path: '/sbc-impact', icon: Award01Icon },
+      { label: 'Tombola SBC Impact', path: '/sbc-impact/tombola', icon: Ticket01Icon },
       { label: 'SBC Love', path: '/sbclove', icon: FavouriteIcon },
     ],
   },

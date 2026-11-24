@@ -41,6 +41,8 @@ export interface IImpactEdition extends Document {
     jury?: { lockedAt?: Date; lockedBy?: Types.ObjectId };
     live?: { onStageCandidateId?: Types.ObjectId | null; phase?: LivePhase | null; startedAt?: Date; updatedAt?: Date };
     result?: IFinalResult;
+    /** When the SBC Tombola was drawn (the prizes lock then). */
+    tombolaDrawnAt?: Date;
     /** The TOP 3 as decided (frozen): ranking by paid votes, ties to the earliest to reach the total. */
     top3?: {
         decidedAt: Date;
@@ -127,6 +129,7 @@ const EditionSchema = new Schema<IImpactEdition>({
         FINAL: { type: RoundSchema, default: () => ({}) },
     },
     jury: { lockedAt: Date, lockedBy: S.ObjectId },
+    tombolaDrawnAt: Date,
     live: { onStageCandidateId: S.ObjectId, phase: String, startedAt: Date, updatedAt: Date },
     result: {
         publishedAt: Date,
@@ -526,3 +529,93 @@ FinalVoteSchema.index({ editionId: 1, candidateId: 1 });
 FinalVoteSchema.index({ editionId: 1, ipHash: 1 });
 
 export const ImpactFinalVote = mongoose.model<IImpactFinalVote>('ImpactFinalVote', FinalVoteSchema);
+
+// ---------- Phase 4: tombola (§13) ----------
+
+/** A run of consecutive tickets of one holder with the same weight (see services/tombola.service). */
+export interface TicketSegment { from: number; to: number; weight: number; holderHash: string; userId?: Types.ObjectId }
+
+export interface TombolaWinner {
+    /** Order of the draw (1 = first prize drawn). */
+    order: number;
+    prizeKey: string;
+    prizeLabel: string;
+    category: string;
+    /** Null when no eligible ticket was left for this prize. */
+    ticketNumber: number | null;
+    userId: Types.ObjectId | null;
+    holderHash: string | null;
+    /** First name + initial, as shown publicly. */
+    displayName: string | null;
+    /** Counter of the random draws used (rejection sampling). */
+    attempts: number;
+    status: 'PENDING' | 'DELIVERED' | 'FORFEITED' | 'NOT_AWARDED';
+    statusNote?: string;
+    statusAt?: Date;
+    statusBy?: Types.ObjectId;
+}
+
+export interface IImpactTombolaDraw extends Document {
+    _id: Types.ObjectId;
+    editionId: Types.ObjectId;
+    status: 'COMMITTED' | 'DONE' | 'CANCELLED';
+    /** sha256(seed), published from the commitment on. */
+    seedCommitment: string;
+    /** Revealed once the draw is done (select: false before). */
+    seed: string;
+    committedAt: Date;
+    committedBy: Types.ObjectId;
+    /** True when the seed was fixed before the tickets were final (the paid votes still open). */
+    committedBeforeTicketsClosed: boolean;
+    drawnAt?: Date;
+    drawnBy?: Types.ObjectId;
+    weightScale: number;
+    prizes: { key: string; label: string; category: string }[];
+    snapshot?: {
+        totalTickets: number;
+        participants: number;
+        totalWeight: number;
+        /** sha256 of the canonical segments, so the published list can be checked. */
+        segmentsHash: string;
+        segments: TicketSegment[];
+        /** Per prize order: holder hashes left out (won the same category within the cooldown, or already won here). */
+        exclusions: { order: number; holderHashes: string[] }[];
+        cooldownDays: number;
+    };
+    winners: TombolaWinner[];
+    /** How many winners the live screen has revealed (presentation only; the result is already final). */
+    revealedCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const DrawSchema = new Schema<IImpactTombolaDraw>({
+    editionId: { type: S.ObjectId, required: true },
+    status: { type: String, enum: ['COMMITTED', 'DONE', 'CANCELLED'], default: 'COMMITTED' },
+    seedCommitment: { type: String, required: true },
+    seed: { type: String, required: true, select: false },
+    committedAt: { type: Date, required: true },
+    committedBy: { type: S.ObjectId, required: true },
+    committedBeforeTicketsClosed: { type: Boolean, required: true },
+    drawnAt: Date,
+    drawnBy: S.ObjectId,
+    weightScale: { type: Number, default: 10000 },
+    prizes: [{ key: String, label: String, category: String, _id: false }],
+    snapshot: {
+        totalTickets: Number, participants: Number, totalWeight: Number, segmentsHash: String,
+        segments: [{ from: Number, to: Number, weight: Number, holderHash: String, userId: S.ObjectId, _id: false }],
+        exclusions: [{ order: Number, holderHashes: [String], _id: false }],
+        cooldownDays: Number,
+    },
+    winners: [{
+        order: Number, prizeKey: String, prizeLabel: String, category: String, ticketNumber: Number, userId: S.ObjectId,
+        holderHash: String, displayName: String, attempts: Number, status: String, statusNote: String, statusAt: Date, statusBy: S.ObjectId, _id: false,
+    }],
+    revealedCount: { type: Number, default: 0 },
+}, { timestamps: true });
+// One draw per edition.
+DrawSchema.index({ editionId: 1 }, { unique: true });
+// The cooldown rule looks up past wins by member and category.
+DrawSchema.index({ 'winners.userId': 1, 'winners.category': 1, drawnAt: -1 });
+
+export const ImpactTombolaDraw = mongoose.model<IImpactTombolaDraw>('ImpactTombolaDraw', DrawSchema);
