@@ -61,6 +61,10 @@ const PUSH_ROUTES: Record<string, { url: string; category: 'events' | 'money'; c
     'impact-project-resubmit': { url: '/impact-challenge/candidat', category: 'events' },
     'impact-finalist': { url: '/impact-challenge/candidat', category: 'events' },
     'impact-not-finalist': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-jury-invited': { url: '/impact-challenge/jury', category: 'events', cta: 'Mon espace jury' },
+    'impact-final-started': { url: '/impact-challenge/candidat', category: 'events' },
+    'impact-winner': { url: '/impact-challenge/finale', category: 'events' },
+    'impact-final-result': { url: '/impact-challenge/finale', category: 'events' },
     // Buyers of votes: the board; a refund lands on the SBC balance.
     'impact-votes-bought': { url: '/impact-challenge/candidats', category: 'events' },
     'impact-votes-refunded': { url: '/wallet', category: 'money' },

@@ -48,9 +48,21 @@ let currentCache: { at: number; value: ReturnType<typeof publicEdition> | null }
 const CURRENT_TTL_MS = 15_000;
 export const invalidateCurrent = () => { currentCache = null; };
 
-/** The edition members see now (qualification → final), or null. */
-export const currentEdition = async (): Promise<IImpactEdition | null> =>
-    ImpactEdition.findOne({ status: { $in: LIVE_EDITION_STATUSES } }).sort({ 'schedule.qualificationOpensAt': -1 });
+/** How long a finished edition (its result, its winner) stays the current one. */
+const FINISHED_VISIBLE_MS = 60 * 86_400_000;
+
+/**
+ * The edition members see now: the running one (qualification → final), else
+ * the last finished one for 60 days, so the result and the candidates' spaces
+ * do not vanish the moment the winner is announced. Null otherwise.
+ */
+export const currentEdition = async (): Promise<IImpactEdition | null> => {
+    const live = await ImpactEdition.findOne({ status: { $in: LIVE_EDITION_STATUSES } }).sort({ 'schedule.qualificationOpensAt': -1 });
+    if (live) return live;
+    return ImpactEdition.findOne({
+        status: EditionStatus.FINISHED, 'result.publishedAt': { $gte: new Date(Date.now() - FINISHED_VISIBLE_MS) },
+    }).sort({ 'result.publishedAt': -1 });
+};
 
 /** Public summary of the current edition, cached 15 s (the most-read call). */
 export const currentPublic = async () => {

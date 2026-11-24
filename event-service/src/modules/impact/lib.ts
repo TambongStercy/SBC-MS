@@ -292,7 +292,7 @@ export const publicEdition = (e: IImpactEdition, seatsTaken: number) => {
     registrationClosedReason: e.registrationClosedReason ?? null,
     seats: { taken: seatsTaken, max: st.maxCandidates },
     stage: (e as any).stage ?? null,
-    rounds: { FREE: publicRound(e, RoundKey.FREE), PAID: publicRound(e, RoundKey.PAID) },
+    rounds: { FREE: publicRound(e, RoundKey.FREE), PAID: publicRound(e, RoundKey.PAID), FINAL: publicRound(e, RoundKey.FINAL) },
     settings: {
         maxCandidates: st.maxCandidates,
         invitationsRequired: st.invitationsRequired,

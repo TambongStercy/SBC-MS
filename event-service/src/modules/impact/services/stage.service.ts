@@ -24,9 +24,23 @@ const oid = (v?: string) => (v && Types.ObjectId.isValid(v) ? new Types.ObjectId
 export const ROUND_STAGE: Record<RoundKey, CompetitionStage> = {
     [RoundKey.FREE]: CompetitionStage.WEEK2,
     [RoundKey.PAID]: CompetitionStage.WEEK3,
+    [RoundKey.FINAL]: CompetitionStage.LIVE,
+};
+/** The edition status a round runs in: weeks 2–3 in COMPETITION, the final vote in FINAL. */
+export const ROUND_EDITION_STATUS: Record<RoundKey, EditionStatus> = {
+    [RoundKey.FREE]: EditionStatus.COMPETITION,
+    [RoundKey.PAID]: EditionStatus.COMPETITION,
+    [RoundKey.FINAL]: EditionStatus.FINAL,
+};
+/** Candidates told when a round opens or closes. */
+const ROUND_RACERS: Record<RoundKey, CandidateStatus> = {
+    [RoundKey.FREE]: CandidateStatus.STAGE_2,
+    [RoundKey.PAID]: CandidateStatus.STAGE_3,
+    [RoundKey.FINAL]: CandidateStatus.FINALIST,
 };
 
-const roundLabel = (k: RoundKey) => (k === RoundKey.FREE ? 'le vote gratuit' : 'les votes payants');
+const roundLabel = (k: RoundKey) => (k === RoundKey.FREE ? 'le vote gratuit' : k === RoundKey.PAID ? 'les votes payants' : 'le vote public de la finale');
+const stageLabel = (st: CompetitionStage) => (st === CompetitionStage.WEEK2 ? 'semaine 2' : st === CompetitionStage.WEEK3 ? 'semaine 3' : 'pendant la finale en direct');
 
 const pushStage = (stage: CompetitionStage, by?: string) => ({ stageHistory: { stage, at: new Date(), by: oid(by) } });
 
@@ -154,16 +168,20 @@ const date = (v: unknown, field: string) => {
 };
 
 const roundKey = (k: string): RoundKey => {
-    if (k !== RoundKey.FREE && k !== RoundKey.PAID) throw new AppError('Tour de vote inconnu.', 404);
-    return k;
+    if (k !== RoundKey.FREE && k !== RoundKey.PAID && k !== RoundKey.FINAL) throw new AppError('Tour de vote inconnu.', 404);
+    return k as RoundKey;
 };
 
 /** Sets the dates of a round that has not opened yet. */
 export const scheduleRound = async (actor: Actor, id: string, key: string, body: Record<string, any>) => {
     const k = roundKey(key);
     const e = await getEdition(id);
-    if ([EditionStatus.CANCELLED, EditionStatus.FINISHED, EditionStatus.FINAL].includes(e.status)) {
-        throw new AppError('Cette édition ne programme plus de vote.', 409, true, 'BAD_STATUS');
+    // Weeks 2–3 are planned until the TOP 3; the final vote until the result.
+    const closedFor = k === RoundKey.FINAL
+        ? [EditionStatus.CANCELLED, EditionStatus.FINISHED]
+        : [EditionStatus.CANCELLED, EditionStatus.FINISHED, EditionStatus.FINAL];
+    if (closedFor.includes(e.status)) {
+        throw new AppError('Cette édition ne programme plus ce vote.', 409, true, 'BAD_STATUS');
     }
     const r = e.rounds?.[k];
     if (r && r.status !== RoundStatus.SCHEDULED) throw new AppError('Ce vote est déjà ouvert ou clos : ses dates ne changent plus.', 409, true, 'ROUND_STARTED');
@@ -185,14 +203,14 @@ export const scheduleRound = async (actor: Actor, id: string, key: string, body:
 const openRound = async (e: IImpactEdition, k: RoundKey, actor: Actor) => {
     const now = new Date();
     const done = await ImpactEdition.findOneAndUpdate(
-        { _id: e._id, status: EditionStatus.COMPETITION, stage: ROUND_STAGE[k], [`rounds.${k}.status`]: RoundStatus.SCHEDULED, [`rounds.${k}.closesAt`]: { $gt: now } },
+        { _id: e._id, status: ROUND_EDITION_STATUS[k], stage: ROUND_STAGE[k], [`rounds.${k}.status`]: RoundStatus.SCHEDULED, [`rounds.${k}.closesAt`]: { $gt: now } },
         { $set: { [`rounds.${k}.status`]: RoundStatus.OPEN, [`rounds.${k}.openedAt`]: now } },
         { new: true },
     );
     if (!done) return null;
     invalidateCurrent(); invalidateBoard();
     await audit({ actor, action: 'round.opened', editionId: e._id, after: { round: k } });
-    const racers = await ImpactCandidate.find({ editionId: e._id, status: k === RoundKey.FREE ? CandidateStatus.STAGE_2 : CandidateStatus.STAGE_3 }).select('_id userId').lean();
+    const racers = await ImpactCandidate.find({ editionId: e._id, status: ROUND_RACERS[k] }).select('_id userId').lean();
     for (const c of racers) {
         await notifyCandidate(c as any, 'impact-votes-open', 'SBC Impact Challenge : les votes sont ouverts',
             `C’est le moment : ${roundLabel(k)} est ouvert. Partage ton lien pour que ta communauté vote pour toi !`);
@@ -210,12 +228,14 @@ const closeRound = async (e: IImpactEdition, k: RoundKey, actor: Actor, reason?:
     if (!done) return null;
     invalidateCurrent(); invalidateBoard();
     await audit({ actor, action: 'round.closed', editionId: e._id, after: { round: k }, reason });
-    const racers = await ImpactCandidate.find({ editionId: e._id, status: k === RoundKey.FREE ? CandidateStatus.STAGE_2 : CandidateStatus.STAGE_3 }).select('_id userId').lean();
+    const racers = await ImpactCandidate.find({ editionId: e._id, status: ROUND_RACERS[k] }).select('_id userId').lean();
     for (const c of racers) {
         await notifyCandidate(c as any, 'impact-votes-closed', 'SBC Impact Challenge : les votes sont clos',
             k === RoundKey.FREE
                 ? 'Le vote gratuit est clos. Merci à ta communauté ! Prépare maintenant la présentation de ton projet.'
-                : 'Les votes payants sont clos. Le TOP 3 sera annoncé très bientôt.');
+                : k === RoundKey.PAID
+                    ? 'Les votes payants sont clos. Le TOP 3 sera annoncé très bientôt.'
+                    : 'Le vote public de la finale est clos. Le résultat sera annoncé à la fin du direct.');
     }
     return done;
 };
@@ -224,7 +244,7 @@ const closeRound = async (e: IImpactEdition, k: RoundKey, actor: Actor, reason?:
 export const openRoundNow = async (actor: Actor, id: string, key: string) => {
     const k = roundKey(key);
     const e = await getEdition(id);
-    if (e.stage !== ROUND_STAGE[k]) throw new AppError(`Ce vote s’ouvre en ${ROUND_STAGE[k] === CompetitionStage.WEEK2 ? 'semaine 2' : 'semaine 3'}.`, 409, true, 'WRONG_STAGE');
+    if (e.stage !== ROUND_STAGE[k] || e.status !== ROUND_EDITION_STATUS[k]) throw new AppError(`Ce vote s’ouvre ${ROUND_STAGE[k] === CompetitionStage.LIVE ? '' : 'en '}${stageLabel(ROUND_STAGE[k])}.`, 409, true, 'WRONG_STAGE');
     if (!e.rounds?.[k]?.closesAt) throw new AppError('Programmez d’abord la fin du vote.', 409, true, 'ROUND_NOT_SCHEDULED');
     const r = e.rounds[k];
     if (r.status !== RoundStatus.SCHEDULED) throw new AppError('Ce vote est déjà ouvert ou clos.', 409, true, 'ROUND_STARTED');
@@ -248,14 +268,15 @@ export const closeRoundNow = async (actor: Actor, id: string, key: string, reaso
 
 /** Job: opens and closes rounds on their dates. */
 export const roundTick = async (now = new Date()): Promise<number> => {
-    const editions = await ImpactEdition.find({ status: EditionStatus.COMPETITION });
+    const editions = await ImpactEdition.find({ status: { $in: [EditionStatus.COMPETITION, EditionStatus.FINAL] } });
     let n = 0;
     for (const e of editions) {
-        for (const k of [RoundKey.FREE, RoundKey.PAID]) {
+        for (const k of [RoundKey.FREE, RoundKey.PAID, RoundKey.FINAL]) {
             const r = e.rounds?.[k];
             if (!r) continue;
             try {
-                if (r.status === RoundStatus.SCHEDULED && r.opensAt && r.opensAt <= now && r.closesAt && r.closesAt > now && e.stage === ROUND_STAGE[k]) {
+                if (r.status === RoundStatus.SCHEDULED && r.opensAt && r.opensAt <= now && r.closesAt && r.closesAt > now
+                    && e.stage === ROUND_STAGE[k] && e.status === ROUND_EDITION_STATUS[k]) {
                     if (await openRound(e, k, SYSTEM)) n++;
                 } else if (r.status === RoundStatus.OPEN && r.closesAt && r.closesAt <= now) {
                     if (await closeRound(e, k, SYSTEM, 'date de fin atteinte')) n++;

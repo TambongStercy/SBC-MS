@@ -11,7 +11,7 @@ import { getEventUserDetails, getImpactMembers } from '../../../services/clients
 import { notifyUser } from '../../../services/clients/notification.service.client';
 import { kv } from '../../animation/lib/kv';
 import {
-    IImpactEdition, IImpactVoteTx, ImpactCandidate, ImpactEdition, ImpactFreeVote, ImpactSubmission, ImpactVoteTx,
+    IImpactEdition, IImpactVoteTx, ImpactCandidate, ImpactEdition, ImpactFinalVote, ImpactFreeVote, ImpactSubmission, ImpactVoteTx,
 } from '../models';
 import {
     CandidateStatus, EditionStatus, PayMethod, RoundKey, RoundStatus, settingsOf, SubmissionKind, SubmissionStatus,
@@ -19,6 +19,7 @@ import {
 } from '../types';
 import { Actor, audit, SYSTEM } from '../lib';
 import { currentEdition, getEdition, invalidateCurrent } from './edition.service';
+import { ROUND_EDITION_STATUS } from './stage.service';
 import { invalidateBoard } from './board.service';
 
 const log = logger.getLogger('ImpactVotes');
@@ -46,7 +47,7 @@ const pushMember = (userId: Types.ObjectId | string, kind: string, subject: stri
 
 const roundOpen = (e: IImpactEdition, k: RoundKey, now = new Date()) => {
     const r = e.rounds?.[k];
-    return e.status === EditionStatus.COMPETITION && r?.status === RoundStatus.OPEN && (!r.closesAt || r.closesAt > now);
+    return e.status === ROUND_EDITION_STATUS[k] && r?.status === RoundStatus.OPEN && (!r.closesAt || r.closesAt > now);
 };
 
 /** The candidate can receive votes of this round: still in the race and the content published. */
@@ -63,10 +64,13 @@ const votable = async (e: IImpactEdition, candidateId: unknown, k: RoundKey) => 
 
 // ---------- Free vote (§6.3, §17) ----------
 
-/** Can this account vote for free? Cached 10 min per account and edition. */
-const assertFreeVoter = async (e: IImpactEdition, userId: string) => {
+/**
+ * Can this account vote for free (week 2, or the final public vote: same rules,
+ * the account age measured against that round's opening)? Cached 10 min.
+ */
+const assertFreeVoter = async (e: IImpactEdition, userId: string, k: RoundKey = RoundKey.FREE) => {
     const st = settingsOf(e.settings);
-    const key = `impact:elig:${e._id}:${userId}`;
+    const key = `impact:elig:${e._id}:${k}:${userId}`;
     let verdict: { code?: string; message?: string } | null = null;
     try {
         const cached = await kv().get(key);
@@ -79,7 +83,7 @@ const assertFreeVoter = async (e: IImpactEdition, userId: string) => {
         } catch {
             throw new AppError('Vérification de votre compte impossible pour le moment. Réessayez dans un instant.', 503, true, 'MEMBER_CHECK_UNAVAILABLE');
         }
-        const openedAt = e.rounds?.FREE?.openedAt ?? e.rounds?.FREE?.opensAt;
+        const openedAt = e.rounds?.[k]?.openedAt ?? e.rounds?.[k]?.opensAt;
         if (!m || m.unavailable) verdict = { code: 'ACCOUNT_UNAVAILABLE', message: 'Ce compte ne peut pas voter.' };
         else if (st.freeVote.membersOnly && !m.isMember) verdict = { code: 'MEMBERS_ONLY', message: 'Le vote est réservé aux membres SBC avec un pack actif.' };
         else if (st.freeVote.accountsOlderThanRound && openedAt && m.createdAt && new Date(m.createdAt) >= openedAt) {
@@ -120,6 +124,44 @@ export const castFreeVote = async (userId: string, body: Record<string, any>, si
     }
     await ImpactCandidate.updateOne({ _id: c._id }, { $inc: { 'votes.free': 1 }, $set: { 'votes.lastFreeAt': now } });
     invalidateBoard();
+    return { candidateId: String(c._id), at: now };
+};
+
+// ---------- Final public vote (§12) ----------
+
+/**
+ * The final public vote: free, 1 account = 1 vote, for a finalist, while the
+ * FINAL round is open (during the live). Same eligibility as week 2.
+ */
+export const castFinalVote = async (userId: string, body: Record<string, any>, signals: { ip?: string; ua?: string }) => {
+    const e = await currentEdition();
+    if (!e || !roundOpen(e, RoundKey.FINAL)) throw new AppError('Le vote public de la finale n’est pas ouvert.', 409, true, 'VOTE_CLOSED');
+    const c = await ImpactCandidate.findOne({ _id: oid(body?.candidateId), editionId: e._id, status: CandidateStatus.FINALIST });
+    if (!c) throw new AppError('Seuls les finalistes reçoivent ce vote.', 409, true, 'CANDIDATE_NOT_VOTABLE');
+    if (!settingsOf(e.settings).freeVote.selfVote && String(c.userId) === userId) {
+        throw new AppError('Vous ne pouvez pas voter pour vous-même.', 403, true, 'SELF_VOTE');
+    }
+    if (await ImpactFinalVote.exists({ editionId: e._id, voterUserId: new Types.ObjectId(userId) })) {
+        throw new AppError('Vous avez déjà voté.', 409, true, 'ALREADY_VOTED');
+    }
+    await assertFreeVoter(e, userId, RoundKey.FINAL);
+    const ipHash = hashSignal(signals.ip);
+    if (ipHash) {
+        try {
+            const hits = await kv().hit(`impact:final:ip:${e._id}:${ipHash}`, 3600);
+            if (hits > FREE_VOTES_PER_IP_HOUR) throw new AppError('Trop de votes depuis ce réseau. Réessayez plus tard.', 429, true, 'TOO_MANY_REQUESTS');
+        } catch (err) {
+            if (err instanceof AppError) throw err;
+        }
+    }
+    const now = new Date();
+    try {
+        await ImpactFinalVote.create({ editionId: e._id, candidateId: c._id, voterUserId: new Types.ObjectId(userId), ipHash, uaHash: hashSignal(signals.ua), at: now });
+    } catch (err: any) {
+        if (err?.code === 11000) throw new AppError('Vous avez déjà voté.', 409, true, 'ALREADY_VOTED');
+        throw err;
+    }
+    // Counts stay hidden until the result (no snowball during the live): nothing to invalidate.
     return { candidateId: String(c._id), at: now };
 };
 
@@ -456,14 +498,15 @@ export const retryRefunds = async (): Promise<number> => {
  */
 export const myVotes = async (userId: string) => {
     const e = await currentEdition();
-    if (!e) return { freeVote: null, purchases: [], myCandidateId: null, canFreeVote: null };
+    if (!e) return { freeVote: null, purchases: [], myCandidateId: null, canFreeVote: null, finalVote: null, canFinalVote: null };
     const uid = new Types.ObjectId(userId);
-    const [fv, txs, mine] = await Promise.all([
+    const [fv, txs, mine, fin] = await Promise.all([
         ImpactFreeVote.findOne({ editionId: e._id, voterUserId: uid }).lean(),
         ImpactVoteTx.find({ editionId: e._id, userId: uid }).sort({ createdAt: -1 }).limit(50).lean(),
         ImpactCandidate.findOne({ editionId: e._id, userId: uid }).select('_id').lean(),
+        ImpactFinalVote.findOne({ editionId: e._id, voterUserId: uid }).lean(),
     ]);
-    const ids = [...new Set([fv ? String(fv.candidateId) : null, ...txs.map((t) => String(t.candidateId))].filter(Boolean) as string[])];
+    const ids = [...new Set([fv ? String(fv.candidateId) : null, fin ? String(fin.candidateId) : null, ...txs.map((t) => String(t.candidateId))].filter(Boolean) as string[])];
     const cands = ids.length ? await ImpactCandidate.find({ _id: { $in: ids.map((i) => new Types.ObjectId(i)) } }).select('profile.name').lean() : [];
     const nameOf = new Map(cands.map((c) => [String(c._id), c.profile?.name ?? null]));
 
@@ -480,7 +523,21 @@ export const myVotes = async (userId: string) => {
             }
         }
     }
+    let canFinalVote: { ok: boolean; code?: string; message?: string } | null = null;
+    if (roundOpen(e, RoundKey.FINAL)) {
+        if (fin) canFinalVote = { ok: false, code: 'ALREADY_VOTED', message: 'Vous avez déjà voté.' };
+        else {
+            try {
+                await assertFreeVoter(e, userId, RoundKey.FINAL);
+                canFinalVote = { ok: true };
+            } catch (err) {
+                canFinalVote = { ok: false, code: (err as AppError).code, message: (err as Error).message };
+            }
+        }
+    }
     return {
+        finalVote: fin ? { candidateId: String(fin.candidateId), candidateName: nameOf.get(String(fin.candidateId)) ?? null, at: fin.at } : null,
+        canFinalVote,
         freeVote: fv ? { candidateId: String(fv.candidateId), candidateName: nameOf.get(String(fv.candidateId)) ?? null, at: fv.at } : null,
         purchases: txs.map((t) => ({ ...presentTx(t), candidateName: nameOf.get(String(t.candidateId)) ?? null })),
         myCandidateId: mine ? String(mine._id) : null,

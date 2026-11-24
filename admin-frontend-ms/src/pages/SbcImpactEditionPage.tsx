@@ -21,20 +21,24 @@ import CompetitionPanel from '../components/sbcImpact/CompetitionPanel';
 import ContentsTab from '../components/sbcImpact/ContentsTab';
 import SettingsTab from '../components/sbcImpact/SettingsTab';
 import Top3Tab from '../components/sbcImpact/Top3Tab';
+import FinaleTab from '../components/sbcImpact/FinaleTab';
+import { unmarkedFinalists } from '../components/sbcImpact/finaleQueries';
 import VotesTab from '../components/sbcImpact/VotesTab';
 import { EditionStatusBadge, RoundStatusBadge } from '../components/sbcImpact/shared';
 import {
     CLOSED_REASON_LABELS, ROUND_LABELS, ROUND_STAGE, RULES_MIN_LENGTH, STAGE_LABELS, cancelEdition, closeQualification, getEdition,
-    getTop3, impactErrorMessage, isEditionClosed, listCandidates, listPurchases, listSubmissions, openQualification, recountEdition,
+    getJury, getResult, getTop3, impactErrorMessage, isEditionClosed, listCandidates, listPurchases, listSubmissions, openQualification, recountEdition,
     type CandidateRow, type CandidateStatus, type Edition, type RoundKey,
 } from '../services/impactV2Api';
 
-type Tab = 'candidats' | 'contenus' | 'votes' | 'top3' | 'regles' | 'journal';
-const TABS: Tab[] = ['candidats', 'contenus', 'votes', 'top3', 'regles', 'journal'];
+type Tab = 'candidats' | 'contenus' | 'votes' | 'top3' | 'finale' | 'regles' | 'journal';
+const TABS: Tab[] = ['candidats', 'contenus', 'votes', 'top3', 'finale', 'regles', 'journal'];
+/** Stages of the final (the « Finale » tab exists from the TOP 3 on). */
+const FINAL_STAGES = ['TOP3', 'LIVE', 'RESULT'];
 /** Tabs that exist once the competition has started. */
 const COMPETITION_TABS: Tab[] = ['contenus', 'votes', 'top3'];
 /** Candidates still in the running, for the competition metric. */
-const RUNNING: CandidateStatus[] = ['OFFICIAL', 'STAGE_2', 'STAGE_3', 'FINALIST', 'SUSPENDED'];
+const RUNNING: CandidateStatus[] = ['OFFICIAL', 'STAGE_2', 'STAGE_3', 'FINALIST', 'WINNER', 'SUSPENDED'];
 
 /** A side read failed: the to-do list goes on without it. */
 const orNull = <T,>(p: Promise<T>) => p.catch(() => null);
@@ -49,14 +53,18 @@ const orNull = <T,>(p: Promise<T>) => p.catch(() => null);
  */
 async function loadWork(e: Edition) {
     const stage = e.stage;
-    const week3On = stage === 'WEEK3' || stage === 'TOP3';
+    const week3On = !!stage && ['WEEK3', 'TOP3', 'LIVE', 'RESULT'].includes(stage);
     const top3Due = e.status === 'COMPETITION' && stage === 'WEEK3' && e.rounds?.PAID?.status === 'CLOSED' && !e.top3?.decidedAt;
-    const [all, pending, contents, purchases, top3] = await Promise.all([
+    const juryDue = e.status === 'FINAL';
+    const resultDue = e.status === 'FINAL' && stage === 'LIVE' && !!e.jury?.lockedAt;
+    const [all, pending, contents, purchases, top3, jury, result] = await Promise.all([
         listCandidates(e._id, { limit: 1 }),
         listCandidates(e._id, { review: 'PENDING', limit: 1 }),
         stage ? orNull(listSubmissions(e._id, { status: 'PENDING' })) : null,
         week3On ? orNull(listPurchases(e._id, { limit: 1 })) : null,
         top3Due ? orNull(getTop3(e._id)) : null,
+        juryDue ? orNull(getJury(e._id)) : null,
+        resultDue ? orNull(getResult(e._id)) : null,
     ]);
     const below: CandidateRow[] = all.belowRequirementCount > 0
         ? (await listCandidates(e._id, { below: true, limit: 5 })).items
@@ -66,6 +74,10 @@ async function loadWork(e: Edition) {
         pendingContents: contents?.length ?? 0,
         uncertainRefunds: purchases?.totals.uncertainRefunds ?? 0,
         top3Ready: !!top3 && top3.blockers.length === 0 && top3.ranking.length > 0 && !top3.decided,
+        // The final
+        activeJurors: jury ? jury.jurors.filter(j => !j.removedAt).length : null,
+        unmarked: jury ? unmarkedFinalists(jury) : [],
+        resultReady: !!result && !result.published && result.blockers.length === 0 && result.rows.length > 0,
     };
 }
 
@@ -102,9 +114,12 @@ export default function SbcImpactEditionPage() {
     });
     const edition = editionQ.data;
     const competitionStarted = !!edition?.stage;
-    const tab: Tab = tabParam && TABS.includes(tabParam) && (competitionStarted || !COMPETITION_TABS.includes(tabParam)) ? tabParam : 'candidats';
+    const finaleVisible = !!edition?.stage && FINAL_STAGES.includes(edition.stage);
+    const tab: Tab = tabParam && TABS.includes(tabParam)
+        && (competitionStarted || !COMPETITION_TABS.includes(tabParam))
+        && (finaleVisible || tabParam !== 'finale') ? tabParam : 'candidats';
     const work = useQuery({
-        queryKey: ['sbc-impact', 'work', id, edition?.status, edition?.stage, edition?.rounds?.PAID?.status],
+        queryKey: ['sbc-impact', 'work', id, edition?.status, edition?.stage, edition?.rounds?.PAID?.status, edition?.jury?.lockedAt],
         queryFn: () => loadWork(edition!),
         enabled: !!edition && edition.status !== 'DRAFT',
     });
@@ -279,6 +294,39 @@ export default function SbcImpactEditionPage() {
             action: <TodoAction onClick={() => setTab('votes', { achats: 'incertains' })}>Voir</TodoAction>,
         });
     }
+    // The final (Phase 3)
+    if (e.status === 'FINAL' && e.stage === 'TOP3' && w?.activeJurors === 0) {
+        todo.push({
+            key: 'jury', count: 1, tone: 'info',
+            label: 'Jury à composer',
+            hint: 'Ajoutez au moins un juré (un compte SBC, jamais un finaliste) pour démarrer la finale.',
+            action: <TodoAction onClick={() => setTab('finale')}>Composer</TodoAction>,
+        });
+    }
+    if (e.stage === 'LIVE' && !e.jury?.lockedAt && w && w.unmarked.length > 0) {
+        todo.push({
+            key: 'unmarked', count: w.unmarked.length,
+            label: `${plural(w.unmarked.length, 'Finaliste')} pas encore ${plural(w.unmarked.length, 'noté')}`,
+            hint: `${w.unmarked.map(f => f.name).join(', ')} : aucune note d’un juré actif pour l’instant.`,
+            action: <TodoAction onClick={() => setTab('finale')}>Suivre</TodoAction>,
+        });
+    }
+    if (e.stage === 'LIVE' && !e.jury?.lockedAt && w && w.unmarked.length === 0 && (w.activeJurors ?? 0) > 0) {
+        todo.push({
+            key: 'lock', count: 1, tone: 'info',
+            label: 'Notes du jury à verrouiller',
+            hint: 'Chaque finaliste a au moins une note. Verrouillez une fois tous les jurés passés.',
+            action: <TodoAction onClick={() => setTab('finale')}>Verrouiller</TodoAction>,
+        });
+    }
+    if (w?.resultReady) {
+        todo.push({
+            key: 'result', count: 1, tone: 'info',
+            label: 'Résultat prêt à être publié',
+            hint: 'Les notes sont verrouillées et rien ne bloque la publication.',
+            action: <TodoAction onClick={() => setTab('finale')}>Publier</TodoAction>,
+        });
+    }
     if (w?.top3Ready) {
         todo.push({
             key: 'top3', count: 1, tone: 'info',
@@ -354,6 +402,7 @@ export default function SbcImpactEditionPage() {
                         onOpenCandidate={setOpenCandidate}
                         onShowCandidates={filter => setTab('candidats', filter)}
                         onShowTop3={() => setTab('top3')}
+                        onShowFinal={() => setTab('finale')}
                     />
                 </div>
             )}
@@ -374,7 +423,7 @@ export default function SbcImpactEditionPage() {
                         value={metric(formatNumber(w?.pendingContents ?? 0))}
                         onClick={() => setTab('contenus')}
                     />
-                    {(['FREE', 'PAID'] as RoundKey[]).map(k => {
+                    {((FINAL_STAGES.includes(e.stage) ? ['PAID', 'FINAL'] : ['FREE', 'PAID']) as RoundKey[]).map(k => {
                         const r = e.rounds?.[k];
                         return (
                             <Metric
@@ -437,6 +486,7 @@ export default function SbcImpactEditionPage() {
                             <TabsTrigger value="contenus" className="h-11">Contenus{w?.pendingContents ? ` (${formatNumber(w.pendingContents)})` : ''}</TabsTrigger>
                             <TabsTrigger value="votes" className="h-11">Votes</TabsTrigger>
                             <TabsTrigger value="top3" className="h-11">TOP 3</TabsTrigger>
+                            {finaleVisible && <TabsTrigger value="finale" className="h-11">Finale</TabsTrigger>}
                         </>
                     )}
                     <TabsTrigger value="regles" className="h-11">Règles et paramètres</TabsTrigger>
@@ -456,6 +506,16 @@ export default function SbcImpactEditionPage() {
                         <TabsContent value="top3" className="mt-4">
                             <Top3Tab edition={e} canWrite={canWrite} onChanged={editionChanged} onOpenCandidate={setOpenCandidate} />
                         </TabsContent>
+                        {finaleVisible && (
+                            <TabsContent value="finale" className="mt-4">
+                                <FinaleTab
+                                    edition={e}
+                                    canWrite={canWrite}
+                                    onChanged={editionChanged}
+                                    onEdition={next => queryClient.setQueryData(['sbc-impact', 'edition', id], next)}
+                                />
+                            </TabsContent>
+                        )}
                     </>
                 )}
                 <TabsContent value="regles" className="mt-4">

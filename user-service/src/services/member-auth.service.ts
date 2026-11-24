@@ -35,7 +35,7 @@ const log = logger.getLogger('MemberAuth');
  */
 authenticator.options = { window: 1, step: 30, digits: 6 };
 
-export type AuthenticatorAction = 'withdrawal' | 'momo_change' | 'crypto_change' | 'email_change' | 'phone_change' | 'password_reset';
+export type AuthenticatorAction = 'withdrawal' | 'momo_change' | 'crypto_change' | 'email_change' | 'phone_change' | 'password_reset' | 'impact_jury';
 
 const SETUP_TARGET = 'authenticator';
 const LOCK_STEPS_MS = [15 * 60 * 1000, 60 * 60 * 1000, 24 * 60 * 60 * 1000];

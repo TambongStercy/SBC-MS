@@ -2734,11 +2734,12 @@ export class UserController {
 
     /**
      * @route POST /users/internal/:userId/authenticator/verify { code, action } (service)
-     * payment-service confirms a withdrawal with it. Answers 200 { ok: true } or
-     * the refusal's status/message/code (400 wrong, 429 locked, 403 none).
+     * payment-service confirms a withdrawal with it; event-service a juror's scores
+     * (SBC Impact Challenge final). Answers 200 { ok: true } or the refusal's
+     * status/message/code (400 wrong, 429 locked, 403 none).
      */
     async internalVerifyAuthenticator(req: Request, res: Response): Promise<void> {
-        const action = req.body?.action === 'withdrawal' ? 'withdrawal' : null;
+        const action = req.body?.action === 'withdrawal' || req.body?.action === 'impact_jury' ? req.body.action as 'withdrawal' | 'impact_jury' : null;
         if (!action) {
             res.status(400).json({ success: false, message: 'Unknown action.' });
             return;
