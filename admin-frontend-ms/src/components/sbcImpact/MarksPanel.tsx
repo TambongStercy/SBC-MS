@@ -155,7 +155,7 @@ export default function MarksPanel({ edition, canWrite, onChanged }: { edition: 
                     </Notice>
                 )}
                 {!locked && unmarked.length > 0 && edition.stage === 'LIVE' && (
-                    <Notice tone="warning">Sans note pour l’instant : {unmarked.map(f => f.name).join(', ')}. Chaque finaliste doit être noté par au moins un juré avant le verrouillage.</Notice>
+                    <Notice tone="warning">Pas encore noté par tout le jury : {unmarked.map(f => f.name).join(', ')}. Chaque juré doit noter chaque finaliste avant le verrouillage ; retirez un juré qui ne pourra pas noter.</Notice>
                 )}
                 {j.jurors.length === 0 || j.finalists.length === 0 ? (
                     <p className="text-sm text-fg-muted">Les notes apparaissent ici dès que les jurés notent les finalistes.</p>

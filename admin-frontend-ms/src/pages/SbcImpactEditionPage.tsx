@@ -316,8 +316,8 @@ export default function SbcImpactEditionPage() {
     if (e.stage === 'LIVE' && !e.jury?.lockedAt && w && w.unmarked.length > 0) {
         todo.push({
             key: 'unmarked', count: w.unmarked.length,
-            label: `${plural(w.unmarked.length, 'Finaliste')} pas encore ${plural(w.unmarked.length, 'noté')}`,
-            hint: `${w.unmarked.map(f => f.name).join(', ')} : aucune note d’un juré actif pour l’instant.`,
+            label: `${plural(w.unmarked.length, 'Finaliste')} pas encore ${plural(w.unmarked.length, 'noté')} par tout le jury`,
+            hint: `${w.unmarked.map(f => f.name).join(', ')} : il manque la note d’au moins un juré actif.`,
             action: <TodoAction onClick={() => setTab('finale')}>Suivre</TodoAction>,
         });
     }
@@ -325,7 +325,7 @@ export default function SbcImpactEditionPage() {
         todo.push({
             key: 'lock', count: 1, tone: 'info',
             label: 'Notes du jury à verrouiller',
-            hint: 'Chaque finaliste a au moins une note. Verrouillez une fois tous les jurés passés.',
+            hint: 'Chaque juré a noté chaque finaliste. Vous pouvez verrouiller.',
             action: <TodoAction onClick={() => setTab('finale')}>Verrouiller</TodoAction>,
         });
     }

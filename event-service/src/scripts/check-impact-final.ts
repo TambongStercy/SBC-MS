@@ -152,6 +152,12 @@ const main = async () => {
     await final.saveScore(J1, id, String(C._id), { scores: marks(6, 6, 6, 6, 6) });
     await final.saveScore(J2, id, String(A._id), { scores: marks(9, 9, 9, 9, 8), authCode: '123456' });
     await final.saveScore(J2, id, String(B._id), { scores: marks(8, 8, 8, 8, 8) });
+    const partial = await refusal(() => final.lockJury(ADMIN, id));
+    const of = (c: any) => partial?.details?.missing?.find((m: any) => m.candidateId === String(c._id));
+    check('lock refused until every active juror has scored every finalist (Rufus)', partial?.code === 'MISSING_SCORES' && of(C)?.scoredBy === 1 && of(C)?.notScoredBy.length === 2 && of(A)?.notScoredBy.length === 1);
+    await final.saveScore(J2, id, String(C._id), { scores: marks(6, 6, 6, 6, 6) });
+    check('a juror who cannot score still blocks the lock', (await refusal(() => final.lockJury(ADMIN, id)))?.code === 'MISSING_SCORES');
+    await final.removeJuror(ADMIN, id, String((await ImpactJuror.findOne({ userId: new Types.ObjectId(Jnoapp) }))!._id), 'Pas d’application d’authentification');
     await final.lockJury(ADMIN, id);
     check('no score after the lock', (await refusal(() => final.saveScore(J1, id, String(A._id), { scores: marks(1, 1, 1, 1, 1) })))?.code === 'JURY_LOCKED');
     check('the jury no longer changes after the lock', (await refusal(() => final.addJuror(ADMIN, id, { userId: member() })))?.code === 'JURY_LOCKED');
@@ -160,7 +166,7 @@ const main = async () => {
     const p: any = await final.resultPreview(id);
     const row = (c: any) => p.rows.find((r: any) => r.candidateId === String(c._id));
     // paid 100/50/20 → 100/50/20; public 1/3/0 → 33.33/100/0; jury avg 42/42.5/30 → 98.82/100/70.59
-    check('jury part: average of the active jurors only', row(A).juryAverage === 42 && row(B).juryAverage === 42.5 && row(C).juryAverage === 30 && row(C).jurorsCount === 1);
+    check('jury part: average of the active jurors only', row(A).juryAverage === 42 && row(B).juryAverage === 42.5 && row(C).juryAverage === 30 && row(C).jurorsCount === 2);
     check('parts on 100 (the best gets 100)', row(A).components.paidVotes === 100 && near(row(A).components.publicVote, 33.33) && row(B).components.jury === 100 && near(row(C).components.jury, 70.59));
     check('score = 50/30/20 weighted', near(row(A).score, 79.76) && near(row(B).score, 75) && near(row(C).score, 24.12), p.rows.map((r: any) => `${r.name}:${r.score}`).join(' '));
     check('ranked by score', p.rows.map((r: any) => r.name).join() === 'A,B,C' && p.blockers.length === 0);
