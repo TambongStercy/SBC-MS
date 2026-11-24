@@ -14,6 +14,7 @@ import * as votes from './services/vote.service';
 import * as board from './services/board.service';
 import * as final from './services/final.service';
 import * as tombola from './services/tombola.service';
+import * as showcase from './services/showcase.service';
 import { lookupEventMember } from '../../services/clients/user.service.client';
 
 /**
@@ -82,6 +83,15 @@ publicRouter.get('/tombola/draws/:id/proof', h(async (req, res) => {
     res.set('Cache-Control', 'public, max-age=60');
     return tombola.proof(req.params.id);
 }));
+// « SBC Impact »: the finalists' pages (12 months), then the archive.
+publicRouter.get('/showcase', h(async (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=60');
+    return showcase.publicList();
+}));
+publicRouter.get('/showcase/:id', h(async (req, res) => {
+    res.set('Cache-Control', 'public, max-age=60');
+    return showcase.publicOne(req.params.id);
+}));
 publicRouter.get('/candidates/:id', h(async (req, res) => {
     res.set('Cache-Control', 'public, max-age=10');
     return board.publicCandidate(req.params.id);
@@ -99,6 +109,8 @@ memberRouter.post('/me/submissions/:kind', throttle('submit', 10, 60), h(async (
 memberRouter.post('/free-votes', throttle('free-vote', 10, 60), h(async (req) => votes.castFreeVote(uid(req), req.body ?? {}, signals(req))));
 memberRouter.post('/vote-purchases', throttle('purchase', 10, 60), h(async (req) => votes.startPurchase(uid(req), req.body ?? {}, signals(req))));
 memberRouter.get('/me/votes', h(async (req) => votes.myVotes(uid(req))));
+memberRouter.get('/me/showcase', h(async (req) => showcase.mine(uid(req))));
+memberRouter.post('/me/showcase/:id/updates', throttle('showcase-update', 5, 3600), h(async (req) => showcase.proposeUpdate(uid(req), req.params.id, req.body ?? {})));
 memberRouter.get('/me/tombola', h(async (req) => tombola.myTickets(uid(req))));
 memberRouter.post('/final-votes', throttle('final-vote', 10, 60), h(async (req) => votes.castFinalVote(uid(req), req.body ?? {}, signals(req))));
 // Jury space (a juror is an SBC account added by the administration).
@@ -167,6 +179,14 @@ adminRouter.post('/editions/:id/tombola/draw', requireAdminStepUp('impact_tombol
 adminRouter.post('/editions/:id/tombola/reveal', h(async (req) => tombola.reveal(admin(req), req.params.id)));
 adminRouter.post('/editions/:id/tombola/winners/:order/status', h(async (req) => tombola.setWinnerStatus(admin(req), req.params.id, Number(req.params.order), req.body ?? {})));
 adminRouter.get('/tombola/history', h(async () => tombola.history({ admin: true })));
+// ----- Phase 5: SBC Impact showcase -----
+adminRouter.get('/showcase', h(async (req) => showcase.adminList(req.query)));
+adminRouter.get('/showcase/updates/pending', h(async () => showcase.pendingUpdates()));
+adminRouter.get('/showcase/:id', h(async (req) => showcase.adminOne(req.params.id)));
+adminRouter.patch('/showcase/:id', h(async (req) => showcase.adminEdit(admin(req), req.params.id, req.body ?? {})));
+adminRouter.post('/showcase/:id/updates', h(async (req) => showcase.adminPostUpdate(admin(req), req.params.id, req.body ?? {})));
+adminRouter.post('/showcase/updates/:uid/review', h(async (req) => showcase.reviewUpdate(admin(req), req.params.uid, req.body ?? {})));
+adminRouter.post('/editions/:id/showcase/create', h(async (req) => showcase.adminCreateForEdition(admin(req), req.params.id)));
 adminRouter.get('/editions/:id/candidates.csv', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const csv = await candidates.exportCandidatesCsv(req.params.id);

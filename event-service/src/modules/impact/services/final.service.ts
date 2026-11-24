@@ -14,6 +14,7 @@ import { Actor, audit, notifyCandidate, transitionCandidate } from '../lib';
 import { getEdition, invalidateCurrent } from './edition.service';
 import { invalidateBoard } from './board.service';
 import { presentSubmission } from './submission.service';
+import { createForEdition } from './showcase.service';
 
 const log = logger.getLogger('ImpactFinal');
 
@@ -449,6 +450,8 @@ export const publishResult = async (actor: Actor, editionId: string, body: Recor
         }
     }
     invalidateCurrent(); invalidateBoard(); invalidateFinal();
+    // The finalists' SBC Impact pages (§14). Never blocks the result: the admin can create them again.
+    try { await createForEdition(done._id, actor); } catch (err) { log.error(`SBC Impact pages for ${done._id}: ${(err as Error).message}`); }
     await audit({ actor, action: 'final.result_published', editionId: done._id, after: { winner: winner.candidateId, rows: p.rows.map((r: any) => ({ c: r.candidateId, score: r.score, rank: r.rank })) } });
     log.info(`Edition ${done._id}: result published, winner ${winner.candidateId}`);
     return done;
